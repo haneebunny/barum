@@ -1,0 +1,42 @@
+# ── Python ──
+**/venv/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+*.egg-info/
+
+# ── secrets ──
+.env
+.env.*
+!.env.example
+
+# ── 운영/학습 데이터 (git 밖 — Supabase / 파일시스템에 둔다) ──
+backend/data/
+backend/11st_output/
+backend/coupang_output/
+backend/**/tiles/
+
+# ── 엑셀 임시 락파일 ──
+~$*
+
+# ── 내부 문서(비공개) ──
+*.pdf
+
+# ── OS / 에디터 ──
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ── Claude Code 로컬 설정 ──
+.claude/settings.local.json
+
+# ── frontend (Next.js) ──
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env*.local

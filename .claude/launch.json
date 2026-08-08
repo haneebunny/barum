@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mockups",
+      "runtimeExecutable": "venv/bin/python3",
+      "runtimeArgs": ["-m", "http.server", "4321", "--directory", "design/mockups"],
+      "port": 4321
+    },
+    {
+      "name": "team-mockups",
+      "runtimeExecutable": "venv/bin/python3",
+      "runtimeArgs": ["-m", "http.server", "4322", "--directory", "/Users/hani/Downloads/mockups"],
+      "port": 4322
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["/Users/hani/Desktop/project/vericops/frontend/scripts/dev.sh"],
+      "port": 3000
+    }
+  ]
+}

@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>점검 관리 · VeriCops</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<script>(function(){try{var s=localStorage.getItem('vericops-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+<style>
+/* =========================================================================
+   VeriCops - 점검 관리 (화면 06) · 재설계
+   이 화면은 '설정'이 아니라 전체 파이프라인의 입력을 정하는 관제 표면이다.
+   그래서 위상을 올린다: 상단에 관제 요약(무엇을 얼마나 수집 중인가),
+   그 아래 상시 규칙과 기획 점검을 '만들기'가 눈에 밟히게 배치.
+   상시 수집 규칙(끝이 없음)과 기획 점검(시작·끝이 있음)은 다른 물건.
+   ========================================================================= */
+:root{
+  --font:"Pretendard Variable",Pretendard,-apple-system,system-ui,sans-serif;
+  --canvas:#f3f5f8; --surface:#ffffff; --surface-sub:#f0f3f7;
+  --ink:#1a2233; --ink-2:#47505f; --ink-3:#646b78;
+  --line:#e2e6ee; --line-2:#d3d9e3; --hair:#eef1f6;
+  --navy:#1f2d44; --accent:#12509e; --accent-2:#0e4488; --accent-weak:#e8f0fb; --accent-ink:#0d3d7a;
+  --crit:#c0392b; --crit-bg:#fbece9; --crit-bd:#f2cec8;
+  --warn:#9a5b02; --warn-bg:#fbf1df; --warn-bd:#eedcb8;
+  --ok:#1f7a44; --ok-bg:#e7f4ec;
+  --bar-track:#eef1f6;
+  --r:4px; --r-card:8px; --shadow-sm:0 1px 2px rgba(23,32,53,.045);
+}
+*{box-sizing:border-box;} html,body{margin:0;}
+body{font-family:var(--font); background:var(--canvas); color:var(--ink); font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased; font-feature-settings:"tnum" 1;}
+button{font-family:inherit; cursor:pointer;}
+.num{font-variant-numeric:tabular-nums;}
+
+/* ================= 글로벌 바 ================= */
+.topbar{height:58px; background:var(--surface); border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 24px; gap:28px; position:sticky; top:0; z-index:40;}
+.brand{display:flex; align-items:center; gap:11px; padding-right:8px;}
+.brand-mark{width:30px; height:30px; border-radius:5px; background:var(--navy); color:#fff; display:grid; place-items:center; font-weight:800; font-size:15px; letter-spacing:-0.03em;}
+.brand-txt{display:flex; flex-direction:column; line-height:1.15;}
+.brand-name{font-weight:800; font-size:16px; letter-spacing:-0.02em; color:var(--ink);}
+.brand-sub{font-size:11px; color:var(--ink-3); margin-top:1px;}
+.nav{display:flex; gap:2px; height:100%;}
+.nav a{display:flex; align-items:center; text-decoration:none; color:var(--ink-2); font-weight:500; font-size:13.5px; padding:0 13px; position:relative;}
+.nav a:hover{color:var(--accent);}
+.nav a.active{color:var(--accent); font-weight:700;}
+.nav a.active::after{content:""; position:absolute; left:13px; right:13px; bottom:-1px; height:2px; background:var(--accent);}
+.topbar-right{margin-left:auto; display:flex; align-items:center; gap:14px;}
+.clock{font-size:12.5px; color:var(--ink-3); font-weight:500;}
+.icon-btn{width:34px; height:34px; border:none; background:transparent; border-radius:var(--r); color:var(--ink-2); display:grid; place-items:center; position:relative;}
+.icon-btn:hover{background:var(--surface-sub); color:var(--ink);}
+.dot-badge{position:absolute; top:4px; right:4px; min-width:15px; height:15px; padding:0 3px; background:var(--crit); color:#fff; border-radius:99px; font-size:10px; font-weight:700; line-height:15px; text-align:center; border:2px solid var(--surface);}
+.divider-v{width:1px; height:24px; background:var(--line-2);}
+.user{display:flex; align-items:center; gap:9px;}
+.avatar{width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; display:grid; place-items:center; font-weight:700; font-size:12px;}
+.user-txt{display:flex; flex-direction:column; line-height:1.2;}
+.user-name{font-size:12.5px; font-weight:600; color:var(--ink);}
+.user-role{font-size:11px; color:var(--ink-3);}
+
+/* ================= 셸 / 헤더 ================= */
+.shell{max-width:1560px; margin:0 auto; padding:0 24px 64px;}
+.page-head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; padding:18px 0 16px; flex-wrap:wrap;}
+.page-title{font-size:21px; font-weight:800; letter-spacing:-0.02em; margin:0;}
+.page-sub{color:var(--ink-3); font-size:12.5px; margin-top:6px;}
+.last-sync{font-size:11.5px; color:var(--ink-3); text-align:right;}
+.last-sync b{color:var(--ink-2); font-weight:600;}
+
+/* 버튼 */
+.act-primary{display:inline-flex; align-items:center; gap:6px; background:var(--navy); color:#fff; border:none; padding:9px 14px; border-radius:var(--r); font-size:12.5px; font-weight:600; text-decoration:none;}
+.act-primary:hover{background:#16233a;}
+.act-primary:disabled{background:var(--line-2); color:var(--ink-3); cursor:not-allowed;}
+.act-line{background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2); padding:9px 13px; border-radius:var(--r); font-size:12.5px; font-weight:600;}
+.act-line:hover{border-color:var(--accent); color:var(--accent);}
+.act-text{background:none; border:none; color:var(--ink-3); font-size:12.5px; font-weight:600; padding:9px 4px;}
+.act-text:hover{color:var(--ink); text-decoration:underline;}
+.plink{font-size:11.5px; color:var(--accent); text-decoration:none; font-weight:600; white-space:nowrap;}
+.plink:hover{text-decoration:underline;}
+
+/* ================= 관제 요약 (KPI 스트립) - 대시보드 타일 재사용 =================
+   이 페이지의 위상을 올리는 핵심: '지금 무엇을 얼마나 감시·수집 중인가'.
+   지표가 대부분 중립이므로 회색 타일. 색은 '곧 끝남' 같은 주목에만. */
+.kpis{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-sm); margin-bottom:18px; overflow:hidden;}
+.tile{padding:14px 16px; border-left:1px solid var(--hair); min-width:0;}
+.tile:first-child{border-left:none;}
+.tile-k{font-size:12px; color:var(--ink-3); font-weight:500;}
+.tile-row{display:flex; align-items:baseline; gap:9px; margin-top:5px; flex-wrap:wrap;}
+.tile-v{font-size:24px; font-weight:800; letter-spacing:-0.02em; font-variant-numeric:tabular-nums;}
+.tile-v small{font-size:12.5px; font-weight:600; color:var(--ink-2); margin-left:2px;}
+.delta{display:inline-flex; align-items:center; gap:3px; font-size:11.5px; font-weight:700; color:var(--ink-3); font-variant-numeric:tabular-nums;}
+.delta svg{flex:none;}
+.tile-x{font-size:11.5px; color:var(--ink-3); margin-top:4px;}
+.tile-foot{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:7px;}
+.spark{width:100%; height:24px; display:block; margin-top:7px;}
+.spark polyline{fill:none; stroke:var(--ink-3); stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke;}
+/* 경보 타일 - 진짜 급한 것만(초과·임박). 앰버는 빨강과 CVD·정상시력 모두 구분난망이라 안 씀 */
+.tile.alert .tile-v{color:var(--crit);}
+.tile.alert .tile-x{color:var(--crit);}
+
+/* ================= 구역 공통 ================= */
+.sec{margin-bottom:20px;}
+.sec-h{display:flex; align-items:center; gap:10px; margin-bottom:11px; flex-wrap:wrap;}
+.sec-h h2{margin:0; font-size:15px; font-weight:800; letter-spacing:-0.01em;}
+.sec-h .cnt{font-size:12px; font-weight:700; color:var(--ink-3);}
+.sec-h .note{font-size:12px; color:var(--ink-3);}
+.sec-h .note b{color:var(--ink-2); font-weight:700;}
+.sec-h .sec-add{margin-left:auto;}
+.sec-add{display:inline-flex; align-items:center; gap:6px; background:var(--navy); color:#fff; border:none; padding:8px 13px; border-radius:var(--r); font-size:12.5px; font-weight:600;}
+.sec-add:hover{background:#16233a;}
+.sec-add svg{flex:none;}
+
+/* ---- 상시 수집 규칙 (카드) ---- */
+.rules{display:grid; grid-template-columns:repeat(auto-fill, minmax(272px,1fr)); gap:12px;}
+.rule{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-sm); padding:14px 15px; display:flex; flex-direction:column;}
+.rule.off{opacity:.6;}
+.rule-top{display:flex; align-items:flex-start; gap:10px;}
+.rule-name{font-size:13.5px; font-weight:700; color:var(--ink); flex:1; min-width:0;}
+/* 스위치 - 상태가 아니라 조작이므로 색을 쓴다 */
+.sw{flex:none; width:34px; height:19px; border-radius:99px; border:none; background:var(--line-2); position:relative; padding:0;}
+.sw::after{content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:#fff; transition:left .16s ease;}
+.sw[aria-pressed="true"]{background:var(--accent);}
+.sw[aria-pressed="true"]::after{left:17px;}
+.rule-meta{font-size:11.5px; color:var(--ink-3); margin-top:7px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+.dotsep{width:2px; height:2px; border-radius:50%; background:var(--ink-3); opacity:.6;}
+.rule-kw{display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;}
+.kw{font-size:11px; font-weight:600; color:var(--ink-2); background:var(--surface-sub); border-radius:3px; padding:2px 7px;}
+.kw.more{color:var(--ink-3); background:none;}
+/* 성과(수집량)를 카드의 주인공으로 - 큰 숫자 + 전일 대비 + 미니 추세 */
+.rule-foot{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:auto; padding-top:12px;}
+.rule-stat{display:flex; flex-direction:column; gap:2px; min-width:0;}
+.rf-k{font-size:11px; color:var(--ink-3);}
+.rf-v{font-size:22px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;}
+.rf-v small{font-size:11.5px; font-weight:600; color:var(--ink-2); margin-left:1px;}
+.rf-v.none{font-size:14px; font-weight:700; color:var(--ink-3);}
+.rule-spark{width:86px; height:30px; flex:none;}
+.rule-spark polyline{fill:none; stroke:var(--ink-3); stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke;}
+/* 규칙 추가 - 점선 카드로 '만들기'를 눈에 밟히게 */
+.rule.add{align-items:center; justify-content:center; gap:5px; text-align:center; border:1px dashed var(--line-2); background:none; box-shadow:none; color:var(--ink-3); min-height:168px;}
+.rule.add:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-weak);}
+.rule.add .add-ic{font-size:24px; font-weight:300; line-height:1; margin-bottom:3px;}
+.rule.add .add-t{font-size:13px; font-weight:700;}
+.rule.add .add-d{font-size:11.5px;}
+
+/* ---- 기획 점검 (목록) ---- */
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-sm); overflow:hidden;}
+.plan-row{display:grid; grid-template-columns:minmax(0,1fr) 118px 176px 96px; align-items:center; gap:16px; padding:14px 16px; border-bottom:1px solid var(--hair); text-decoration:none; color:inherit;}
+.plan-row:last-child{border-bottom:none;}
+.plan-row:hover{background:#f7f9fc;}
+.plan-name{font-size:13.5px; font-weight:700; color:var(--ink);}
+.plan-meta{font-size:11.5px; color:var(--ink-3); margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+/* 기간 표기는 회색. 색은 '진짜 임박(≤D-3)·종료 초과'에만 빨강으로 */
+.plan-due{font-size:11px; font-weight:700; color:var(--ink-3); background:var(--surface-sub); border:1px solid var(--line-2); border-radius:3px; padding:1px 6px; font-variant-numeric:tabular-nums;}
+.plan-due.urgent{color:var(--crit); background:var(--crit-bg); border-color:var(--crit-bd);}
+.plan-state{font-size:12px; font-weight:700; color:var(--ink-2);}
+.plan-state.done{color:var(--ink-3); font-weight:500;}
+.plan-state.soon{color:var(--ink-3); font-weight:500;}
+.bar-track{height:6px; background:var(--bar-track); border-radius:3px;}
+.bar-fill{height:6px; background:var(--accent); border-radius:3px; min-width:3px;}
+.bar-fill.done{background:var(--ink-3);}
+.bar-cap{font-size:11.5px; color:var(--ink-3); margin-top:5px; font-variant-numeric:tabular-nums;}
+.plan-acted{text-align:right; font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums;}
+.plan-acted b{font-weight:700; color:var(--ink);}
+.panel-foot{display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:#f8fafc; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink-3);}
+
+/* ================= 생성 패널 ================= */
+.overlay{position:fixed; inset:0; z-index:70; background:rgba(23,32,53,.45); display:none; align-items:center; justify-content:center; padding:32px 20px;}
+.overlay[data-open="true"]{display:flex;}
+.sheet{background:var(--surface); border-radius:var(--r-card); width:100%; max-width:620px; max-height:100%; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(23,32,53,.3);}
+.sheet-h{display:flex; align-items:center; justify-content:space-between; padding:14px 17px; border-bottom:1px solid var(--line);}
+.sheet-h h3{margin:0; font-size:14px; font-weight:700;}
+.sheet-b{overflow-y:auto; padding:6px 17px 16px;}
+.sheet-f{display:flex; align-items:center; gap:9px; padding:13px 17px; border-top:1px solid var(--line); background:#f8fafc;}
+.sheet-f .hint{margin-left:auto; font-size:11.5px; color:var(--ink-3);}
+
+.fld{padding:14px 0; border-top:1px solid var(--hair);}
+.fld:first-child{border-top:none;}
+.fld-l{display:block; font-size:11.5px; font-weight:600; color:var(--ink-3); margin-bottom:8px;}
+.fld-l .opt{font-weight:500; color:var(--ink-3);}
+.inp{width:100%; border:1px solid var(--line-2); border-radius:var(--r); padding:9px 11px; font-family:inherit; font-size:12.5px; color:var(--ink); background:var(--surface);}
+.inp:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak);}
+.inp::placeholder{color:var(--ink-3);}
+.sel{border:1px solid var(--line-2); border-radius:var(--r); padding:8px 10px; font-family:inherit; font-size:12.5px; color:var(--ink); background:var(--surface);}
+.sel:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak);}
+
+/* 유형 고르기 */
+.kinds{display:grid; grid-template-columns:1fr 1fr; gap:9px;}
+.kind{text-align:left; background:var(--surface); border:1px solid var(--line-2); border-radius:var(--r); padding:11px 12px;}
+.kind:hover{border-color:var(--accent);}
+.kind[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-weak);}
+.kind-n{font-size:13px; font-weight:700; color:var(--ink);}
+.kind[aria-pressed="true"] .kind-n{color:var(--accent-ink);}
+.kind-d{font-size:11.5px; color:var(--ink-3); margin-top:5px;}
+.when{display:flex; align-items:center; gap:9px; flex-wrap:wrap;}
+.when span{font-size:12px; color:var(--ink-3);}
+
+/* 고르는 칩 (쇼핑몰·품목·카테고리) */
+.picks{display:flex; flex-wrap:wrap; gap:6px;}
+.pick{background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2); font-size:12.5px; font-weight:600; padding:6px 11px; border-radius:var(--r);}
+.pick:hover{border-color:var(--accent); color:var(--accent);}
+.pick[aria-pressed="true"]{background:var(--accent-weak); border-color:var(--accent); color:var(--accent-ink);}
+
+/* 검색어 입력 - 넣으면 칩으로 쌓인다 */
+.kwbox{border:1px solid var(--line-2); border-radius:var(--r); padding:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:var(--surface);}
+.kwbox:focus-within{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak);}
+.kwchip{display:inline-flex; align-items:center; gap:6px; background:var(--surface-sub); border-radius:3px; padding:4px 6px 4px 9px; font-size:12.5px; font-weight:600; color:var(--ink-2);}
+.kwchip button{background:none; border:none; padding:0; color:var(--ink-3); display:grid; place-items:center;}
+.kwchip button:hover{color:var(--crit);}
+.kwbox input{flex:1; min-width:130px; border:none; outline:none; background:none; font-family:inherit; font-size:12.5px; color:var(--ink); padding:4px 2px;}
+.kwbox input::placeholder{color:var(--ink-3);}
+.fld-help{font-size:11.5px; color:var(--ink-3); margin-top:8px; line-height:1.5;}
+
+/* ================= 단축키 바 ================= */
+.shortcuts{position:fixed; left:0; right:0; bottom:0; z-index:30; background:var(--surface); border-top:1px solid var(--line); height:38px; display:flex; align-items:center; padding:0 24px; font-size:11.5px; color:var(--ink-3);}
+.shortcuts .grp{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+.sc{display:inline-flex; align-items:center; gap:6px;}
+.key{display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px; background:var(--surface-sub); border:1px solid var(--line-2); border-bottom-width:2px; border-radius:3px; font-size:10.5px; font-weight:700; color:var(--ink-2);}
+.shortcuts .now{margin-left:auto; color:var(--ink-3);}
+.shortcuts .now b{color:var(--ink-2); font-weight:600;}
+
+@media (prefers-reduced-motion: reduce){ .sw::after{transition:none;} }
+@media (max-width:1240px){ .kpis{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:900px){
+  .plan-row{grid-template-columns:1fr; gap:9px;}
+  .kinds{grid-template-columns:1fr;}
+}
+@media (max-width:820px){
+  .nav,.brand-sub,.user-txt,.clock{display:none;}
+  .shell{padding:0 14px 64px;}
+  .kpis{grid-template-columns:1fr;} .tile{border-left:none; border-top:1px solid var(--hair);}
+  .tile:first-child{border-top:none;}
+}
+
+/* ===== 다크 모드 ===== */
+.ic-sun{display:none;}
+:root[data-theme="dark"] .ic-sun{display:inline;}
+:root[data-theme="dark"] .ic-moon{display:none;}
+:root[data-theme="dark"]{
+  --canvas:#0f141c; --surface:#161c26; --surface-sub:#1b222e;
+  --ink:#e8ecf3; --ink-2:#aab3c1; --ink-3:#7d8794;
+  --line:#2a333f; --line-2:#374252; --hair:#222a34;
+  --navy:#26344c; --accent:#5b9be8; --accent-2:#6fa9ee; --accent-weak:#182740; --accent-ink:#a9caf3;
+  --crit:#ef8a80; --crit-bg:#2c1a17; --crit-bd:#4a2b26;
+  --warn:#e0b877; --warn-bg:#2a2113; --warn-bd:#463818;
+  --ok:#63c489; --ok-bg:#132720;
+  --bar-track:#232c39;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+}
+:root[data-theme="dark"] .plan-row:hover{background:#1e2732;}
+:root[data-theme="dark"] .panel-foot,
+:root[data-theme="dark"] .sheet-f{background:var(--surface-sub);}
+:root[data-theme="dark"] .act-primary,
+:root[data-theme="dark"] .sec-add{background:var(--accent); color:var(--canvas);}
+:root[data-theme="dark"] .act-primary:hover,
+:root[data-theme="dark"] .sec-add:hover{background:var(--accent-2);}
+:root[data-theme="dark"] .sw::after{background:var(--ink);}
+:root[data-theme="dark"] .sw[aria-pressed="true"]::after{background:var(--canvas);}
+:root[data-theme="dark"] .overlay{background:rgba(0,0,0,.62);}
+</style>
+</head>
+<body>
+
+<!-- 글로벌 바 -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">V</span>
+    <span class="brand-txt">
+      <span class="brand-name">VeriCops</span>
+      <span class="brand-sub">허위·과대광고 사후 모니터링 · 식약처 사이버조사팀</span>
+    </span>
+  </div>
+  <nav class="nav">
+    <a href="review-queue.html">작업 홈</a>
+    <a href="#" class="active">점검 관리</a>
+    <a href="#">결과 관리</a>
+    <a href="#">법령·판례</a>
+    <a href="dashboard.html">운영 대시보드</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="clock num">2026-08-04 (화) 09:40</span>
+    <button class="icon-btn" id="themeToggle" aria-label="테마 전환">
+      <svg class="ic-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="ic-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+    <button class="icon-btn" aria-label="알림">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot-badge num">5</span>
+    </button>
+    <span class="divider-v"></span>
+    <div class="user">
+      <span class="avatar">한</span>
+      <span class="user-txt">
+        <span class="user-name">한도윤 관리자</span>
+        <span class="user-role">정책관리팀 · 관리자 권한</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <!-- 페이지 헤더 -->
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">점검 관리</h1>
+      <p class="page-sub">무엇을 수집할지 정하는 곳입니다. 여기서 만든 점검이 검토 큐의 일감이 됩니다.</p>
+    </div>
+    <div class="last-sync num">마지막 수집 <b>03:00</b> · 다음 <b>내일 03:00</b></div>
+  </div>
+
+  <!-- ============ 관제 요약 : 지금 무엇을 얼마나 감시·수집 중인가 ============ -->
+  <div class="kpis">
+    <div class="tile">
+      <div class="tile-k">오늘 수집</div>
+      <div class="tile-row">
+        <span class="tile-v num">512<small>건</small></span>
+        <span class="delta"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>어제보다 34</span>
+      </div>
+      <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,19 17,17 33,18 50,13 67,12 83,9 100,6"/></svg>
+    </div>
+    <div class="tile">
+      <div class="tile-k">가동 중인 규칙</div>
+      <div class="tile-row">
+        <span class="tile-v num" id="kpiRules">3 / 4</span>
+      </div>
+      <div class="tile-foot"><span class="tile-x">꺼진 규칙 <span class="num">1</span>개</span><a href="#rulesSec" class="plink">관리</a></div>
+    </div>
+    <div class="tile">
+      <div class="tile-k">진행 중 기획 점검</div>
+      <div class="tile-row">
+        <span class="tile-v num">2<small>건</small></span>
+      </div>
+      <div class="tile-x num">예정 1 · 완료 5</div>
+    </div>
+    <div class="tile">
+      <div class="tile-k">곧 끝나는 점검</div>
+      <div class="tile-row">
+        <span class="tile-v num">D-11</span>
+      </div>
+      <div class="tile-x">여름철 다이어트 점검 · 08-15 종료</div>
+    </div>
+  </div>
+
+  <!-- ============ 상시 수집 규칙 ============ -->
+  <section class="sec" id="rulesSec">
+    <div class="sec-h">
+      <h2>상시 수집 규칙</h2>
+      <span class="cnt num">가동 3 / 4</span>
+      <span class="note">끝이 없는 상시 감시</span>
+      <button class="sec-add" id="ruleAddBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        규칙 추가
+      </button>
+    </div>
+    <div class="rules">
+
+      <div class="rule">
+        <div class="rule-top">
+          <span class="rule-name">관절·뼈 키워드</span>
+          <button class="sw" aria-pressed="true" aria-label="관절·뼈 키워드 규칙 켜짐"></button>
+        </div>
+        <div class="rule-meta"><span>매일 03:00</span><span class="dotsep"></span><span>네이버 · 쿠팡 · 11번가</span></div>
+        <div class="rule-kw">
+          <span class="kw">관절염</span><span class="kw">연골</span><span class="kw">무릎 통증</span><span class="kw more">외 6개</span>
+        </div>
+        <div class="rule-foot">
+          <div class="rule-stat">
+            <span class="rf-k">오늘 수집</span>
+            <span class="rf-v num">320<small>건</small><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>18</span></span>
+          </div>
+          <svg class="rule-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,22 20,20 40,21 60,15 80,13 100,8"/></svg>
+        </div>
+      </div>
+
+      <div class="rule">
+        <div class="rule-top">
+          <span class="rule-name">혈당·당뇨 키워드</span>
+          <button class="sw" aria-pressed="true" aria-label="혈당·당뇨 키워드 규칙 켜짐"></button>
+        </div>
+        <div class="rule-meta"><span>매일 03:00</span><span class="dotsep"></span><span>네이버 · 쿠팡</span></div>
+        <div class="rule-kw">
+          <span class="kw">당뇨</span><span class="kw">혈당</span><span class="kw">인슐린</span><span class="kw more">외 4개</span>
+        </div>
+        <div class="rule-foot">
+          <div class="rule-stat">
+            <span class="rf-k">오늘 수집</span>
+            <span class="rf-v num">192<small>건</small><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(180deg)"><path d="M12 5l8 12H4z"/></svg>7</span></span>
+          </div>
+          <svg class="rule-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,10 20,12 40,11 60,15 80,16 100,19"/></svg>
+        </div>
+      </div>
+
+      <div class="rule">
+        <div class="rule-top">
+          <span class="rule-name">신고 연계 재수집</span>
+          <button class="sw" aria-pressed="true" aria-label="신고 연계 재수집 규칙 켜짐"></button>
+        </div>
+        <div class="rule-meta"><span>1시간마다</span><span class="dotsep"></span><span>신고 접수 건만</span></div>
+        <div class="rule-kw">
+          <span class="kw more">신고 URL을 그대로 다시 수집</span>
+        </div>
+        <div class="rule-foot">
+          <div class="rule-stat">
+            <span class="rf-k">오늘 수집</span>
+            <span class="rf-v num">0<small>건</small></span>
+          </div>
+          <svg class="rule-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,26 20,26 40,25 60,26 80,26 100,25"/></svg>
+        </div>
+      </div>
+
+      <div class="rule off">
+        <div class="rule-top">
+          <span class="rule-name">다이어트 키워드</span>
+          <button class="sw" aria-pressed="false" aria-label="다이어트 키워드 규칙 꺼짐"></button>
+        </div>
+        <div class="rule-meta"><span>매일 04:00</span><span class="dotsep"></span><span>네이버 · 쿠팡 · G마켓</span></div>
+        <div class="rule-kw">
+          <span class="kw">체지방</span><span class="kw">감량</span><span class="kw more">외 8개</span>
+        </div>
+        <div class="rule-foot">
+          <div class="rule-stat">
+            <span class="rf-k">오늘 수집</span>
+            <span class="rf-v none">멈춤</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 만들기를 눈에 밟히게: 점선 추가 카드 -->
+      <button class="rule add" id="ruleAddCard">
+        <span class="add-ic">+</span>
+        <span class="add-t">규칙 추가</span>
+        <span class="add-d">상시로 돌릴 키워드 규칙을 만듭니다</span>
+      </button>
+
+    </div>
+  </section>
+
+  <!-- ============ 기획 점검 ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <h2>기획 점검</h2>
+      <span class="cnt num">진행 2 · 예정 1 · 완료 5</span>
+      <span class="note">기간을 정해 돌리는 캠페인</span>
+      <button class="sec-add" id="planAddBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        기획 점검 만들기
+      </button>
+    </div>
+    <div class="panel">
+
+      <a class="plan-row" href="review-queue.html">
+        <div>
+          <div class="plan-name">여름철 다이어트 표방 제품 점검</div>
+          <div class="plan-meta"><span class="num">07-15 ~ 08-15</span><span class="plan-due num">D-11</span><span class="dotsep"></span><span>네이버 · 쿠팡 · G마켓</span></div>
+        </div>
+        <span class="plan-state">진행 중</span>
+        <div>
+          <div class="bar-track"><div class="bar-fill" style="width:41%"></div></div>
+          <div class="bar-cap">검토 610 / 1,490건</div>
+        </div>
+        <span class="plan-acted">조치 <b class="num">73</b>건</span>
+      </a>
+
+      <a class="plan-row" href="review-queue.html">
+        <div>
+          <div class="plan-name">8월 관절 건강식품 집중 점검</div>
+          <div class="plan-meta"><span class="num">08-01 ~ 08-31</span><span class="plan-due num">D-27</span><span class="dotsep"></span><span>네이버 · 쿠팡 · 11번가</span></div>
+        </div>
+        <span class="plan-state">진행 중</span>
+        <div>
+          <div class="bar-track"><div class="bar-fill" style="width:72%"></div></div>
+          <div class="bar-cap">검토 890 / 1,240건</div>
+        </div>
+        <span class="plan-acted">조치 <b class="num">48</b>건</span>
+      </a>
+
+      <a class="plan-row" href="review-queue.html">
+        <div>
+          <div class="plan-name">건강기능식품 인증마크 오인 표시 점검</div>
+          <div class="plan-meta"><span class="num">08-10 ~ 09-10</span><span class="dotsep"></span><span>전 채널</span><span class="dotsep"></span><span>일반식품 · 건강기능식품</span></div>
+        </div>
+        <span class="plan-state soon">시작 전</span>
+        <div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+          <div class="bar-cap">08-10 시작 예정</div>
+        </div>
+        <span class="plan-acted">-</span>
+      </a>
+
+      <a class="plan-row" href="review-queue.html">
+        <div>
+          <div class="plan-name">7월 혈당 표방 제품 점검</div>
+          <div class="plan-meta"><span class="num">07-01 ~ 07-31</span><span class="dotsep"></span><span>네이버 · 쿠팡</span><span class="dotsep"></span><span>일반식품</span></div>
+        </div>
+        <span class="plan-state done">끝남</span>
+        <div>
+          <div class="bar-track"><div class="bar-fill done" style="width:100%"></div></div>
+          <div class="bar-cap">검토 980 / 980건</div>
+        </div>
+        <span class="plan-acted">조치 <b class="num">62</b>건</span>
+      </a>
+
+      <div class="panel-foot">
+        <span>끝난 점검 5건은 아래로 스크롤하면 나옵니다</span>
+        <span>결과 보고는 결과 관리에서 내려받습니다</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= 새 점검 만들기 ================= -->
+<div class="overlay" id="overlay" data-open="false" role="dialog" aria-modal="true" aria-label="새 점검 만들기">
+  <div class="sheet">
+    <div class="sheet-h">
+      <h3 id="sheetTitle">새 점검 만들기</h3>
+      <button class="icon-btn" id="closeBtn" aria-label="닫기">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="sheet-b">
+      <div class="fld">
+        <label class="fld-l" for="insName">점검 이름</label>
+        <input class="inp" id="insName" placeholder="예: 9월 간 건강 표방 제품 점검" />
+      </div>
+
+      <div class="fld">
+        <span class="fld-l">유형</span>
+        <div class="kinds">
+          <button class="kind" data-kind="plan" aria-pressed="true">
+            <div class="kind-n">기획 점검</div>
+            <div class="kind-d">기간을 정해 한 번 돌립니다</div>
+          </button>
+          <button class="kind" data-kind="always" aria-pressed="false">
+            <div class="kind-n">상시 규칙</div>
+            <div class="kind-d">정해진 시각에 계속 돕니다</div>
+          </button>
+        </div>
+        <div class="when" id="whenRow" style="margin-top:11px;">
+          <span>기간</span>
+          <input class="sel" type="date" value="2026-09-01" aria-label="시작일" />
+          <span>~</span>
+          <input class="sel" type="date" value="2026-09-30" aria-label="종료일" />
+        </div>
+      </div>
+
+      <div class="fld">
+        <span class="fld-l">대상 쇼핑몰</span>
+        <div class="picks" data-multi="true">
+          <button class="pick" aria-pressed="true">네이버 스마트스토어</button>
+          <button class="pick" aria-pressed="true">쿠팡</button>
+          <button class="pick" aria-pressed="true">11번가</button>
+          <button class="pick" aria-pressed="false">G마켓</button>
+          <button class="pick" aria-pressed="false">카카오쇼핑</button>
+          <button class="pick" aria-pressed="false">티몬</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <label class="fld-l" for="kwInput">검색어 <span class="opt">단어를 넣고 Enter</span></label>
+        <div class="kwbox" id="kwbox">
+          <span class="kwchip">간경화<button aria-label="간경화 빼기"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>
+          <span class="kwchip">지방간<button aria-label="지방간 빼기"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>
+          <span class="kwchip">간 해독<button aria-label="간 해독 빼기"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>
+          <input id="kwInput" placeholder="검색어 입력 후 Enter" />
+        </div>
+        <div class="fld-help">쇼핑몰 검색창에 이 단어를 넣어 나오는 상품을 가져옵니다. 이게 기본 수집 방식입니다.</div>
+      </div>
+
+      <div class="fld">
+        <span class="fld-l">카테고리 <span class="opt">선택 사항 · 검색어와 같이 쓰면 범위가 넓어집니다</span></span>
+        <div class="picks" data-multi="true">
+          <button class="pick" aria-pressed="false">건강식품 &gt; 간 건강</button>
+          <button class="pick" aria-pressed="false">건강식품 &gt; 전체</button>
+          <button class="pick" aria-pressed="false">식품 &gt; 환·분말</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <span class="fld-l">품목 유형</span>
+        <div class="picks" data-multi="true">
+          <button class="pick" aria-pressed="true">일반식품</button>
+          <button class="pick" aria-pressed="false">건강기능식품</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-f">
+      <button class="act-primary" id="createBtn">점검 만들기</button>
+      <button class="act-text" id="cancelBtn">취소</button>
+      <span class="hint">만들면 다음 수집 시각부터 검토 큐에 쌓이기 시작합니다</span>
+    </div>
+  </div>
+</div>
+
+<!-- 단축키 바 -->
+<div class="shortcuts">
+  <div class="grp">
+    <span class="sc"><span class="key">N</span> 새 점검 만들기</span>
+    <span class="sc"><span class="key">Esc</span> 닫기</span>
+    <span class="sc"><span class="key">?</span> 전체 단축키</span>
+  </div>
+  <div class="now">상시 규칙 <b class="num" id="onCount">3</b>개 켜짐 · 기획 점검 <b class="num">8</b>건</div>
+</div>
+
+<script>
+  // 상시 규칙 켜기/끄기 - 섹션 카운트와 관제 요약(KPI)을 함께 갱신
+  (function(){
+    function refresh(){
+      var on = document.querySelectorAll('.sw[aria-pressed="true"]').length;
+      var total = document.querySelectorAll('.sw').length;
+      document.querySelector('.sec-h .cnt').textContent = '가동 ' + on + ' / ' + total;
+      document.getElementById('onCount').textContent = on;
+      var k = document.getElementById('kpiRules'); if(k) k.textContent = on + ' / ' + total;
+    }
+    document.querySelectorAll('.sw').forEach(function(sw){
+      sw.addEventListener('click', function(){
+        var on = sw.getAttribute('aria-pressed')==='true';
+        sw.setAttribute('aria-pressed', String(!on));
+        sw.closest('.rule').classList.toggle('off', on);
+        refresh();
+      });
+    });
+  })();
+
+  // 생성 패널 - 유형에 따라 기간 칸이 나타나거나 사라진다
+  (function(){
+    document.querySelectorAll('.kind').forEach(function(b){
+      b.addEventListener('click', function(){
+        var k = b.getAttribute('data-kind');
+        document.querySelectorAll('.kind').forEach(function(x){
+          x.setAttribute('aria-pressed', String(x===b));
+        });
+        var row = document.getElementById('whenRow');
+        if(k==='plan'){
+          row.innerHTML = '<span>기간</span>'
+            + '<input class="sel" type="date" value="2026-09-01" aria-label="시작일" />'
+            + '<span>~</span>'
+            + '<input class="sel" type="date" value="2026-09-30" aria-label="종료일" />';
+        } else {
+          row.innerHTML = '<span>도는 시각</span>'
+            + '<select class="sel" aria-label="주기"><option>매일</option><option>1시간마다</option><option>매주 월요일</option></select>'
+            + '<select class="sel" aria-label="시각"><option>03:00</option><option>04:00</option><option>05:00</option></select>';
+        }
+      });
+    });
+  })();
+
+  // 여러 개 고르는 칩 (쇼핑몰·카테고리·품목)
+  document.querySelectorAll('.picks[data-multi="true"]').forEach(function(group){
+    group.addEventListener('click', function(e){
+      var p = e.target.closest('.pick');
+      if(!p) return;
+      p.setAttribute('aria-pressed', String(p.getAttribute('aria-pressed')!=='true'));
+    });
+  });
+
+  // 검색어 - 넣으면 칩으로 쌓이고 x로 뺀다
+  (function(){
+    var box = document.getElementById('kwbox');
+    var input = document.getElementById('kwInput');
+
+    function addChip(text){
+      var chip = document.createElement('span');
+      chip.className = 'kwchip';
+      chip.textContent = text;
+      var x = document.createElement('button');
+      x.setAttribute('aria-label', text + ' 빼기');
+      x.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      chip.appendChild(x);
+      box.insertBefore(chip, input);
+    }
+
+    input.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        var v = input.value.trim();
+        if(v){ addChip(v); input.value = ''; }
+      }
+      // 빈 칸에서 백스페이스를 누르면 마지막 검색어를 뺀다
+      if(e.key === 'Backspace' && input.value === ''){
+        var last = box.querySelectorAll('.kwchip');
+        if(last.length) last[last.length-1].remove();
+      }
+    });
+
+    box.addEventListener('click', function(e){
+      var btn = e.target.closest('.kwchip button');
+      if(btn){ btn.closest('.kwchip').remove(); return; }
+      if(e.target === box) input.focus();
+    });
+  })();
+
+  // 생성 패널 열고 닫기 - 만들기 진입점(구역별 버튼·추가 카드·N키)에서 유형을 프리셋
+  (function(){
+    var ov = document.getElementById('overlay');
+    var title = document.getElementById('sheetTitle');
+    function setKind(kind){
+      var kbtn = document.querySelector('.kind[data-kind="'+kind+'"]');
+      if(kbtn) kbtn.click();
+    }
+    function open(kind){
+      if(kind) setKind(kind);
+      title.textContent = kind==='always' ? '새 상시 규칙 만들기' : '새 기획 점검 만들기';
+      ov.setAttribute('data-open','true');
+      document.getElementById('insName').focus();
+    }
+    function close(){ ov.setAttribute('data-open','false'); }
+
+    document.getElementById('planAddBtn').addEventListener('click', function(){ open('plan'); });
+    document.getElementById('ruleAddBtn').addEventListener('click', function(){ open('always'); });
+    document.getElementById('ruleAddCard').addEventListener('click', function(){ open('always'); });
+    document.getElementById('closeBtn').addEventListener('click', close);
+    document.getElementById('cancelBtn').addEventListener('click', close);
+    document.getElementById('createBtn').addEventListener('click', close);
+    ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+    document.addEventListener('keydown', function(e){
+      if(e.key==='Escape') close();
+      if((e.key==='n'||e.key==='N') && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) open('plan');
+    });
+  })();
+
+  // 테마 토글
+  (function(){
+    var btn=document.getElementById('themeToggle'), root=document.documentElement;
+    if(!btn) return;
+    btn.addEventListener('click', function(){
+      var next = root.getAttribute('data-theme')==='dark' ? 'light':'dark';
+      root.setAttribute('data-theme', next);
+      try{ localStorage.setItem('vericops-theme', next); }catch(e){}
+    });
+  })();
+</script>
+</body>
+</html>

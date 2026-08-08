@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>운영 대시보드 · VeriCops</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<script>(function(){try{var s=localStorage.getItem('vericops-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+<style>
+/* =========================================================================
+   VeriCops - 운영 대시보드 (화면 05, 관리자 전용)
+
+   KPI는 관리자의 네 가지 질문에 답한다
+     1) 팀이 물량을 감당하나  -> 적체 순증 (유입 - 처리)
+     2) 기관 리스크는         -> 기한 초과
+     3) 조치가 먹히나         -> 이행률 (기획안 §9 '게시중단 확인률')
+     4) 모델은 안전한가        -> 감사 미탐률 (§9 1급 지표)
+
+   색각이상: 팔레트를 눈으로 고르지 않고 dataviz 검증기로 통과시킨 값만 쓴다.
+     - 계열은 단일 색상 명도 3단계 (색상이 아니라 밝기로 구분)
+     - 위해 '중'을 앰버에서 회색으로 바꿈
+       (빨강 #c0392b vs 앰버 #9a5b02 = 적록색약 ΔE 2.1, 정상 시력도 ΔE 10.4로 구분 난망)
+     - 모든 값은 숫자를 직접 표기해 색 없이도 읽히게
+   ========================================================================= */
+:root{
+  --font:"Pretendard Variable",Pretendard,-apple-system,system-ui,sans-serif;
+  --canvas:#f3f5f8; --surface:#ffffff; --surface-sub:#f0f3f7;
+  --ink:#1a2233; --ink-2:#47505f; --ink-3:#646b78;
+  --line:#e2e6ee; --line-2:#d3d9e3; --hair:#eef1f6;
+  --navy:#1f2d44; --accent:#12509e; --accent-2:#0e4488; --accent-weak:#e8f0fb; --accent-ink:#0d3d7a;
+  --crit:#c0392b; --crit-bg:#fbece9; --crit-bd:#f2cec8;
+  --warn:#9a5b02; --warn-bg:#fbf1df; --warn-bd:#eedcb8;
+  --ok:#1f7a44; --ok-bg:#e7f4ec; --ok-bd:#c4e4cf;
+  /* 차트 램프 - 검증 통과 (light-end 2.01:1) */
+  --c1:#12509e; --c2:#5b7bb0; --c3:#a4b6d0; --bar-track:#eef1f6;
+  --r:4px; --r-card:8px; --shadow-sm:0 1px 2px rgba(23,32,53,.045);
+}
+*{box-sizing:border-box;} html,body{margin:0;}
+body{font-family:var(--font); background:var(--canvas); color:var(--ink); font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased; font-feature-settings:"tnum" 1;}
+button{font-family:inherit; cursor:pointer;}
+.num{font-variant-numeric:tabular-nums;}
+.dotsep{width:2px; height:2px; border-radius:50%; background:var(--ink-3); opacity:.6; display:inline-block;}
+
+/* ================= 글로벌 바 ================= */
+.topbar{height:58px; background:var(--surface); border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 24px; gap:28px; position:sticky; top:0; z-index:40;}
+.brand{display:flex; align-items:center; gap:11px; padding-right:8px;}
+.brand-mark{width:30px; height:30px; border-radius:5px; background:var(--navy); color:#fff; display:grid; place-items:center; font-weight:800; font-size:15px; letter-spacing:-0.03em;}
+.brand-txt{display:flex; flex-direction:column; line-height:1.15;}
+.brand-name{font-weight:800; font-size:16px; letter-spacing:-0.02em; color:var(--ink);}
+.brand-sub{font-size:11px; color:var(--ink-3); margin-top:1px;}
+.nav{display:flex; gap:2px; height:100%;}
+.nav a{display:flex; align-items:center; text-decoration:none; color:var(--ink-2); font-weight:500; font-size:13.5px; padding:0 13px; position:relative;}
+.nav a:hover{color:var(--accent);}
+.nav a.active{color:var(--accent); font-weight:700;}
+.nav a.active::after{content:""; position:absolute; left:13px; right:13px; bottom:-1px; height:2px; background:var(--accent);}
+.topbar-right{margin-left:auto; display:flex; align-items:center; gap:14px;}
+.clock{font-size:12.5px; color:var(--ink-3); font-weight:500;}
+.icon-btn{width:34px; height:34px; border:none; background:transparent; border-radius:var(--r); color:var(--ink-2); display:grid; place-items:center; position:relative;}
+.icon-btn:hover{background:var(--surface-sub); color:var(--ink);}
+.dot-badge{position:absolute; top:4px; right:4px; min-width:15px; height:15px; padding:0 3px; background:var(--crit); color:#fff; border-radius:99px; font-size:10px; font-weight:700; line-height:15px; text-align:center; border:2px solid var(--surface);}
+.divider-v{width:1px; height:24px; background:var(--line-2);}
+.user{display:flex; align-items:center; gap:9px;}
+.avatar{width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; display:grid; place-items:center; font-weight:700; font-size:12px;}
+.user-txt{display:flex; flex-direction:column; line-height:1.2;}
+.user-name{font-size:12.5px; font-weight:600; color:var(--ink);}
+.user-role{font-size:11px; color:var(--ink-3);}
+
+/* ================= 셸 / 헤더 ================= */
+.shell{max-width:1560px; margin:0 auto; padding:0 24px 56px;}
+.page-head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; padding:20px 0 14px; flex-wrap:wrap;}
+.page-title{font-size:22px; font-weight:800; letter-spacing:-0.02em; margin:0;}
+.page-sub{color:var(--ink-3); font-size:12.5px; margin-top:5px;}
+.head-actions{display:flex; align-items:center; gap:8px;}
+.last-sync{font-size:11.5px; color:var(--ink-3);}
+.fbtn{display:inline-flex; align-items:center; gap:6px; background:transparent; border:1px solid transparent; color:var(--ink-2); padding:7px 10px; border-radius:var(--r); font-size:12.5px; font-weight:600;}
+.fbtn:hover{background:var(--surface-sub); color:var(--ink);}
+.fbtn svg{color:var(--ink-3);}
+.btn-line{display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2); padding:7px 12px; border-radius:var(--r); font-size:12.5px; font-weight:600;}
+.btn-line:hover{border-color:var(--accent); color:var(--accent);}
+
+/* ================= 공통 카드 ================= */
+.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-sm);}
+.card-h{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid var(--hair);}
+.card-h h2{margin:0; font-size:14px; font-weight:700; letter-spacing:-0.01em;}
+.card-h .sub{font-size:11.5px; color:var(--ink-3); font-weight:500;}
+.card-b{padding:14px 16px;}
+.plink{font-size:12px; color:var(--accent); text-decoration:none; font-weight:600; white-space:nowrap;}
+.plink:hover{text-decoration:underline;}
+
+/* ================= 모델 카드 - 상태에 따라 존재감이 바뀐다 =================
+   재학습은 상시 업무가 아니라 조건이 충족될 때 일어나는 이벤트다.
+   축적 중이면 한 줄로 조용히, 결정이 필요하면 최상단에서 크게. */
+.mstate{margin-bottom:14px;}
+.mdemo{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--ink-3); margin-bottom:7px;}
+.mdemo button{background:none; border:1px solid var(--line-2); color:var(--ink-3); font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px;}
+.mdemo button[aria-pressed="true"]{border-color:var(--accent); color:var(--accent); background:var(--accent-weak);}
+
+/* ① 축적 중 - 한 줄 */
+.mrow{display:flex; align-items:center; gap:14px; padding:11px 16px; flex-wrap:wrap;}
+.mrow-t{display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; color:var(--ink-2);}
+.mrow-t svg{color:var(--ink-3);}
+.mrow-bar{flex:1; min-width:130px; max-width:280px; height:6px; background:var(--bar-track); border-radius:3px;}
+.mrow-bar > span{display:block; height:6px; background:var(--c2); border-radius:3px;}
+.mrow-x{font-size:11.5px; color:var(--ink-3);}
+
+/* ②③ 결정이 필요한 상태 - 카드로 승격 */
+/* 상태 강조는 왼쪽 굵은 선(AI-tell) 대신 상단 헤더의 태그로 한다 */
+.mcall{border-color:var(--line-2);}
+.mcall-h{display:flex; align-items:center; gap:10px; padding:13px 16px; border-bottom:1px solid var(--hair); flex-wrap:wrap;}
+.mtag{font-size:11px; font-weight:700; padding:2px 8px; border-radius:3px; border:1px solid var(--line-2); color:var(--ink-2); background:var(--surface-sub);}
+.mtag.go{color:var(--ok); background:var(--ok-bg); border-color:var(--ok-bd);}
+.mtag.now{color:var(--accent-ink); background:var(--accent-weak); border-color:#cadffa;}
+.mcall-h h2{margin:0; font-size:14px; font-weight:700;}
+.mcall-h .why{font-size:12px; color:var(--ink-2);}
+.mcall-h .why b{color:var(--ink); font-weight:700;}
+.mcall-b{padding:14px 16px; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start;}
+.perf{width:100%; border-collapse:collapse;}
+.perf th{text-align:right; font-size:11px; font-weight:600; color:var(--ink-3); padding:7px 10px; border-bottom:1px solid var(--hair); white-space:nowrap;}
+.perf th:first-child{text-align:left;}
+.perf td{text-align:right; font-size:12.5px; padding:9px 10px; border-bottom:1px solid var(--hair); font-variant-numeric:tabular-nums; color:var(--ink-2);}
+.perf td:first-child{text-align:left; font-weight:600; color:var(--ink);}
+.perf tr:last-child td{border-bottom:none;}
+.perf tr.challenger td{background:var(--ok-bg);}
+.perf tr.challenger td:first-child{color:var(--ok);}
+.miss-bad{color:var(--crit); font-weight:700;}
+.miss-good{color:var(--ok); font-weight:700;}
+.gate{margin-top:14px; padding-top:12px; border-top:1px solid var(--hair);}
+.gate-k{font-size:11px; color:var(--ink-3); font-weight:600; margin-bottom:8px;}
+.gate-row{display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; color:var(--ink-2);}
+.gate-row b{margin-left:auto; color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums;}
+/* 통과 여부는 색이 아니라 글자로 */
+.gate-ok{flex:none; font-size:10.5px; font-weight:700; color:var(--ok); background:var(--ok-bg); border:1px solid var(--ok-bd); border-radius:3px; padding:1px 6px;}
+.mside{display:flex; flex-direction:column; gap:9px;}
+.msrc{background:var(--surface-sub); border:1px solid var(--hair); border-radius:var(--r); padding:11px 12px;}
+.msrc-k{font-size:11px; color:var(--ink-3); margin-bottom:7px;}
+.msrc-row{display:flex; align-items:center; justify-content:space-between; padding:3px 0; font-size:12px; color:var(--ink-2);}
+.msrc-row b{color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums;}
+.deploy-in{width:100%; border:1px solid var(--line-2); border-radius:var(--r); padding:8px 11px; font-size:12.5px; font-family:inherit; color:var(--ink); background:var(--surface);}
+.deploy-in::placeholder{color:var(--ink-3);}
+.deploy-in:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak);}
+.mact{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.act-primary{background:var(--navy); color:#fff; border:none; padding:9px 15px; border-radius:var(--r); font-size:12.5px; font-weight:600; white-space:nowrap;}
+.act-primary:hover{background:#16233a;}
+.act-line{background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2); padding:9px 13px; border-radius:var(--r); font-size:12.5px; font-weight:600; white-space:nowrap;}
+.act-line:hover{border-color:var(--accent); color:var(--accent);}
+.act-text{background:none; border:none; color:var(--ink-3); font-size:12.5px; font-weight:600; padding:9px 4px;}
+.act-text:hover{color:var(--ink); text-decoration:underline;}
+
+/* ================= KPI - 값 + 추세를 한 칸에 ================= */
+.kpis{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-sm); margin-bottom:14px; overflow:hidden;}
+.tile{padding:15px 18px; border-left:1px solid var(--hair); min-width:0;}
+.tile:first-child{border-left:none;}
+.tile-k{font-size:12px; color:var(--ink-3); font-weight:500;}
+.tile-row{display:flex; align-items:baseline; gap:9px; margin-top:5px; flex-wrap:wrap;}
+.tile-v{font-size:25px; font-weight:800; letter-spacing:-0.02em;}
+.tile-v small{font-size:13px; font-weight:600; color:var(--ink-2); margin-left:2px;}
+/* 증감은 색이 아니라 화살표 모양 + 숫자로 읽히게 */
+.delta{display:inline-flex; align-items:center; gap:3px; font-size:11.5px; font-weight:700; color:var(--ink-3); font-variant-numeric:tabular-nums;}
+.delta svg{flex:none;}
+.tile.alert .tile-v,.tile.alert .delta{color:var(--crit);}
+.tile-x{font-size:11.5px; color:var(--ink-3); margin-top:4px;}
+.tile.alert .tile-x{color:var(--crit);}
+.tile-foot{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px;}
+.spark{width:100%; height:26px; display:block;}
+.spark polyline{fill:none; stroke:var(--ink-3); stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke;}
+.tile.alert .spark polyline{stroke:var(--crit);}
+
+/* ================= 업무 처리 흐름 ================= */
+.flow{display:flex; align-items:stretch; gap:0; padding:16px; overflow-x:auto;}
+.step{flex:1 1 0; min-width:124px; border:1px solid var(--line); border-radius:var(--r); padding:12px 14px; background:var(--surface);}
+.step.jam{border-color:var(--line-2); background:var(--surface-sub);}
+.step-k{font-size:11.5px; color:var(--ink-3); font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:6px;}
+.jam-tag{font-size:10.5px; font-weight:700; color:var(--crit);}
+.step-v{font-size:22px; font-weight:800; letter-spacing:-0.02em; margin-top:5px; font-variant-numeric:tabular-nums;}
+.step-d{margin-top:4px;}
+.arrow{flex:none; display:grid; place-items:center; width:26px; color:var(--line-2);}
+.progress{display:flex; align-items:center; gap:12px; padding:0 16px 16px;}
+.progress-k{font-size:12px; color:var(--ink-3); flex:none;}
+.progress-track{flex:1; height:8px; background:var(--bar-track); border-radius:4px;}
+.progress-track > span{display:block; height:8px; background:var(--accent); border-radius:4px;}
+.progress-v{font-size:12.5px; color:var(--ink-2); flex:none; font-variant-numeric:tabular-nums;}
+.progress-v b{color:var(--ink); font-weight:700;}
+
+/* ================= 본문 그리드 ================= */
+.grid{display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:14px; align-items:start; margin-top:14px;}
+.col{display:flex; flex-direction:column; gap:14px;}
+
+/* 담당자 부하 - 배정 결정에 직결되므로 크게 */
+.legend{display:flex; align-items:center; gap:14px; font-size:11.5px; color:var(--ink-2); margin-bottom:14px;}
+.legend .lg{display:inline-flex; align-items:center; gap:6px;}
+.legend .sw{width:10px; height:10px; border-radius:3px;}
+.sw.c1{background:var(--c1);} .sw.c2{background:var(--c2);} .sw.c3{background:var(--c3);}
+.people{display:flex; flex-direction:column; gap:16px;}
+.person-top{display:flex; align-items:center; gap:9px; margin-bottom:7px;}
+.person-name{font-size:13px; font-weight:700; color:var(--ink);}
+.person-meta{margin-left:auto; display:flex; align-items:center; gap:9px; font-size:12px; color:var(--ink-3);}
+.person-meta b{color:var(--ink-2); font-weight:600;}
+/* 상태는 색이 아니라 글자로 */
+.state{font-size:11px; font-weight:700; padding:1px 7px; border-radius:3px; border:1px solid var(--line-2); color:var(--ink-2); background:var(--surface-sub);}
+.state.good{color:var(--ok); background:var(--ok-bg); border-color:var(--ok-bd);}
+.state.watch{color:var(--crit); background:var(--crit-bg); border-color:var(--crit-bd);}
+/* 세그먼트 안에 숫자를 넣어 색 없이도 값이 읽히게 */
+.stack{display:flex; height:20px; gap:2px;}
+.seg{height:20px; display:grid; place-items:center; font-size:10.5px; font-weight:700; color:#fff; overflow:hidden; font-variant-numeric:tabular-nums;}
+.seg:first-child{border-radius:4px 0 0 4px;}
+.seg:last-child{border-radius:0 4px 4px 0;}
+.seg.c1{background:var(--c1);} .seg.c2{background:var(--c2);}
+.seg.c3{background:var(--c3); color:var(--ink);}
+.people-foot{display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding-top:13px; border-top:1px solid var(--hair); font-size:12px; color:var(--ink-3);}
+.people-foot b{color:var(--ink-2); font-weight:700;}
+
+/* 오늘 먼저 볼 것 */
+.todo{display:flex; flex-direction:column;}
+.todo-item{display:flex; align-items:flex-start; gap:11px; padding:12px 0; border-bottom:1px solid var(--hair);}
+.todo-item:last-child{border-bottom:none;}
+.todo-n{flex:none; width:18px; height:18px; border-radius:50%; background:var(--surface-sub); color:var(--ink-2); font-size:10.5px; font-weight:700; display:grid; place-items:center; margin-top:1px;}
+.todo-main{flex:1; min-width:0;}
+.todo-t{font-size:12.5px; font-weight:700; color:var(--ink);}
+.todo-t .hot{color:var(--crit);}
+.todo-d{font-size:11.5px; color:var(--ink-3); margin-top:4px;}
+.todo-go{flex:none; font-size:11.5px; color:var(--accent); font-weight:600; text-decoration:none; white-space:nowrap; margin-top:1px;}
+.todo-go:hover{text-decoration:underline;}
+
+/* 표 */
+.cause-line{padding:10px 16px; border-bottom:1px solid var(--hair); font-size:11.5px; color:var(--ink-3); background:#fbfcfe;}
+.cause-line b{color:var(--ink-2); font-weight:700;}
+table{width:100%; border-collapse:collapse;}
+thead th{text-align:left; font-size:11.5px; font-weight:600; color:var(--ink-3); padding:9px 16px; background:#f8fafc; border-bottom:1px solid var(--hair); white-space:nowrap;}
+tbody td{padding:11px 16px; border-bottom:1px solid var(--hair); font-size:12.5px; vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+.cid{font-variant-numeric:tabular-nums; font-weight:600; color:var(--ink);}
+.over{color:var(--crit); font-weight:700; font-variant-numeric:tabular-nums;}
+.state-txt{color:var(--ink-2);}
+.state-txt.flag{color:var(--crit); font-weight:600;}
+
+/* 감사 요약 */
+.audit-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+.audit-cell{background:var(--surface-sub); border:1px solid var(--hair); border-radius:var(--r); padding:11px 12px; text-align:center;}
+.audit-cell .k{font-size:11px; color:var(--ink-3);}
+.audit-cell .v{font-size:20px; font-weight:800; margin-top:5px; font-variant-numeric:tabular-nums;}
+.audit-cell.alert .v{color:var(--crit);}
+/* 담당자 판단이 학습셋으로 이어진다는 순환을 화면에 드러낸다 */
+.loop{display:flex; align-items:center; gap:7px; margin-top:11px; padding-top:11px; border-top:1px dashed var(--line-2); font-size:11.5px; color:var(--ink-3);}
+.loop svg{color:var(--ink-3); flex:none;}
+
+@media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+@media (max-width:1240px){
+  .grid,.mcall-b{grid-template-columns:1fr;}
+  .kpis{grid-template-columns:repeat(2,1fr);}
+  .nav,.brand-sub,.user-txt,.clock{display:none;}
+}
+@media (max-width:760px){
+  .shell{padding:0 14px 40px;}
+  .kpis{grid-template-columns:1fr;} .tile{border-left:none; border-top:1px solid var(--hair);}
+  .tile:first-child{border-top:none;}
+}
+
+/* ===== 다크 모드 ===== */
+.ic-sun{display:none;}
+:root[data-theme="dark"] .ic-sun{display:inline;}
+:root[data-theme="dark"] .ic-moon{display:none;}
+:root[data-theme="dark"]{
+  --canvas:#0f141c; --surface:#161c26; --surface-sub:#1b222e;
+  --ink:#e8ecf3; --ink-2:#aab3c1; --ink-3:#7d8794;
+  --line:#2a333f; --line-2:#374252; --hair:#222a34;
+  --navy:#26344c; --accent:#5b9be8; --accent-2:#6fa9ee; --accent-weak:#182740; --accent-ink:#a9caf3;
+  --crit:#ef8a80; --crit-bg:#2c1a17; --crit-bd:#4a2b26;
+  --warn:#e0b877; --warn-bg:#2a2113; --warn-bd:#463818;
+  --ok:#63c489; --ok-bg:#132720; --ok-bd:#25453a;
+  /* 다크 램프 - 검증 통과 (dark-end 2.18:1) */
+  --c1:#5b9be8; --c2:#4a7099; --c3:#3c5372; --bar-track:#232c39;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+}
+:root[data-theme="dark"] thead th,
+:root[data-theme="dark"] .cause-line{background:var(--surface-sub);}
+:root[data-theme="dark"] .seg.c3{color:var(--ink);}
+:root[data-theme="dark"] .act-primary{background:var(--accent); color:var(--canvas);}
+:root[data-theme="dark"] .act-primary:hover{background:var(--accent-2);}
+</style>
+</head>
+<body>
+
+<!-- 글로벌 바 -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">V</span>
+    <span class="brand-txt">
+      <span class="brand-name">VeriCops</span>
+      <span class="brand-sub">허위·과대광고 사후 모니터링 · 식약처 사이버조사팀</span>
+    </span>
+  </div>
+  <nav class="nav">
+    <a href="review-queue.html">작업 홈</a>
+    <a href="inspection.html">점검 관리</a>
+    <a href="#">결과 관리</a>
+    <a href="#">법령·판례</a>
+    <a href="#" class="active">운영 대시보드</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="clock num">2026-08-04 (화) 17:30</span>
+    <button class="icon-btn" id="themeToggle" aria-label="테마 전환">
+      <svg class="ic-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="ic-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+    <button class="icon-btn" aria-label="알림">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot-badge num">5</span>
+    </button>
+    <span class="divider-v"></span>
+    <div class="user">
+      <span class="avatar">한</span>
+      <span class="user-txt">
+        <span class="user-name">한도윤 관리자</span>
+        <span class="user-role">정책관리팀 · 관리자 권한</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <!-- 헤더 -->
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">운영 대시보드</h1>
+      <p class="page-sub">팀이 물량을 감당하는지 보고, 무엇부터 손댈지 정합니다.</p>
+    </div>
+    <div class="head-actions">
+      <span class="last-sync num">마지막 자동 확인 17:30</span>
+      <button class="fbtn">최근 7일 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button class="btn-line"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M4 21h16"/></svg>보고서 내보내기</button>
+    </div>
+  </div>
+
+  <!-- ============ AI 모델 - 상태에 따라 존재감이 달라진다 ============ -->
+  <div class="mstate">
+    <div class="mdemo">
+      <span>목업 · 상태 전환</span>
+      <button data-mstate="collect">① 축적 중</button>
+      <button data-mstate="ready">② 학습 권장</button>
+      <button data-mstate="deploy" aria-pressed="true">③ 배포 대기</button>
+    </div>
+
+    <!-- ① 축적 중 - 조용한 한 줄 -->
+    <section class="card" id="mCollect" hidden>
+      <div class="mrow">
+        <span class="mrow-t">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg>
+          AI 모델 v3 운영 중
+        </span>
+        <span class="mrow-x">학습 데이터 <b class="num" style="color:var(--ink-2)">82%</b> 축적</span>
+        <div class="mrow-bar"><span style="width:82%"></span></div>
+        <span class="mrow-x num">2,550건 더 모이면 재학습할 수 있습니다</span>
+      </div>
+    </section>
+
+    <!-- ② 학습 권장 - 카드로 승격 -->
+    <section class="card mcall ready" id="mReady" hidden>
+      <div class="mcall-h">
+        <span class="mtag now">학습 권장</span>
+        <h2>재학습 조건이 충족됐습니다</h2>
+        <span class="why">신규 승인 라벨 <b class="num">3,200건</b> · 마지막 학습 이후 <b class="num">62일</b></span>
+        <span style="margin-left:auto"><button class="act-primary">학습시키기</button></span>
+      </div>
+      <div class="mcall-b" style="grid-template-columns:1fr;">
+        <div class="msrc" style="background:none; border:none; padding:0;">
+          <div class="msrc-row"><span>담당자 승인 라벨</span><b class="num">12,450건</b></div>
+          <div class="msrc-row"><span>감사에서 찾은 미탐</span><b class="num">420건</b></div>
+          <div class="msrc-row"><span>재라벨 회수</span><b class="num">1,120건</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 배포 대기 - 결정이 필요하므로 가장 크게 -->
+    <section class="card mcall deploy" id="mDeploy">
+      <div class="mcall-h">
+        <span class="mtag go">배포 대기</span>
+        <h2>새 모델 v4가 검증을 통과했습니다</h2>
+        <span class="why">미탐율 <b>8.1% → 4.2%</b> · 핵심 유형 3종 모두 저하 없음</span>
+      </div>
+      <div class="mcall-b">
+        <div>
+        <table class="perf">
+          <thead><tr><th>모델</th><th>Precision</th><th>Recall</th><th>미탐율</th><th>F1</th></tr></thead>
+          <tbody>
+            <tr><td>현재 운영 (Champion v3)</td><td>0.89</td><td>0.83</td><td class="miss-bad">8.1%</td><td>0.86</td></tr>
+            <tr class="challenger"><td>대기 (Challenger v4)</td><td>0.91</td><td>0.88</td><td class="miss-good">4.2%</td><td>0.89</td></tr>
+          </tbody>
+        </table>
+        <!-- 배포 기준을 함께 보여줘야 승인 판단이 된다 (기획안 부록 B.3) -->
+        <div class="gate">
+          <div class="gate-k">배포 기준 충족 여부</div>
+          <div class="gate-row"><span class="gate-ok">통과</span>질병 예방·치료 표방 F1 저하 없음 <b class="num">0.88 → 0.91</b></div>
+          <div class="gate-row"><span class="gate-ok">통과</span>의약품 오인 F1 저하 없음 <b class="num">0.84 → 0.87</b></div>
+          <div class="gate-row"><span class="gate-ok">통과</span>건강기능식품 오인 F1 저하 없음 <b class="num">0.81 → 0.85</b></div>
+          <div class="gate-row"><span class="gate-ok">통과</span>정상 판정 표본 미탐율 악화 없음 <b class="num">8.1% → 4.2%</b></div>
+        </div>
+        </div>
+        <div class="mside">
+          <div class="msrc">
+            <div class="msrc-k">이 모델을 만든 데이터</div>
+            <div class="msrc-row"><span>담당자 승인 라벨</span><b class="num">12,450건</b></div>
+            <div class="msrc-row"><span>감사에서 찾은 미탐</span><b class="num">420건</b></div>
+            <div class="msrc-row"><span>재라벨 회수</span><b class="num">1,120건</b></div>
+          </div>
+          <input class="deploy-in" placeholder="배포 판단 사유 (필수)" />
+          <div class="mact">
+            <button class="act-primary">v4 배포 승인</button>
+            <button class="act-line">추가 평가 요청</button>
+            <button class="act-text">보류</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ KPI - 관리자의 네 가지 질문 ============ -->
+  <div class="kpis">
+    <div class="tile alert">
+      <div class="tile-k">적체 순증 <span style="color:var(--ink-3)">(유입 - 처리)</span></div>
+      <div class="tile-row">
+        <span class="tile-v num">+74<small>건</small></span>
+        <span class="delta"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>어제보다 늘어남</span>
+      </div>
+      <div class="tile-x num">유입 512 · 처리 438</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,20 17,18 33,19 50,14 67,13 83,8 100,5"/></svg>
+    </div>
+    <div class="tile alert">
+      <div class="tile-k">기한 초과</div>
+      <div class="tile-row">
+        <span class="tile-v num">27<small>건</small></span>
+        <span class="delta"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>9</span>
+      </div>
+      <div class="tile-foot"><span class="tile-x">최대 3일 초과</span><a href="#" class="plink">목록</a></div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,22 17,21 33,17 50,15 67,10 83,7 100,3"/></svg>
+    </div>
+    <div class="tile alert">
+      <div class="tile-k">이행률 <span style="color:var(--ink-3)">(게시중단 확인)</span></div>
+      <div class="tile-row">
+        <span class="tile-v num">68<small>%</small></span>
+        <span class="delta"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(180deg)"><path d="M12 5l8 12H4z"/></svg>4%p</span>
+      </div>
+      <div class="tile-foot"><span class="tile-x num">요청 42 → 확인 29</span><a href="#" class="plink">확인</a></div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,7 17,9 33,8 50,12 67,14 83,15 100,19"/></svg>
+    </div>
+    <div class="tile alert">
+      <div class="tile-k">감사 미탐률</div>
+      <div class="tile-row">
+        <span class="tile-v num">8.1<small>%</small></span>
+        <span class="delta"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>1.3%p</span>
+      </div>
+      <div class="tile-foot"><span class="tile-x">목표 5% 이하</span><a href="#" class="plink">원인</a></div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,17 17,18 33,15 50,16 67,12 83,11 100,7"/></svg>
+    </div>
+  </div>
+
+  <!-- 업무 처리 흐름 -->
+  <section class="card">
+    <div class="card-h">
+      <h2>업무 처리 흐름</h2>
+      <span class="sub">숫자는 현재 머물러 있는 건수 · 아래는 전일 대비</span>
+    </div>
+    <div class="flow">
+      <div class="step">
+        <div class="step-k">신고</div>
+        <div class="step-v">142</div>
+        <div class="step-d"><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>12</span></div>
+      </div>
+      <span class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+      <div class="step">
+        <div class="step-k">즉시 처리</div>
+        <div class="step-v">430</div>
+        <div class="step-d"><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>38</span></div>
+      </div>
+      <span class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+      <div class="step jam">
+        <div class="step-k">심층 검토 <span class="jam-tag">병목</span></div>
+        <div class="step-v">1,120</div>
+        <div class="step-d"><span class="delta" style="color:var(--crit)"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>85</span></div>
+      </div>
+      <span class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+      <div class="step">
+        <div class="step-k">재평가 대기</div>
+        <div class="step-v">45</div>
+        <div class="step-d"><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(180deg)"><path d="M12 5l8 12H4z"/></svg>5</span></div>
+      </div>
+      <span class="arrow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+      <div class="step">
+        <div class="step-k">완료</div>
+        <div class="step-v">1,567</div>
+        <div class="step-d"><span class="delta"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l8 12H4z"/></svg>210</span></div>
+      </div>
+    </div>
+    <div class="progress">
+      <span class="progress-k">전체 진행률</span>
+      <div class="progress-track"><span style="width:72%"></span></div>
+      <span class="progress-v"><b>72%</b> <span class="num">(2,297 / 3,184)</span></span>
+    </div>
+  </section>
+
+  <!-- 본문 -->
+  <div class="grid">
+    <!-- 좌 -->
+    <div class="col">
+      <!-- 담당자 부하 - 배정 결정에 직결되므로 크게 -->
+      <section class="card">
+        <div class="card-h">
+          <h2>담당자 부하</h2>
+          <a href="#" class="plink">업무 재배정</a>
+        </div>
+        <div class="card-b">
+          <div class="legend">
+            <span class="lg"><span class="sw c1"></span>완료</span>
+            <span class="lg"><span class="sw c2"></span>진행</span>
+            <span class="lg"><span class="sw c3"></span>대기</span>
+            <span style="margin-left:auto; color:var(--ink-3)">막대 안 숫자는 건수입니다</span>
+          </div>
+          <div class="people">
+            <div>
+              <div class="person-top">
+                <span class="person-name">박민수</span>
+                <span class="state good">여유</span>
+                <span class="person-meta"><span>총 <b class="num">98건</b></span><span class="dotsep"></span><span>평균 <b class="num">0.8일</b></span></span>
+              </div>
+              <div class="stack"><span class="seg c1" style="width:80%">78</span><span class="seg c2" style="width:15%">15</span><span class="seg c3" style="width:5%">5</span></div>
+            </div>
+            <div>
+              <div class="person-top">
+                <span class="person-name">김지훈</span>
+                <span class="state">정상</span>
+                <span class="person-meta"><span>총 <b class="num">127건</b></span><span class="dotsep"></span><span>평균 <b class="num">1.2일</b></span></span>
+              </div>
+              <div class="stack"><span class="seg c1" style="width:60%">76</span><span class="seg c2" style="width:30%">38</span><span class="seg c3" style="width:10%">13</span></div>
+            </div>
+            <div>
+              <div class="person-top">
+                <span class="person-name">정하나</span>
+                <span class="state">정상</span>
+                <span class="person-meta"><span>총 <b class="num">76건</b></span><span class="dotsep"></span><span>평균 <b class="num">1.5일</b></span></span>
+              </div>
+              <div class="stack"><span class="seg c1" style="width:55%">42</span><span class="seg c2" style="width:35%">27</span><span class="seg c3" style="width:10%">7</span></div>
+            </div>
+            <div>
+              <div class="person-top">
+                <span class="person-name">이서연</span>
+                <span class="state watch">과부하</span>
+                <span class="person-meta"><span>총 <b class="num">85건</b></span><span class="dotsep"></span><span>평균 <b class="num" style="color:var(--crit)">2.4일</b></span></span>
+              </div>
+              <div class="stack"><span class="seg c1" style="width:45%">38</span><span class="seg c2" style="width:40%">34</span><span class="seg c3" style="width:15%">13</span></div>
+            </div>
+          </div>
+          <div class="people-foot">
+            <span>팀 평균 처리 <b class="num">1.5일</b> · 총 <b class="num">386건</b></span>
+            <span>이서연 담당분 <b class="num">13건</b>을 박민수에게 넘기면 균형이 맞습니다</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 기한 초과·미이행 (원인은 한 줄 요약으로 축소) -->
+      <section class="card">
+        <div class="card-h">
+          <h2>기한 초과 · 미이행 <span class="sub num" style="margin-left:4px">27건</span></h2>
+          <a href="#" class="plink">전체 보기</a>
+        </div>
+        <div class="cause-line">주요 사유 · 담당자 답변 지연 <b class="num">12</b> · 타 부서 협의 대기 <b class="num">8</b> · 증빙 자료 부족 <b class="num">7</b></div>
+        <table>
+          <thead>
+            <tr><th>Case ID</th><th>유형</th><th>초과</th><th>담당자</th><th>상태</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="cid">CASE-2026-0042</td><td>신고 회신</td><td class="over">D+2</td><td>이서연</td><td class="state-txt">답변 대기</td></tr>
+            <tr><td class="cid">CASE-2026-0118</td><td>협의 미회신</td><td class="over">6일</td><td>김지훈</td><td class="state-txt">부서 확인중</td></tr>
+            <tr><td class="cid">CASE-2026-0205</td><td>시정 조치 미이행</td><td class="over">D+1</td><td>박민수</td><td class="state-txt flag">경고 발송 필요</td></tr>
+            <tr><td class="cid">CASE-2026-0331</td><td>심층 검토 지연</td><td class="over">12시간</td><td>정하나</td><td class="state-txt">검토중</td></tr>
+            <tr><td class="cid">CASE-2026-0410</td><td>증빙 자료 보완</td><td class="over">6시간</td><td>한도윤</td><td class="state-txt">답변 대기</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- 우 -->
+    <div class="col">
+      <!-- 오늘 먼저 볼 것 -->
+      <section class="card">
+        <div class="card-h">
+          <h2>오늘 먼저 볼 것</h2>
+          <span class="sub">우선순위 3건</span>
+        </div>
+        <div class="card-b" style="padding-top:4px; padding-bottom:6px;">
+          <div class="todo">
+            <div class="todo-item">
+              <span class="todo-n num">1</span>
+              <div class="todo-main">
+                <div class="todo-t">시정 조치 미이행 <span class="hot num">D+1</span></div>
+                <div class="todo-d">CASE-2026-0205 · 박민수 · 경고 발송 단계</div>
+              </div>
+              <a href="#" class="todo-go">처리</a>
+            </div>
+            <div class="todo-item">
+              <span class="todo-n num">2</span>
+              <div class="todo-main">
+                <div class="todo-t">이서연 과부하 <span class="hot num">2.4일</span></div>
+                <div class="todo-d">팀 평균의 1.6배 · 13건 재배정 권장</div>
+              </div>
+              <a href="#" class="todo-go">재배정</a>
+            </div>
+            <div class="todo-item">
+              <span class="todo-n num">3</span>
+              <div class="todo-main">
+                <div class="todo-t">v4 배포 승인 대기 <span class="hot">미탐율 4.2%</span></div>
+                <div class="todo-d">검증 통과 · 상단에서 결정할 수 있습니다</div>
+              </div>
+              <a href="#" class="todo-go">보기</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 감사 요약 + 학습 순환 -->
+      <section class="card">
+        <div class="card-h">
+          <h2>감사 요약</h2>
+          <a href="#" class="plink">대기열 이동</a>
+        </div>
+        <div class="card-b">
+          <div class="audit-grid">
+            <div class="audit-cell"><div class="k">감사 표본</div><div class="v num">220</div></div>
+            <div class="audit-cell alert"><div class="k">미탐 발견</div><div class="v num">18</div></div>
+            <div class="audit-cell"><div class="k">재검토 회부</div><div class="v num">18</div></div>
+          </div>
+          <div class="loop">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+            찾아낸 미탐 <b class="num" style="color:var(--ink-2)">18건</b>은 학습셋으로 넘어가 다음 모델을 키웁니다
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 모델 카드 - 상태에 따라 존재감이 달라진다 (목업에서는 버튼으로 전환)
+  (function(){
+    var views = {collect:'mCollect', ready:'mReady', deploy:'mDeploy'};
+    var btns = document.querySelectorAll('[data-mstate]');
+    function show(key){
+      Object.keys(views).forEach(function(k){
+        document.getElementById(views[k]).hidden = (k !== key);
+      });
+      btns.forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-mstate') === key));
+      });
+    }
+    btns.forEach(function(b){
+      b.addEventListener('click', function(){ show(b.getAttribute('data-mstate')); });
+    });
+    show('deploy');
+  })();
+
+  // 테마 토글
+  (function(){
+    var btn=document.getElementById('themeToggle'), root=document.documentElement;
+    if(!btn) return;
+    btn.addEventListener('click', function(){
+      var next = root.getAttribute('data-theme')==='dark' ? 'light':'dark';
+      root.setAttribute('data-theme', next);
+      try{ localStorage.setItem('vericops-theme', next); }catch(e){}
+    });
+  })();
+</script>
+</body>
+</html>
