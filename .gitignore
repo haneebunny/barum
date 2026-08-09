@@ -16,6 +16,7 @@
 # ── 운영/학습 데이터 (git 밖 — Supabase / 파일시스템에 둔다) ──
 backend/data/
 backend/11st_output/
+backend/11st_probe_cosmetic/
 backend/coupang_output/
 backend/**/tiles/
 
