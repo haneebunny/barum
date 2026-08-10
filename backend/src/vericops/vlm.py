@@ -78,8 +78,70 @@ class GeminiVLM:
         return json.loads(text)
 
 
+def _extract_json(text: str) -> dict:
+    """응답에서 JSON을 뽑는다. 코드펜스·군더더기 텍스트가 붙어도 관대하게 파싱."""
+    text = (text or "").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        i, j = text.find("{"), text.rfind("}")
+        if i != -1 and j != -1:
+            return json.loads(text[i:j + 1])
+        raise
+
+
+class OpenAIVLM:
+    """OpenAI 어댑터. Gemini와 같은 generate_json 인터페이스.
+
+    provider-agnostic 비교용. 텍스트 판정이 주 용도, 이미지는 base64로 첨부.
+    모델별 파라미터 차이(추론 모델의 temperature 거부 등)를 피하려고
+    temperature·max_tokens는 지정하지 않는다. response_format을 거부하는
+    모델은 자동으로 없이 재시도한다.
+    """
+
+    def __init__(self, model: str | None = None, api_key: str | None = None):
+        from openai import OpenAI
+
+        load_dotenv()
+        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+        key = api_key or os.environ.get("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("OPENAI_API_KEY가 없다. .env를 확인할 것.")
+        self.client = OpenAI(api_key=key)
+        self.total_tokens = 0
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        import base64
+
+        if images:
+            content: list = [{"type": "text", "text": prompt}]
+            for b in images:
+                uri = "data:image/png;base64," + base64.b64encode(b).decode()
+                content.append({"type": "image_url", "image_url": {"url": uri}})
+            msg = [{"role": "user", "content": content}]
+        else:
+            msg = [{"role": "user", "content": prompt}]
+
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model, messages=msg,
+                response_format={"type": "json_object"})
+        except Exception:
+            # 일부 모델은 response_format을 거부한다 — 없이 재시도.
+            resp = self.client.chat.completions.create(model=self.model, messages=msg)
+
+        if resp.usage:
+            self.total_tokens += resp.usage.total_tokens or 0
+        text = (resp.choices[0].message.content or "").strip()
+        if not text:
+            raise ValueError("OpenAI가 빈 응답을 반환했다")
+        return _extract_json(text)
+
+
 def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     """provider 이름으로 어댑터를 만든다."""
     if provider == "gemini":
         return GeminiVLM(**kwargs)
+    if provider == "openai":
+        return OpenAIVLM(**kwargs)
     raise ValueError(f"모르는 provider: {provider}")

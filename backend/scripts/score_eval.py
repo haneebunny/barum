@@ -11,7 +11,9 @@
 미탐(위반을 합법/대상외로 놓침)이 1급 지표다.
 """
 import argparse
+import csv
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import openpyxl
@@ -20,7 +22,7 @@ sys.path.insert(0, "src")
 from vericops.vlm import get_vlm  # noqa: E402
 
 XLSX = Path("data/cosmetic_eval_labeling.xlsx")
-OUT = Path("data/eval_result.xlsx")
+COMPARE = Path("data/eval_compare.csv")   # 모델별 요약 누적 → 비교표
 
 LABELS = ["합법", "1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만", "대상외"]
 VIOLATION = {"1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만"}
@@ -77,7 +79,9 @@ def judge_batch(vlm, batch):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry", action="store_true", help="Gemini 호출 없이 배선만 점검")
+    ap.add_argument("--provider", default="gemini", help="gemini | openai")
+    ap.add_argument("--model", default=None, help="모델명(생략 시 provider 기본값)")
+    ap.add_argument("--dry", action="store_true", help="API 호출 없이 배선만 점검")
     ap.add_argument("--batch", type=int, default=12)
     args = ap.parse_args()
 
@@ -99,8 +103,11 @@ def main():
     if not scored:
         sys.exit("\n채점할 라벨이 없다. 대수 라벨링(D열) 후 다시 실행할 것.")
 
-    vlm = get_vlm("gemini")
-    print(f"모델: {vlm.model}\n", flush=True)
+    try:
+        vlm = get_vlm(args.provider, model=args.model)
+    except RuntimeError as e:
+        sys.exit(f"[키 없음] {e}")
+    print(f"provider={args.provider}  모델={vlm.model}\n", flush=True)
     ai = {}
     for i in range(0, len(scored), args.batch):
         batch = scored[i:i + args.batch]
@@ -124,12 +131,16 @@ def main():
         if human == "합법" and ai_label in VIOLATION:
             false_alarm += 1; false_alarms.append((r["n"], r["text"], ai_label))
         r_ws.append([r["n"], r["text"], human, ai_label, reason, "O" if ok else "X"])
-    wb.save(OUT)
+    safe_model = (vlm.model or "default").replace("/", "-")
+    out = Path(f"data/eval_result_{args.provider}_{safe_model}.xlsx")
+    wb.save(out)
 
     n = len(scored)
+    acc = match / n * 100
     print("\n" + "=" * 46)
+    print(f"provider={args.provider}  모델={vlm.model}")
     print(f"채점 대상: {n}문장")
-    print(f"전체 일치율: {match}/{n} = {match/n*100:.1f}%")
+    print(f"전체 일치율: {match}/{n} = {acc:.1f}%")
     print(f"미탐(위반→합법/대상외, 1급): {miss}건  ← 낮을수록 좋음")
     print(f"오탐(합법→위반): {false_alarm}건")
     if unknown:
@@ -142,8 +153,19 @@ def main():
         print("\n[오탐 목록]")
         for n_, t, a in false_alarms:
             print(f"  #{n_} AI={a} | {t[:40]}")
+
+    # 모델별 요약을 한 파일에 누적 → 비교표(Gemini vs OpenAI 나란히)
+    new_file = not COMPARE.exists()
+    with open(COMPARE, "a", newline="") as f:
+        w = csv.writer(f)
+        if new_file:
+            w.writerow(["시각", "provider", "모델", "채점수", "일치율%", "미탐", "오탐", "토큰"])
+        w.writerow([datetime.now().strftime("%m-%d %H:%M"), args.provider, vlm.model,
+                    n, f"{acc:.1f}", miss, false_alarm, vlm.total_tokens])
+
     print("=" * 46)
-    print(f"상세: {OUT}")
+    print(f"상세: {out}")
+    print(f"비교표(누적): {COMPARE}")
     print(f"누적 토큰: {vlm.total_tokens:,}")
 
 
