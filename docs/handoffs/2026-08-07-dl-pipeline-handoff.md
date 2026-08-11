@@ -9,7 +9,7 @@
 
 ## 0. 착수 전 반드시 읽을 것 (순서대로)
 
-1. **`CLAUDE.md`** (repo 루트): 작업 규칙. 특히 §A(안 정한 결정은 대신 정하지 말고 선택지 제시)·§B(단계별 계획 먼저, "진행" 전엔 코드 X)·§E(얕은 패키지 `src/vericops/`, 영어 snake_case 식별자, 계층적 에러 처리, 순수 로직만 pytest).
+1. **`CLAUDE.md`** (repo 루트): 작업 규칙. 특히 §A(안 정한 결정은 대신 정하지 말고 선택지 제시)·§B(단계별 계획 먼저, "진행" 전엔 코드 X)·§E(얕은 패키지 `src/barum/`, 영어 snake_case 식별자, 계층적 에러 처리, 순수 로직만 pytest).
 2. **`PROJECT.md` §3 (DL 코어 ① 설계)**: 이 작업의 **설계 원본**. 입력 단위·출력 라벨·부트스트랩·백본·클래스 불균형이 여기서 확정됨. §3-2(미탐 회수 캐스케이드)도.
 3. **`ROADMAP.md` §1·§3**: 전략(선생-학생) + 데이터 현황 수치.
 4. 실제 데이터 파일을 직접 열어 스키마 확인: `backend/data/prescreen.jsonl`, `backend/data/goldset_master.jsonl`, `backend/data/holdout_master_v1.jsonl`.
@@ -44,7 +44,7 @@
 | 정책 | **recall 우선**(미탐 비용 > 오탐). **미탐율이 1급 지표.** | PROJECT §2.5, §3-2 |
 | 실행 타깃 | **backend `.py` 스크립트 + Colab T4 노트북 러너.** 로컬은 CPU 스모크만 | PM 2026-08-07 |
 | 드라이런 라벨 | **VLM hint**(`prescreen.jsonl`의 `hint`)로 파이프라인 검증 | PM 2026-08-07 (Q1) |
-| 코드 위치 | `backend/src/vericops/model/` (얕은 패키지) + `backend/scripts/` CLI + `backend/notebooks/` | CLAUDE.md §E |
+| 코드 위치 | `backend/src/barum/model/` (얕은 패키지) + `backend/scripts/` CLI + `backend/notebooks/` | CLAUDE.md §E |
 
 ## 3. 라벨 체계 (7클래스, `reference/violation_types/` 기준)
 
@@ -73,7 +73,7 @@
 
 ```
 backend/
-├─ src/vericops/model/
+├─ src/barum/model/
 │  ├─ __init__.py
 │  ├─ dataset.py       # jsonl 로딩, 문장+문맥 조립, 7클래스 라벨맵, train/val split, torch Dataset
 │  ├─ train.py         # KoELECTRA-base 파인튜닝(config·class weight·체크포인트 저장)
@@ -85,7 +85,7 @@ backend/
 │  └─ colab_train.ipynb     # 얇은 러너: repo 접근 + pip + 위 스크립트 호출
 └─ requirements-ml.txt      # torch·transformers·scikit-learn 등 (기본 requirements와 분리)
 ```
-- **모델/토크나이저 로딩은 얇은 어댑터로** 격리(백본 교체 대비). VLM 어댑터(`src/vericops/vlm.py`) 패턴 참고.
+- **모델/토크나이저 로딩은 얇은 어댑터로** 격리(백본 교체 대비). VLM 어댑터(`src/barum/vlm.py`) 패턴 참고.
 - 무거운 ML 의존성은 `requirements-ml.txt`로 분리(기본 `requirements.txt` 가볍게 유지).
 
 ## 6. 평가 사양 (미탐율이 1급 지표)
@@ -127,4 +127,4 @@ backend/
 
 ## 부록: DL 담당 Claude에게 붙여넣을 착수 프롬프트(예시)
 
-> vericops 모노레포에서 DL 코어 ① 문장 분류기의 학습·평가 파이프라인을 준비하는 작업이야. 먼저 `docs/handoffs/2026-08-07-dl-pipeline-handoff.md`를 읽고, §0의 참조 파일들(`CLAUDE.md`, `PROJECT.md` §3, 데이터 jsonl)을 직접 확인해. §8의 열린 항목은 나(PM)에게 확인하고, 그 전까지는 드라이런(VLM 라벨) 범위로만 진행해. CLAUDE.md §B대로 구현 계획을 먼저 제시하고, 승인 전엔 코드를 쓰지 마.
+> barum 모노레포에서 DL 코어 ① 문장 분류기의 학습·평가 파이프라인을 준비하는 작업이야. 먼저 `docs/handoffs/2026-08-07-dl-pipeline-handoff.md`를 읽고, §0의 참조 파일들(`CLAUDE.md`, `PROJECT.md` §3, 데이터 jsonl)을 직접 확인해. §8의 열린 항목은 나(PM)에게 확인하고, 그 전까지는 드라이런(VLM 라벨) 범위로만 진행해. CLAUDE.md §B대로 구현 계획을 먼저 제시하고, 승인 전엔 코드를 쓰지 마.

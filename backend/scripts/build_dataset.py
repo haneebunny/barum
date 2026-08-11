@@ -1,6 +1,6 @@
 """정답셋 jsonl을 로컬 SQLite로 통합하는 빌드 스크립트.
 
-schema.sql(Postgres)의 로컬 검증용 미러다. 흩어진 학습 데이터를 한 파일(data/vericops.db)로
+schema.sql(Postgres)의 로컬 검증용 미러다. 흩어진 학습 데이터를 한 파일(data/barum.db)로
 모아 파편화를 없애고, 라벨 분포·split 무결성을 카운트로 확인한다.
 
 지금 범위: listings + sentences + labels(vlm_hint)만 채운다.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-DB = DATA / "vericops.db"
+DB = DATA / "barum.db"
 
 # 입력: (파일명, split). goldset=학습, holdout=평가.
 SOURCES = [

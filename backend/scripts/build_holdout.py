@@ -25,7 +25,7 @@ from openpyxl.styles import Alignment, Font, PatternFill  # noqa: E402
 from openpyxl.utils import get_column_letter  # noqa: E402
 from openpyxl.worksheet.datavalidation import DataValidation  # noqa: E402
 
-from vericops.judge.prescreen import LABELS  # noqa: E402
+from barum.judge.prescreen import LABELS  # noqa: E402
 
 PRESCREEN_GLOB = "prescreen*.jsonl"
 
@@ -363,7 +363,7 @@ def _write_guide(ws) -> None:
     rows = [
         ["라벨링 작업 안내"],
         [],
-        ["vericops — 허위·과대광고 평가 홀드아웃 구축"],
+        ["barum — 허위·과대광고 평가 홀드아웃 구축"],
         [],
         ["무엇을 하는 건가"],
         ["", "우리 AI가 광고 문구를 보고 위반 여부를 판정합니다. 그 AI가 얼마나 정확한지 재려면"],

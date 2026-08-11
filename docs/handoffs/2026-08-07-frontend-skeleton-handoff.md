@@ -23,7 +23,7 @@
 
 ## 1. 미션 (이번 컷의 범위)
 
-vericops 모노레포의 `frontend/`에 **Next.js 앱의 골격 + 디자인 시스템만** 세운다. 화면 콘텐츠·데이터·API·auth는 **이번 컷 밖**.
+barum 모노레포의 `frontend/`에 **Next.js 앱의 골격 + 디자인 시스템만** 세운다. 화면 콘텐츠·데이터·API·auth는 **이번 컷 밖**.
 
 **할 것:**
 - `frontend/`에 Next.js 스캐폴딩 (App Router · TypeScript · npm · ESLint, create-next-app 기본 관례대로).
@@ -126,4 +126,4 @@ HANDOFF §3.1의 안티-슬롭 5규칙 + §4 색각이상 절차:
 
 ## 부록: 프론트 개발자 Claude에게 붙여넣을 착수 프롬프트(예시)
 
-> vericops 모노레포에서 프론트엔드 골격을 세우는 작업이야. 먼저 `docs/handoffs/2026-08-07-frontend-skeleton-handoff.md`를 읽고, 거기 §0의 참조 파일들(`CLAUDE.md`, 스펙, `design/mockups/HANDOFF.md`, 목업 html)을 확인해. 그런 다음 CLAUDE.md §B대로 단계별 구현 계획을 나에게 먼저 제시하고, 승인 전엔 코드를 쓰지 마.
+> barum 모노레포에서 프론트엔드 골격을 세우는 작업이야. 먼저 `docs/handoffs/2026-08-07-frontend-skeleton-handoff.md`를 읽고, 거기 §0의 참조 파일들(`CLAUDE.md`, 스펙, `design/mockups/HANDOFF.md`, 목업 html)을 확인해. 그런 다음 CLAUDE.md §B대로 단계별 구현 계획을 나에게 먼저 제시하고, 승인 전엔 코드를 쓰지 마.

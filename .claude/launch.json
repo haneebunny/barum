@@ -16,7 +16,7 @@
     {
       "name": "frontend",
       "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["/Users/hani/Desktop/project/vericops/frontend/scripts/dev.sh"],
+      "runtimeArgs": ["/Users/hani/Desktop/project/barum/frontend/scripts/dev.sh"],
       "port": 3000
     }
   ]

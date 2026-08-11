@@ -1,4 +1,4 @@
-# vericops
+# barum
 
 이커머스 상품 상세페이지의 **과대·부당광고**(식약처 「식품 표시·광고법」 위반)를 **VLM + 자체 DL**로 판정하는 에이전트. 첫 vertical = 다이어트 보조제.
 
@@ -7,9 +7,9 @@
 ## 모노레포 구조
 
 ```
-vericops/
+barum/
 ├─ backend/        Python. 크롤·전처리(OCR·타일분할)·VLM 라벨러·DL 코어(예정)·API(예정)
-│  ├─ src/vericops/    얇은 패키지 (vlm, preprocess/, judge/)
+│  ├─ src/barum/    얇은 패키지 (vlm, preprocess/, judge/)
 │  ├─ scripts/         실행 스크립트 (run_ocr, run_prescreen, build_goldset, build_holdout, validate_holdout)
 │  ├─ tests/           순수 로직 유닛테스트 (pytest)
 │  ├─ legacy/          폐기 스크립트 보관

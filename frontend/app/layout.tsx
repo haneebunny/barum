@@ -4,7 +4,7 @@ import { ThemeScript } from "./theme-script";
 import { AppShell } from "@/components/AppShell/AppShell";
 
 export const metadata: Metadata = {
-  title: "VeriCops",
+  title: "바름",
   description: "식약처 사이버조사팀 허위·과대광고 사후 모니터링 콘솔",
 };
 

@@ -4,7 +4,7 @@
 절대 넣지 않는다(정답을 알려주면 홀드아웃이 무의미해진다).
 """
 
-from vericops.vlm import VLM
+from barum.vlm import VLM
 
 PRESCREEN_PROMPT = """너는 식약처 「식품 등의 표시·광고에 관한 법률」 위반 광고를 선별하는 실무자다.
 아래는 한 상품의 상세페이지에서 OCR로 뽑은 문장 목록이다.

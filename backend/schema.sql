@@ -1,4 +1,4 @@
--- vericops 학습·운영 데이터 스키마 (Postgres / Supabase)
+-- barum 학습·운영 데이터 스키마 (Postgres / Supabase)
 -- 확정: 2026-08-07 인터뷰 (PROJECT.md §3.5, 필드 명세 docs/metadata_spec.md)
 --
 -- 개체 3층: product(제품 identity) / listing(셀러 판매글) / detail_image(광고물=판정단위)

@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vericops.judge.prescreen import prescreen_product  # noqa: E402
-from vericops.vlm import get_vlm  # noqa: E402
+from barum.judge.prescreen import prescreen_product  # noqa: E402
+from barum.vlm import get_vlm  # noqa: E402
 
 IN_PATH = Path("data/ocr_sentences.jsonl")
 OUT_PATH = Path("data/prescreen.jsonl")

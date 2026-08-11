@@ -1,4 +1,4 @@
-# CLAUDE.md: vericops 작업 규칙
+# CLAUDE.md: barum 작업 규칙
 
 이 파일은 **Claude가 이 프로젝트에서 읽고 따라야 할 작업 규칙**만 담는다.
 프로젝트 정의·아키텍처·실행 명령·규제 근거 같은 "사용법/레퍼런스"는 여기 두지 않는다(→ 문서 지도 참조).
@@ -31,7 +31,7 @@
 - 그 교훈을 다음에 반복하지 않도록 **이 CLAUDE.md에 규칙으로 추가**한다.
 
 ## E. 코드 취향
-- **파일/모듈 구조:** 얕은 패키지. `src/vericops/` 아래 역할별 모듈(`crawl/`, `preprocess/`, `judge/`, `reference/`), 실행은 `scripts/` 또는 `python -m`. 모델(VLM) 호출은 provider를 바꿔 낄 수 있는 **얇은 어댑터**로 분리한다.
+- **파일/모듈 구조:** 얕은 패키지. `src/barum/` 아래 역할별 모듈(`crawl/`, `preprocess/`, `judge/`, `reference/`), 실행은 `scripts/` 또는 `python -m`. 모델(VLM) 호출은 provider를 바꿔 낄 수 있는 **얇은 어댑터**로 분리한다.
 - **네이밍:** 식별자는 영어 `snake_case`. 도메인 용어도 **영어로 번역**한다. 로마자 한글 식별자 금지(`gwadae_gwanggo` X → `exaggerated_ad`, `violation`, `review_certified`). 한국어는 사용자 대면 출력·리포트·문서·주석에만.
 - **에러 처리:** 계층을 구분한다.
   - *예상된 실패*(빈 상세페이지·429·타임아웃 등) → 상품/이미지 단위로 스킵하고 `status`에 기록, 배치는 끝까지 진행.
