@@ -10,6 +10,34 @@
 
 ---
 
+## 2026-08-11 · v1.8: 위험도(고/중/저) 폐지 → 위반/검토필요 이진 플래그
+
+브랜치: `feature/be-judgment-flag` (origin/main 기준). PM2 지시(기획서 v1.8, FR-5·FR-7), 착수 전 계획 승인받고 진행.
+
+### 무엇을 바꿨나
+- `RiskLevel`(고/중/저) 삭제 → `JudgmentFlag`(위반/검토필요) 신설. `Finding.risk` → `Finding.flag`로 필드명도 변경(개념이 달라져서).
+- `Summary`에 `n_violation`·`n_needs_review` 추가(`n_findings`는 합계로 유지). `n_unjudged`는 별개 개념 그대로.
+
+### 핵심 설계: 근거 없는 유형은 어떻게 판단하나 (RagJudge 오기 전)
+"근거 있으면 위반, 근거 없으면 검토필요"(FR-5)인데, 지금 규칙집 대조 수단이 있는 건 2호(기능성오인)의 성분 정합뿐이다.
+- **1호·5호**: 대조 수단 없음 → 항상 `위반`(recall 우선, 근거 없다고 함부로 안 낮춤). RagJudge 붙으면 이것도 매칭 성공 여부로 갈릴 예정(범위 밖).
+- **2호**: `ingredients` 있고 고시원료 **없음** → `위반`(근거로 확증). 고시원료 **있음** → `검토필요`(등록 여부는 모르니 단정 못 함, 하니 승인). `ingredients` 미입력/카테고리 불명 → `검토필요`(대조 근거 자체 없음).
+- StubJudge: 항상 `위반`(데모용, 근거 인프라 없음).
+
+### 부수로 잡은 버그
+`PromptJudge`에서 `res.get("results", [])` 호출이 try/except 밖에 있어서, VLM이 가끔 `{"results":[...]}` 대신 통짜 리스트를 뱉으면 `AttributeError`로 **요청 전체가 500** 났다. try 안으로 옮겨 예상된 실패로 흡수(→ 그 배치는 미판정 처리). 실판정 스모크 중 실제로 재현·수정 확인함. `score_eval.py`에도 같은 패턴이 있는데 이번 범위 밖이라 안 건드림(하니 판단 필요, 별도 이슈).
+
+### 검증
+- `pytest tests/ -q` → **60 passed**.
+- 실판정 스모크(Gemini) 3회: 성분 있음→검토필요, 성분 없음(1호)→위반, 그리고 위 버그 실제 재현 후 정상적으로 미판정 처리되는 것까지 확인.
+- fixtures·openapi 재생성, `docs/api/README.md`에 위반/검토필요 vs unjudged 구분 명시.
+
+### 다음
+- Location 좌표 확장(타일 y범위, 밴드 하이라이트용) — PM2가 이 작업 다음으로 지정.
+- 대수의 4자 상호비교 평가 결과(43문장 라벨링 완료, Gemini/GPT-5/GPT-5-mini 비교)가 나와서, provider 기본값·"검토필요" 범위 확장 여부를 하니와 논의 예정(하니: "GPT-5-mini도 거의 공짜라 써도 됨").
+
+---
+
 ## 2026-08-11 · 화장품 레퍼런스 팩 반영 + T-체계 매핑 + 구조화 추출 + 성분 정합
 
 브랜치: `feature/be-reference-pack` (`feature/be-frontend-fixtures` 이후, origin/main 기준 재구성). 커밋 여러 개로 분리.

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from barum.judge.cosmetic import CosmeticJudge
-from barum.models import CheckReport, Region, Summary
+from barum.models import CheckReport, JudgmentFlag, Region, Summary
 from barum.preprocess.ocr import extract_product_sentences
 from barum.vlm import VLM
 
@@ -92,10 +92,15 @@ def run_check(
         key = f.violation_type.value
         counts[key] = counts.get(key, 0) + 1
 
+    n_violation = sum(1 for f in findings if f.flag == JudgmentFlag.violation)
+    n_needs_review = sum(1 for f in findings if f.flag == JudgmentFlag.needs_review)
+
     summary = Summary(
         region=Region(region),
         n_sentences=len(sentences),
         n_findings=len(findings),
+        n_violation=n_violation,
+        n_needs_review=n_needs_review,
         n_unjudged=len(result.unjudged),
         counts_by_type=counts,
     )
