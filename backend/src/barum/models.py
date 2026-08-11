@@ -55,11 +55,20 @@ class Location(BaseModel):
     """문구가 잡힌 위치.
 
     OCR은 글자 좌표(bbox)를 주지 않는다. 우리가 확보하는 위치 정보는 어느 타일의
-    몇 번째 문장이냐까지다. 텍스트 입력(이미지 없음)이면 tile은 None.
+    몇 번째 문장이냐까지다. 타일 단위 세로 밴드(y_start~y_end)를 원본 이미지
+    좌표로 실어, 프론트가 원본 위에 밴드를 하이라이트할 수 있게 한다. 문장 단위
+    정밀 좌표는 없다(OCR이 bbox를 안 주므로 타일 밴드가 최선).
+
+    이미지 입력만 좌표가 있다. 텍스트 입력(이미지 없음)이면 tile과 좌표 모두 None.
+    source_h/source_w는 원본 이미지 크기라 프론트가 밴드를 원본 축척에 맞춘다.
     """
 
     tile: str | None = None
     order: int
+    y_start: int | None = None  # 타일 밴드 상단(원본 이미지 y좌표)
+    y_end: int | None = None  # 타일 밴드 하단(원본 이미지 y좌표)
+    source_h: int | None = None  # 원본 이미지 높이(px)
+    source_w: int | None = None  # 원본 이미지 너비(px)
 
 
 class Finding(BaseModel):

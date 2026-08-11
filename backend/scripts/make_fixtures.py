@@ -49,9 +49,11 @@ def _summary(region, n_sentences, findings, n_unjudged=0) -> Summary:
 
 
 def image_case() -> CheckReport:
-    """이미지 입력 케이스. location.tile 채워짐(원문 이미지 위 하이라이트용).
+    """이미지 입력 케이스. location.tile·밴드 좌표 채워짐(원문 이미지 위 하이라이트용).
 
     문장 5개 중 3개 위반(1/2/5호), 1개 합법(finding 없음), 나머지도 합법.
+    원본 1000x9000 상세페이지가 타일 2장(t00: y 0~1480, t01: y 1400~2900)으로 쪼개진 예시.
+    같은 타일의 문장들은 같은 밴드를 공유한다(OCR이 문장 bbox를 안 주므로 타일 밴드가 최선).
     """
     findings = [
         Finding(
@@ -61,7 +63,10 @@ def image_case() -> CheckReport:
             legal_basis=legal_basis_for(ViolationType.type_2_functional_misperception),
             flag=JudgmentFlag.needs_review,  # 성분 정합 미확인 상태 시연
             explanation="미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력 — 성분 정합 확인 못 함)",
-            location=Location(tile="detail_000_t00.png", order=0),
+            location=Location(
+                tile="detail_000_t00.png", order=0,
+                y_start=0, y_end=1480, source_h=9000, source_w=1000,
+            ),
         ),
         Finding(
             span="아토피 피부염을 완화하고 손상된 피부를 재생",
@@ -70,7 +75,10 @@ def image_case() -> CheckReport:
             legal_basis=legal_basis_for(ViolationType.type_1_drug_misperception),
             flag=JudgmentFlag.violation,
             explanation="질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
-            location=Location(tile="detail_000_t01.png", order=2),
+            location=Location(
+                tile="detail_000_t01.png", order=2,
+                y_start=1400, y_end=2900, source_h=9000, source_w=1000,
+            ),
         ),
         Finding(
             span="시중 제품 대비 3배 빠른 흡수",
@@ -79,7 +87,10 @@ def image_case() -> CheckReport:
             legal_basis=legal_basis_for(ViolationType.type_5_deception),
             flag=JudgmentFlag.violation,
             explanation="객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
-            location=Location(tile="detail_000_t01.png", order=3),
+            location=Location(
+                tile="detail_000_t01.png", order=3,
+                y_start=1400, y_end=2900, source_h=9000, source_w=1000,
+            ),
         ),
     ]
     # order 1, 4는 합법 문장(촉촉한 보습 등) = finding 없음. n_sentences=5.
@@ -130,17 +141,26 @@ def unjudged_case() -> CheckReport:
             legal_basis=legal_basis_for(ViolationType.type_5_deception),
             flag=JudgmentFlag.violation,
             explanation="'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
-            location=Location(tile="detail_002_t00.png", order=0),
+            location=Location(
+                tile="detail_002_t00.png", order=0,
+                y_start=0, y_end=1520, source_h=8000, source_w=1000,
+            ),
         ),
     ]
     unjudged = [
         UnjudgedSentence(
             sentence="7가지 한방 추출물로 피부 진정에 탁월",
-            location=Location(tile="detail_002_t00.png", order=1),
+            location=Location(
+                tile="detail_002_t00.png", order=1,
+                y_start=0, y_end=1520, source_h=8000, source_w=1000,
+            ),
         ),
         UnjudgedSentence(
             sentence="탄력 있는 피부로 가꿔주는 펩타이드 앰플",
-            location=Location(tile="detail_002_t01.png", order=2),
+            location=Location(
+                tile="detail_002_t01.png", order=2,
+                y_start=1440, y_end=2960, source_h=8000, source_w=1000,
+            ),
         ),
     ]
     return CheckReport(

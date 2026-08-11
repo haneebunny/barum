@@ -5,7 +5,7 @@ VLM은 가짜 객체(캔드 results 반환/예외)를 주입한다. 진짜 판�
     venv/bin/python -m pytest tests/test_judge.py -q
 """
 
-from barum.judge.cosmetic import JUDGE_PROMPT, JudgeResult, PromptJudge, StubJudge
+from barum.judge.cosmetic import JUDGE_PROMPT, JudgeResult, PromptJudge, StubJudge, _loc
 from barum.models import JudgmentFlag
 
 
@@ -35,6 +35,35 @@ def test_prompt_judge_without_context_is_exactly_base_prompt():
     vlm = CapturingVLM()
     PromptJudge(vlm).judge([{"order": 0, "tile": None, "text": "문구"}], "KR")
     assert vlm.prompt == JUDGE_PROMPT.format(items="0. 문구")
+
+
+def test_loc_carries_coordinates_from_sentence():
+    """이미지 문장 dict의 밴드 좌표·원본 크기를 Location에 싣는다."""
+    loc = _loc(
+        {
+            "order": 3,
+            "tile": "t01.png",
+            "y_start": 1400,
+            "y_end": 2820,
+            "source_h": 9000,
+            "source_w": 1000,
+        }
+    )
+    assert loc.tile == "t01.png"
+    assert loc.order == 3
+    assert loc.y_start == 1400
+    assert loc.y_end == 2820
+    assert loc.source_h == 9000
+    assert loc.source_w == 1000
+
+
+def test_loc_defaults_coordinates_none_for_text():
+    """좌표 없는(텍스트 입력) 문장 dict는 Location 좌표가 None."""
+    loc = _loc({"order": 0, "tile": None})
+    assert loc.y_start is None
+    assert loc.y_end is None
+    assert loc.source_h is None
+    assert loc.source_w is None
 
 
 def _sentences(texts: list[str]) -> list[dict]:

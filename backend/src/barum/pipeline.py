@@ -9,6 +9,8 @@ import re
 import tempfile
 from pathlib import Path
 
+from PIL import Image
+
 from barum.judge.cosmetic import CosmeticJudge
 from barum.models import CheckReport, JudgmentFlag, Region, Summary
 from barum.preprocess.ocr import extract_product_sentences
@@ -33,6 +35,27 @@ def _split_text_to_sentences(ad_text: str) -> list[dict]:
     return out
 
 
+def _attach_bands(
+    sentences: list[dict],
+    band_by_tile: dict[str, tuple[int, int]],
+    source_w: int,
+    source_h: int,
+) -> list[dict]:
+    """OCR 문장 dict에 타일 밴드 좌표(y_start,y_end)와 원본 크기를 붙인다.
+
+    타일 이름으로 밴드를 찾는다. 같은 문구가 여러 타일에 겹쳐 잡혀도 dedup으로 첫
+    타일 하나만 남으므로 그 타일 밴드를 쓴다(밴드 하이라이트엔 충분). 밴드 맵에 없는
+    타일이면 좌표를 안 넣는다, 잘못된 밴드를 다는 것보다 없는 게 안전하다.
+    """
+    for s in sentences:
+        band = band_by_tile.get(s.get("tile"))
+        if band is not None:
+            s["y_start"], s["y_end"] = band
+        s["source_w"] = source_w
+        s["source_h"] = source_h
+    return sentences
+
+
 def _ocr_image(
     image_bytes: bytes, filename: str | None, vlm: VLM, verbose: bool = False
 ) -> list[dict]:
@@ -40,6 +63,8 @@ def _ocr_image(
 
     OCR 재사용 코드는 `product_dir/tiles/*.png` 구조를 기대하므로, 임시 폴더에 그
     구조를 그대로 만든 뒤 기존 함수를 호출한다. 임시 폴더는 요청이 끝나면 지운다.
+    split_image가 돌려준 (타일, top, bot)로 밴드 맵을 만들어, OCR 문장에 원본 좌표를
+    실어 준다(리포트가 원본 위에 밴드를 하이라이트할 수 있게).
     """
     from tile_split import split_image  # top-level 모듈(backend 루트)
 
@@ -50,10 +75,14 @@ def _ocr_image(
         source.write_bytes(image_bytes)
 
         # tiles/ 하위에 타일 저장 → extract_product_sentences가 여기서 글롭한다.
-        split_image(source, product_dir / "tiles")
+        tiles = split_image(source, product_dir / "tiles")
+        band_by_tile = {path.name: (top, bot) for path, top, bot in tiles}
+        with Image.open(source) as im:
+            source_w, source_h = im.size
+
         record = extract_product_sentences(product_dir, vlm, verbose=verbose)
 
-    return record["sentences"]
+    return _attach_bands(record["sentences"], band_by_tile, source_w, source_h)
 
 
 def run_check(
