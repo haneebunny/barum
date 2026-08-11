@@ -35,11 +35,16 @@
       "legal_basis": "화장품법 제13조 제1항 제2호 (기능성 오인)",
       "flag": "검토필요",          // 위반 | 검토필요 (v1.8: 위험도 고/중/저 폐지)
       "explanation": "… (전성분 대조: 나이아신아마이드 확인됨, 기준 2~5% — 등록 여부 불명, 단정 못 함)",
-      "location": { "tile": "detail_000_t00.png", "order": 0 }
+      // 이미지 입력이면 타일 밴드 좌표(원본 이미지 y픽셀)와 원본 크기가 실린다.
+      "location": {
+        "tile": "detail_000_t00.png", "order": 0,
+        "y_start": 0, "y_end": 1480, "source_h": 9000, "source_w": 1000
+      }
     }
   ],
   "unjudged": [           // 판정 실패로 못 가린 문장(= '재검사 필요', 합법 아님)
-    { "sentence": "…", "location": { "tile": null, "order": 1 } }
+    // 문구-only 입력이면 tile·좌표가 모두 null.
+    { "sentence": "…", "location": { "tile": null, "order": 1, "y_start": null, "y_end": null, "source_h": null, "source_w": null } }
   ],
   "summary": {
     "region": "KR",
@@ -69,9 +74,10 @@
 **`unjudged`와 헷갈리지 말 것**: `unjudged` = 판정 자체를 못함(VLM 호출 실패). `검토필요` = 판정은 했는데 근거가 약해서 확정 못함. 둘 다 "위반으로 확정 못 함"이라는 공통점 때문에 헷갈리기 쉽지만 서로 다른 필드다.
 
 ### 하이라이트 2모드 (디자이너용)
-- **이미지 입력**: `location.tile`이 채워짐 → 원문 이미지(해당 타일) 위에 표시.
-- **문구-only 입력**: `location.tile`이 `null` → 붙여넣은 텍스트에서 `span` 스팬 하이라이트.
-- `location.order`는 문장 순서(0부터). 좌표(bbox)는 없음(OCR 한계).
+- **이미지 입력**: `location.tile`이 채워짐 → 원문 이미지(해당 타일) 위에 표시. 추가로 `y_start`·`y_end`(원본 이미지 세로 픽셀 범위)와 `source_h`·`source_w`(원본 크기)가 실려, 원본 위에 **밴드(가로 띠)를 하이라이트**할 수 있다. 밴드는 그 문장이 나온 타일의 세로 범위다.
+- **문구-only 입력**: `location.tile`이 `null` → 붙여넣은 텍스트에서 `span` 스팬 하이라이트. 좌표는 전부 `null`.
+- `location.order`는 문장 순서(0부터).
+- **밴드는 타일 단위, 문장 단위 아님**: OCR이 글자 bbox를 안 줘서 문장 정밀 좌표는 없다. 같은 타일의 여러 문장은 같은 밴드(`y_start`~`y_end`)를 공유한다. 원본 축척 환산은 `source_h`/`source_w`로 한다(표시 이미지가 리사이즈됐으면 비율만 곱하면 됨).
 
 ### 미판정(unjudged) 처리 (중요)
 정책상 **미탐(위반을 놓침)이 제일 나쁘다.** 판정 실패 문장을 '합법'으로 보여주면 위반이 숨는다. 그래서 실패 문장은 findings에도 합법에도 넣지 않고 `unjudged`로 분리한다. UI는 이를 **"판정 못 함, 재검사 필요"** 상태로 보여줘야 한다(안전으로 오인 금지).

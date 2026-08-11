@@ -9,7 +9,11 @@
       "explanation": "미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력 — 성분 정합 확인 못 함)",
       "location": {
         "tile": "detail_000_t00.png",
-        "order": 0
+        "order": 0,
+        "y_start": 0,
+        "y_end": 1480,
+        "source_h": 9000,
+        "source_w": 1000
       }
     },
     {
@@ -21,7 +25,11 @@
       "explanation": "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
       "location": {
         "tile": "detail_000_t01.png",
-        "order": 2
+        "order": 2,
+        "y_start": 1400,
+        "y_end": 2900,
+        "source_h": 9000,
+        "source_w": 1000
       }
     },
     {
@@ -33,7 +41,11 @@
       "explanation": "객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
       "location": {
         "tile": "detail_000_t01.png",
-        "order": 3
+        "order": 3,
+        "y_start": 1400,
+        "y_end": 2900,
+        "source_h": 9000,
+        "source_w": 1000
       }
     }
   ],

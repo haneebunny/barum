@@ -46,18 +46,22 @@ def find_quiet_rows(gray: np.ndarray) -> np.ndarray:
 
 def split_image(path: Path, out_dir: Path,
                 target_h: int = 1400, max_ratio: float = 2.0,
-                overlap: int = 80, search: int = 240) -> list[Path]:
-    """이미지 1장 → 타일 파일 리스트."""
+                overlap: int = 80, search: int = 240) -> list[tuple[Path, int, int]]:
+    """이미지 1장 → 타일 리스트. 각 항목은 (타일경로, top, bot).
+
+    top·bot은 원본 이미지 세로 좌표(px)의 밴드다. 리포트가 원본 위에 타일 밴드를
+    하이라이트할 수 있게 좌표를 함께 돌려준다(OCR은 문장 bbox를 안 주므로 밴드가 최선).
+    """
     im = Image.open(path).convert("RGB")
     w, h = im.size
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = path.stem
 
-    # 안 긴 이미지: 그대로 1장
+    # 안 긴 이미지: 그대로 1장. 밴드는 원본 전체.
     if h <= w * max_ratio or h <= target_h * 1.3:
         dst = out_dir / f"{stem}_t00.png"
         im.save(dst)
-        return [dst]
+        return [(dst, 0, h)]
 
     gray = np.asarray(im.convert("L"), dtype=np.float32)
     score = find_quiet_rows(gray)
@@ -87,7 +91,7 @@ def split_image(path: Path, out_dir: Path,
         tile = im.crop((0, top, w, bot))
         dst = out_dir / f"{stem}_t{i:02d}.png"
         tile.save(dst)
-        tiles.append(dst)
+        tiles.append((dst, top, bot))  # 밴드 좌표 동봉(원본 세로 기준)
     return tiles
 
 

@@ -42,7 +42,14 @@ def test_finding_json_serializes_korean():
     dumped = f.model_dump(mode="json")
     assert dumped["violation_type"] == "2호_기능성오인"
     assert dumped["flag"] == "검토필요"
-    assert dumped["location"] == {"tile": "source_t00.png", "order": 0}
+    assert dumped["location"] == {
+        "tile": "source_t00.png",
+        "order": 0,
+        "y_start": None,
+        "y_end": None,
+        "source_h": None,
+        "source_w": None,
+    }
 
 
 def test_check_report_roundtrips():
@@ -55,6 +62,28 @@ def test_check_report_roundtrips():
     assert dumped["summary"]["region"] == "KR"
     assert dumped["summary"]["counts_by_type"] == {}
     assert dumped["findings"] == []
+
+
+def test_location_carries_band_coordinates():
+    """이미지 입력이면 타일 밴드 좌표(y_start,y_end)와 원본 크기를 싣는다."""
+    loc = Location(
+        tile="source_t01.png", order=2, y_start=1400, y_end=2820,
+        source_h=9000, source_w=1000,
+    )
+    d = loc.model_dump(mode="json")
+    assert d["y_start"] == 1400
+    assert d["y_end"] == 2820
+    assert d["source_h"] == 9000
+    assert d["source_w"] == 1000
+
+
+def test_location_coordinates_default_none():
+    """텍스트 입력엔 좌표가 없다 — 기본값 None(밴드 하이라이트 스킵 신호)."""
+    loc = Location(tile=None, order=0)
+    assert loc.y_start is None
+    assert loc.y_end is None
+    assert loc.source_h is None
+    assert loc.source_w is None
 
 
 def test_judgment_flag_is_binary():

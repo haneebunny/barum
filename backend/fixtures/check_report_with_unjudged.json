@@ -9,7 +9,11 @@
       "explanation": "'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
       "location": {
         "tile": "detail_002_t00.png",
-        "order": 0
+        "order": 0,
+        "y_start": 0,
+        "y_end": 1520,
+        "source_h": 8000,
+        "source_w": 1000
       }
     }
   ],
@@ -18,14 +22,22 @@
       "sentence": "7가지 한방 추출물로 피부 진정에 탁월",
       "location": {
         "tile": "detail_002_t00.png",
-        "order": 1
+        "order": 1,
+        "y_start": 0,
+        "y_end": 1520,
+        "source_h": 8000,
+        "source_w": 1000
       }
     },
     {
       "sentence": "탄력 있는 피부로 가꿔주는 펩타이드 앰플",
       "location": {
         "tile": "detail_002_t01.png",
-        "order": 2
+        "order": 2,
+        "y_start": 1440,
+        "y_end": 2960,
+        "source_h": 8000,
+        "source_w": 1000
       }
     }
   ],
