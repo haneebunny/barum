@@ -10,6 +10,34 @@
 
 ---
 
+## 2026-08-11 · 판정 provider 기본값 전환: Gemini → GPT-5-mini
+
+브랜치: `feature/be-provider-default` (origin/main 기준). 대수의 43문장 4자 상호비교 평가 결과 반영, 하니 승인.
+
+### 근거
+| Provider | 일치율 | 미탐(1급 지표) |
+|---|---|---|
+| Gemini | 52.5% | 4건 |
+| GPT-5 | 62.5% | 0건 |
+| GPT-5-mini | 65.0% | 1건 |
+
+recall 우선 정책엔 GPT-5가 제일 맞지만 유료. GPT-5-mini는 미탐 1건에 비용이 거의 공짜라(하니: "GPT-5-mini도 거의 공짜라서 그거 써도 돼") 이걸로 전환.
+
+### 무엇을 바꿨나
+- `api/app.py`의 `_build_judge()`: `JUDGE_PROVIDER` 기본값 `"gemini"` → `"openai"`(모델은 `vlm.py`가 이미 `gpt-5-mini` 기본).
+- **OCR_PROVIDER는 안 건드림.** 이 비교는 판정 정확도(문장 라벨링)에 대한 것이지 이미지 글자 읽기(OCR) 품질에 대한 게 아니다.
+- `ROADMAP.md` §3·30초 요약: "판정 AI=Gemini 무료 키" 확정 문구를 GPT-5-mini로 갱신.
+
+### 검증
+- `pytest tests/ -q` → 60 passed(변경 없음, 테스트는 provider 무관).
+- 실판정 스모크: env에 provider를 아예 안 정한 상태로 `/check` 호출 → gpt-5-mini가 자동으로 잡혀 정상 판정.
+
+### 다음
+- 판정 기준 3축(성분/브랜드표기·일반수식어·니즈서술문) + 1호 재정의는 정책 결정이라 하니에게 선택지 제시 예정. 확정되면 RagJudge 착수.
+- Location 좌표 확장은 이 결정과 무관하게 병행 가능(다음 작업).
+
+---
+
 ## 2026-08-11 · v1.8: 위험도(고/중/저) 폐지 → 위반/검토필요 이진 플래그
 
 브랜치: `feature/be-judgment-flag` (origin/main 기준). PM2 지시(기획서 v1.8, FR-5·FR-7), 착수 전 계획 승인받고 진행.

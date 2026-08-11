@@ -31,10 +31,16 @@ def _build_judge() -> CosmeticJudge:
 
     기본은 PromptJudge(VLM 제로샷, JUDGE_PROVIDER). 키가 없거나 오프라인에서
     돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음).
+
+    기본 provider = openai(gpt-5-mini). 43문장 평가셋 비교(2026-08-11)에서
+    Gemini는 미탐 4건(52.5% 일치)으로 recall 우선 정책에 제일 안 맞았고,
+    gpt-5-mini는 미탐 1건(65.0% 일치)에 비용도 무시할 수준이라 하니 승인 하에
+    전환(ROADMAP.md §3). OCR_PROVIDER는 안 건드림 — 이 비교는 판정 정확도에
+    대한 것이지 OCR 품질에 대한 게 아니다.
     """
     if os.environ.get("JUDGE_KIND", "prompt") == "stub":
         return StubJudge()
-    return PromptJudge(get_vlm(os.environ.get("JUDGE_PROVIDER", "gemini")))
+    return PromptJudge(get_vlm(os.environ.get("JUDGE_PROVIDER", "openai")))
 
 
 @app.get("/health")
