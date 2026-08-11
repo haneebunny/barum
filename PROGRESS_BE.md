@@ -1,0 +1,52 @@
+# PROGRESS_BE: 바름 백엔드 진행상황
+
+> 성격: 백엔드 세션 진행 기록(가변). 확정 결정은 `PROJECT.md`, 전체 로드맵은 `ROADMAP.md`, 작업 규칙은 `CLAUDE.md`.
+> 갱신일: 2026-08-11. 담당: 백엔드 세션(대수) / 검수: 하니.
+
+---
+
+## 2026-08-11 · 판정 백엔드 API 골격 (규칙집 없이 선구축)
+
+브랜치: `feature/be-api-skeleton` (로컬 커밋 `52e1367`, push·PR 대기).
+지시: `docs/handoffs/2026-08-11-backend-api-skeleton.md`.
+로드맵 위치: 2주차 "판정 프로그램" + "화면 뼈대 넘김"의 선행 골격. 규칙집(1주차 크리티컬 패스) 대기 중에 그 주변을 먼저 만들어 프론트를 언블록하는 작업.
+
+### 무엇을 만들었나
+- **I/O 계약(Pydantic)** `src/barum/models.py`: `CheckReport` · `Finding` · `Summary` · `Location` · enum(`Region`·`ViolationType`·`RiskLevel`).
+- **FastAPI 스켈레톤** `src/barum/api/app.py`: `POST /check`(multipart, 동기) + `GET /health`.
+- **파이프라인 배선** `src/barum/pipeline.py`: 이미지 → tile_split → OCR(vlm) → 문장 → judge → 리포트. 텍스트 경로 포함.
+- **Judge 슬롯** `src/barum/judge/cosmetic.py`: `CosmeticJudge` 프로토콜 + `StubJudge`(더미).
+- **실행/테스트**: `scripts/run_api.py`, `conftest.py`, `tests/test_{models,pipeline,api}.py`.
+
+### 확정 사항 (이번 인터뷰, 하니 승인)
+- **위반유형 enum = 5값**: `합법` + `1호_의약품오인` + `2호_기능성오인` + `4호_거짓과장기만` + `대상외`. 화장품 체계라 3호 없음(`reference/cosmetic_kr` 기준). 직렬화 값은 한국어 라벨(score_eval·reference와 일치).
+- **입력 = multipart/form-data**: `region`(form) + `ad_text`(form, optional) + `image`(UploadFile, optional). 둘 다 없으면 422. base64 안 씀.
+- **동기 응답**. stateless 정합·데모 규모·프론트 fetch 한 번·되돌릴 수 있음이 근거. 타임아웃 넉넉히(keep-alive 120s).
+- **Provider = env 스왑**(`OCR_PROVIDER`/`JUDGE_PROVIDER`), 기본값 **Gemini**. GPT 하드코딩 안 함. 로드맵 "판정 AI=Gemini 무료 키" 원칙.
+- **Supabase 안 붙임**. 자가검증=요청/응답이라 DB 불필요. 현 `schema.sql`은 식품 감시용이라 형태 안 맞음.
+
+### 착수 중 default로 정한 것 (하니 veto 가능)
+1. `location = {tile, order}`. OCR이 bbox를 안 줘 좌표 대신 타일명+문장순서.
+2. 이미지+글 둘 다 오면 이미지 문장 뒤에 글 문장 append(order 이어짐).
+3. CORS `allow_origins=["*"]`. 프론트 dev 서버 언블록용. 서비스화 때 좁힘.
+
+### 검증 결과
+- `pytest tests/ -q` → **25 passed**(신규 13 + 기존 검수기 12). VLM은 목킹 없이 가짜 어댑터 주입으로 순수 로직만.
+- 서버 스모크: `/health` ok, 텍스트 `/check` 200, 빈 입력 422, region 밖 값 422.
+- **실이미지 OCR 스모크**(Gemini 1회, `08_24505724_detail_007.png` 1타일): 6문장 추출 → 1건 판정(StubJudge). `location.tile` 채워짐. 이미지→타일→OCR 실동작 확인.
+
+### 실행법
+```bash
+cd backend
+./venv/bin/python scripts/run_api.py            # 0.0.0.0:8000
+./venv/bin/python -m pytest tests/ -q
+```
+> ⚠️ venv의 `pip` 스크립트 shebang이 리네임 전 경로(`final-project/venv`)를 물고 있어 깨져 있음. 의존성 설치는 `./venv/bin/python -m pip install ...`로 우회. venv 재생성 여부는 하니 판단 대기.
+
+### 안 한 것 (이번 컷)
+실제 판정 로직(규칙집 RAG), Supabase/DB, 인증, 리포트 UI, 미국 세부 규제, Gemini vs GPT 비교표 실행.
+
+### 다음
+- (블로커) 규칙집(레퍼런스팩) 완성 → `RagJudge`를 `judge/cosmetic.py` 슬롯에 구현. 나머지 코드 불변.
+- 규칙집+실judge 붙은 뒤 43문장으로 Gemini vs GPT 비교표(과금, 하니 승인).
+- 프론트(정빈)가 `CheckReport` 스키마에 붙기 시작.
