@@ -20,6 +20,7 @@ from barum.models import (
 )
 from barum.reference.ingredients import infer_category, match_ingredient
 from barum.reference.mapping import legal_basis_for
+from barum.reference.rules import RuleOutcome, match_rule
 from barum.vlm import VLM
 
 
@@ -256,4 +257,75 @@ class PromptJudge:
                         location=_loc(s),
                     )
                 )
+        return result
+
+
+# ── RagJudge (규칙집 우선 + VLM fallback) ──────────────────────────────────
+
+
+def _rule_explanation(outcome: RuleOutcome, span: str, vtype: ViolationType) -> str:
+    """규칙 매칭 finding의 사람용 설명을 만든다.
+
+    검토필요(실증대상)와 위반은 왜 그 판정인지가 다르므로 문구를 갈라 준다.
+    """
+    if outcome == RuleOutcome.needs_review:
+        return (
+            f"규칙집 대조: '{span}'은 실증대상 표현이다. "
+            f"실증자료가 있으면 합법, 없으면 {vtype.value}. 확인 필요."
+        )
+    return f"규칙집 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정)."
+
+
+class RagJudge:
+    """규칙집 우선 + VLM fallback 하이브리드 판정기.
+
+    규칙집(reference.rules)으로 확정 가능한 문장(§3에서 규정 리서치로 검증된 1호
+    경계표현)은 규칙이 먼저 판정한다. 규칙에 안 걸린 문장만 PromptJudge(VLM)에
+    위임한다. 규칙 확정분은 VLM을 안 부르므로 과금과 과잉판정을 함께 줄인다
+    (Gemini가 진정·탄력을 1호로 과잉판정하던 문제를 규칙이 원천 차단).
+
+    슬롯 구조: PromptJudge를 내부에 합성해 fallback으로 쓴다. StubJudge·PromptJudge는
+    안 건드린다.
+    """
+
+    def __init__(self, vlm: VLM, batch_size: int = 12):
+        self._prompt = PromptJudge(vlm, batch_size)
+
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
+        result = JudgeResult()
+        remaining: list[dict] = []  # 규칙 미확정 → VLM에 넘길 문장
+
+        for s in sentences:
+            match = match_rule(s["text"])
+            if match is None:
+                remaining.append(s)
+                continue
+            if match.outcome == RuleOutcome.legal_allow:
+                # 합법 확정 — finding도 없고 VLM에도 안 넘긴다(과잉판정 차단).
+                continue
+            result.findings.append(
+                Finding(
+                    span=match.span,  # 규칙은 걸린 키워드가 span
+                    sentence=s["text"],
+                    violation_type=match.violation_type,
+                    legal_basis=legal_basis_for(match.violation_type),
+                    flag=match.flag,
+                    explanation=_rule_explanation(
+                        match.outcome, match.span, match.violation_type
+                    ),
+                    location=_loc(s),
+                )
+            )
+
+        # 규칙 미확정분만 VLM 위임(2호 성분정합 등은 PromptJudge가 그대로 처리).
+        if remaining:
+            vlm_result = self._prompt.judge(remaining, region, ingredients)
+            result.findings.extend(vlm_result.findings)
+            result.unjudged.extend(vlm_result.unjudged)
+
         return result

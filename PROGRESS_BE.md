@@ -10,6 +10,35 @@
 
 ---
 
+## 2026-08-11 · RagJudge 구축 (규칙집 우선 + VLM fallback)
+
+브랜치: `feature/be-rag-judge` (origin/main 기준). PM2 승인 하 착수(계획 검토 후).
+
+### 무엇
+판정 슬롯에 `RagJudge`를 추가했다. 규칙집(`reference/rules.py` + `data/judge_rules.json`)으로
+확정 가능한 문장은 규칙이 먼저 판정하고, 규칙에 안 걸린 문장만 내부 `PromptJudge`(VLM)에 위임한다.
+규칙 확정분은 VLM을 안 부르므로 과금과 과잉판정을 함께 줄인다(Gemini가 진정·탄력을 1호로 과잉판정하던 문제 원천 차단).
+
+### 구조
+- `reference/rules.py` — `match_rule(sentence)`가 정규화 문자열 포함 검사로 규칙집을 대조. 우선순위 스캔: violation > needs_review > legal_allow. 미매칭이면 None(VLM 위임).
+- `data/judge_rules.json` — 손 큐레이션(자동추출 아님). §3에서 규정 리서치로 검증된 1호 경계표현. violation(아토피·염증·재생·시술·MTS·병원전용 등)/needs_review(진정·안티에이징·피부장벽 등)/legal_allow(탄력·민감·예민).
+- `judge/cosmetic.py` — `RagJudge`가 `PromptJudge`를 합성 재사용. StubJudge·PromptJudge는 안 건드림.
+- `api/app.py` — `JUDGE_KIND=rag` 분기 추가.
+
+### 결정(PM2 확정)
+- 일반 수식어(완벽·파워·탁월·최적)는 규칙에 안 넣음(A1). `type_5_deception.md`가 "3:1 갈림·미확정"이라 결정론적 규칙에 못박지 않고 VLM에 위임.
+- 명백 5호(경쟁사비방·"3배"·"최고")도 이번 스코프 제외. 근거는 있으니(type_5 예시표 "O") **다음 이터레이션 5호 규칙 추가 시 우선순위로**.
+- co-occurrence("안티에이징 탄력크림"→검토필요)는 우선순위 스캔으로 처리, 테스트로 못박음.
+
+### 후속 조정 대상(오탐 나오면 보고)
+- MTS·니들: `type_1`은 "시술 병행·묘사" 맥락일 때 1호. 제품명에 "마이크로니들"이 그냥 들어가면 5호(사용방법 오인)에 가까울 수 있음. 지금은 1호로 분류(근거 있음), 제품명 오탐 나오면 PM2에 보고.
+- 짧은 키워드 substring 오매칭: "진정" vs "진정한", "재생" vs "재생성" 등. 광고 카피 특성상 대부분 긍정 표방이라 단순 매칭 유지(CLAUDE.md 단순·안정), 오탐 관측 시 조정.
+
+### 테스트
+`test_rag_rules.py`(7) + `test_rag_judge.py`(6) + `test_api.py` 팩토리 1 = 신규 14. 전체 **74 통과**. §3 경계표현 12건 오프라인 스모크 일치 확인.
+
+---
+
 ## 2026-08-11 · 백엔드 세션 인수인계 + 1호 경계표현 규정 리서치
 
 이 세션(백엔드 담당) 종료. 다음 세션 인수인계 문서: `docs/handoffs/2026-08-11-backend-session-handoff.md`.
