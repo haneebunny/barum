@@ -1,0 +1,339 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "barum 판정 백엔드",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "description": "헬스체크.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/check": {
+      "post": {
+        "summary": "Check",
+        "description": "광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.\n\n이미지·글 중 최소 하나는 있어야 한다. 없으면 422.",
+        "operationId": "check_check_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_check_check_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_check_check_post": {
+        "properties": {
+          "region": {
+            "$ref": "#/components/schemas/Region"
+          },
+          "ad_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ad Text"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "region"
+        ],
+        "title": "Body_check_check_post"
+      },
+      "CheckReport": {
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "unjudged": {
+            "items": {
+              "$ref": "#/components/schemas/UnjudgedSentence"
+            },
+            "type": "array",
+            "title": "Unjudged"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "findings",
+          "summary"
+        ],
+        "title": "CheckReport",
+        "description": "`POST /check` 응답. findings + unjudged + summary."
+      },
+      "Finding": {
+        "properties": {
+          "span": {
+            "type": "string",
+            "title": "Span"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "violation_type": {
+            "$ref": "#/components/schemas/ViolationType"
+          },
+          "legal_basis": {
+            "type": "string",
+            "title": "Legal Basis"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "span",
+          "sentence",
+          "violation_type",
+          "legal_basis",
+          "risk",
+          "explanation",
+          "location"
+        ],
+        "title": "Finding",
+        "description": "문구 하나에 대한 판정 결과. 리포트에 한 줄로 렌더된다."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Location": {
+        "properties": {
+          "tile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tile"
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order"
+        ],
+        "title": "Location",
+        "description": "문구가 잡힌 위치.\n\nOCR은 글자 좌표(bbox)를 주지 않는다. 우리가 확보하는 위치 정보는 어느 타일의\n몇 번째 문장이냐까지다. 텍스트 입력(이미지 없음)이면 tile은 None."
+      },
+      "Region": {
+        "type": "string",
+        "enum": [
+          "KR",
+          "US"
+        ],
+        "title": "Region",
+        "description": "검사 대상 국가. 지금은 국내(KR)만 실동작, 미국(US)은 2단계."
+      },
+      "RiskLevel": {
+        "type": "string",
+        "enum": [
+          "고",
+          "중",
+          "저"
+        ],
+        "title": "RiskLevel",
+        "description": "위험도. UI 색 매핑은 프론트가 하되, 데이터는 3단계로 표현한다."
+      },
+      "Summary": {
+        "properties": {
+          "region": {
+            "$ref": "#/components/schemas/Region"
+          },
+          "n_sentences": {
+            "type": "integer",
+            "title": "N Sentences"
+          },
+          "n_findings": {
+            "type": "integer",
+            "title": "N Findings"
+          },
+          "n_unjudged": {
+            "type": "integer",
+            "title": "N Unjudged",
+            "default": 0
+          },
+          "counts_by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts By Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "region",
+          "n_sentences",
+          "n_findings"
+        ],
+        "title": "Summary",
+        "description": "리포트 상단 요약. 정책상 점수가 아니라 근거 개수로 표현한다."
+      },
+      "UnjudgedSentence": {
+        "properties": {
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence",
+          "location"
+        ],
+        "title": "UnjudgedSentence",
+        "description": "판정하지 못한 문장.\n\nVLM 호출 실패(429·빈응답 등)로 위반 여부를 못 가린 문장. 정책상 recall 우선이라\n이걸 '합법'으로 삼키면 미탐이 숨는다. 그래서 findings에도 합법에도 넣지 않고\n별도로 남겨 '미판정(재검사 필요)'으로 드러낸다."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ViolationType": {
+        "type": "string",
+        "enum": [
+          "합법",
+          "1호_의약품오인",
+          "2호_기능성오인",
+          "4호_거짓과장기만",
+          "대상외"
+        ],
+        "title": "ViolationType",
+        "description": "화장품 광고 위반유형 (법 제13조 체계).\n\n화장품은 식품(1~5호)과 체계가 다르다. 3호는 삭제된 조항이라 없다.\n직렬화 값은 한국어 라벨(reference/cosmetic_kr 기준)."
+      }
+    }
+  }
+}

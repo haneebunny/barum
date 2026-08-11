@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-08-11 · 프론트 연동 지원물 (OpenAPI + 픽스처)
+
+브랜치: `feature/be-frontend-fixtures` (`feature/be-prompt-judge` 위에 stacked, unjudged 필드 의존). push·PR 대기.
+목적: 0비용·0의존으로 프론트(정빈)·디자이너를 언블록. 판정 알맹이 없이도 계약(응답 형태)에 바로 붙게 한다.
+지시: PM(A 먼저).
+
+### 무엇을 만들었나
+- **`scripts/dump_openapi.py`** → `backend/openapi.json`: API 스펙 파일. 프론트가 타입 생성·목킹에 쓴다. (서버 뜨면 `/openapi.json`·`/docs`로도 제공.)
+- **`scripts/make_fixtures.py`** → `backend/fixtures/`: 샘플 CheckReport 3종. 모델로 조립해 스키마 100% 유효.
+  - `check_report_image.json` — 이미지 입력(타일 하이라이트), 1·2·4호 골고루.
+  - `check_report_text.json` — 문구-only(스팬 하이라이트, tile=null).
+  - `check_report_with_unjudged.json` — 미판정 상태 포함('재검사 필요' UI용).
+- **`docs/api/README.md`**: 엔드포인트 계약 한 장 + 하이라이트 2모드 + enum 값 + 실행법.
+- **`tests/test_fixtures.py`**: 픽스처가 계약을 지키는지 검증(모델 바뀌면 여기서 잡음).
+
+### 검증
+- `pytest tests/ -q` → **35 passed** (신규 픽스처 5). OpenAPI: multipart 요청 + CheckReport 응답 + 스키마 11종 확인.
+
+### 다음
+- 하니 리뷰 반영. prompt-judge 머지되면 이 PR base를 main으로 재지정.
+- 이어서 C(규칙집 구조/파서)는 대수와 콘텐츠 형태 합의 후.
+
+---
+
 ## 2026-08-11 · VLM 프롬프트 판정기 (PromptJudge)
 
 브랜치: `feature/be-prompt-judge` (origin/main 기준). push·PR 대기.
