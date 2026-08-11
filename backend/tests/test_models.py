@@ -9,9 +9,39 @@ from barum.models import (
     JudgmentFlag,
     Location,
     Region,
+    StoredCheck,
     Summary,
     ViolationType,
 )
+
+
+def _empty_report() -> CheckReport:
+    return CheckReport(
+        findings=[], summary=Summary(region=Region.KR, n_sentences=0, n_findings=0)
+    )
+
+
+def test_check_report_result_id_defaults_none_and_serializes():
+    """result_id는 선택 필드 — 기본 None(미저장), 저장되면 채워진다."""
+    r = _empty_report()
+    assert r.result_id is None
+    r.result_id = "aBc-123"
+    assert r.model_dump(mode="json")["result_id"] == "aBc-123"
+
+
+def test_stored_check_wraps_report():
+    """다시 보기 응답: 리포트를 감싸고 저장 메타(생성시각·이미지유무)를 얹는다."""
+    sc = StoredCheck(
+        result_id="rid",
+        created_at="2026-08-11T00:00:00Z",
+        region=Region.KR,
+        image_available=True,
+        report=_empty_report(),
+    )
+    d = sc.model_dump(mode="json")
+    assert d["result_id"] == "rid"
+    assert d["image_available"] is True
+    assert d["report"]["findings"] == []
 
 
 def test_violation_type_labels():

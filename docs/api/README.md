@@ -23,6 +23,22 @@
 ### `GET /health`
 `{"status": "ok"}`.
 
+### `GET /reports/{result_id}`  (다시 보기)
+저장된 검사를 다시 조회한다. `result_id`는 `POST /check` 응답에 실려 온다. 추측불가 랜덤 문자열이 곧 접근권(로그인 없음)이라, 못 찾으면 `404`.
+```jsonc
+// 200
+{
+  "result_id": "a3Fk9...",
+  "created_at": "2026-08-11T09:00:00Z",
+  "region": "KR",
+  "image_available": true,          // 이미지 입력이었으면 true → 아래 이미지 프록시 사용
+  "report": { /* CheckReport 그대로 */ }
+}
+```
+
+### `GET /reports/{result_id}/image`  (원본 이미지 프록시)
+이미지 입력이었던 검사의 원본을 백엔드가 그대로 스트리밍한다(밴드 하이라이트용 배경). 버킷은 비공개라 이 엔드포인트로만 접근한다. 이미지 없거나 없는 id면 `404`.
+
 ## 응답: `CheckReport`
 
 ```jsonc
@@ -49,7 +65,8 @@
     "n_needs_review": 1,  // flag=검토필요 건수
     "n_unjudged": 0,      // 미판정 문장 수(검토필요와 다른 개념, 아래 참조)
     "counts_by_type": { "1호_의약품오인": 1, "2호_기능성오인": 1, "5호_거짓과장기만": 1 }
-  }
+  },
+  "result_id": "a3Fk9..."  // 저장됐으면 다시 보기 id. 미저장(stub·DB없음·저장실패)이면 null
 }
 ```
 

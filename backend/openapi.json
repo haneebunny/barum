@@ -26,6 +26,84 @@
         }
       }
     },
+    "/reports/{result_id}": {
+      "get": {
+        "summary": "Get Report",
+        "description": "저장된 검사를 다시 본다. 추측불가 result_id가 접근권이라 못 찾으면 404.",
+        "operationId": "get_report_reports__result_id__get",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/{result_id}/image": {
+      "get": {
+        "summary": "Get Report Image",
+        "description": "저장된 원본 이미지를 백엔드가 그대로 스트리밍(버킷 private, 서명 URL 없음).",
+        "operationId": "get_report_image_reports__result_id__image_get",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/check": {
       "post": {
         "summary": "Check",
@@ -133,6 +211,17 @@
           },
           "summary": {
             "$ref": "#/components/schemas/Summary"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
           }
         },
         "type": "object",
@@ -141,7 +230,7 @@
           "summary"
         ],
         "title": "CheckReport",
-        "description": "`POST /check` 응답. findings + unjudged + summary."
+        "description": "`POST /check` 응답. findings + unjudged + summary.\n\nresult_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면\n(JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다."
       },
       "Finding": {
         "properties": {
@@ -239,6 +328,38 @@
         ],
         "title": "Region",
         "description": "검사 대상 국가. 지금은 국내(KR)만 실동작, 미국(US)은 2단계."
+      },
+      "StoredCheck": {
+        "properties": {
+          "result_id": {
+            "type": "string",
+            "title": "Result Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "region": {
+            "$ref": "#/components/schemas/Region"
+          },
+          "image_available": {
+            "type": "boolean",
+            "title": "Image Available"
+          },
+          "report": {
+            "$ref": "#/components/schemas/CheckReport"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_id",
+          "created_at",
+          "region",
+          "image_available",
+          "report"
+        ],
+        "title": "StoredCheck",
+        "description": "`GET /reports/{result_id}` 응답 (다시 보기).\n\n저장된 CheckReport를 감싸고 저장 메타를 얹는다. 리포트 자체는 그대로라 프론트가\n\"방금 결과\"와 \"다시 보기\"를 같은 컴포넌트로 렌더할 수 있다. 원본 이미지는\n별도 프록시(`GET /reports/{id}/image`)로 받는다(image_available이 true일 때)."
       },
       "Summary": {
         "properties": {
