@@ -1,0 +1,101 @@
+"""PromptJudge 유닛테스트.
+
+VLM은 가짜 객체(캔드 results 반환/예외)를 주입한다. 진짜 판정 호출은 수동 스모크.
+
+    venv/bin/python -m pytest tests/test_judge.py -q
+"""
+
+from barum.judge.cosmetic import JudgeResult, PromptJudge, StubJudge
+
+
+def _sentences(texts: list[str]) -> list[dict]:
+    return [{"order": i, "tile": None, "text": t} for i, t in enumerate(texts)]
+
+
+class FakeVLM:
+    """미리 정한 results(번호→라벨/근거)를 돌려주는 가짜 판정 VLM."""
+
+    def __init__(self, results: list[dict]):
+        self._results = results
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        return {"results": self._results}
+
+
+class BoomVLM:
+    """항상 실패하는 VLM(429·빈응답 흉내)."""
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        raise ValueError("VLM이 빈 응답을 반환했다")
+
+
+def test_maps_labels_to_findings():
+    """위반 라벨은 finding으로, 합법·대상외는 무시."""
+    vlm = FakeVLM(
+        [
+            {"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"},
+            {"n": 1, "label": "합법", "reason": ""},
+            {"n": 2, "label": "대상외", "reason": "성분명"},
+        ]
+    )
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 막아 미백", "촉촉한 보습감", "정제수, 글리세린"]), "KR"
+    )
+    assert isinstance(res, JudgeResult)
+    assert len(res.findings) == 1
+    assert len(res.unjudged) == 0
+    f = res.findings[0]
+    assert f.violation_type.value == "2호_기능성오인"
+    assert f.risk.value == "중"
+    assert f.legal_basis.startswith("화장품법 제13조")
+    assert f.span == "멜라닌 막아 미백"  # 문장 단위 = span은 문장 전체
+    assert f.explanation == "미백 주장"
+
+
+def test_missing_or_bad_label_becomes_unjudged():
+    """모델이 결과를 빠뜨리거나 규격 밖 라벨을 주면 '합법'이 아니라 미판정."""
+    vlm = FakeVLM(
+        [
+            {"n": 0, "label": "이상한라벨", "reason": ""},
+            # n=1 결과 누락
+        ]
+    )
+    res = PromptJudge(vlm).judge(_sentences(["문구 A", "문구 B"]), "KR")
+    assert res.findings == []
+    assert {u.sentence for u in res.unjudged} == {"문구 A", "문구 B"}
+
+
+def test_batch_failure_marks_all_unjudged():
+    """배치 호출 실패는 재시도 없이 그 배치 전체를 미판정으로 남긴다."""
+    res = PromptJudge(BoomVLM(), batch_size=12).judge(
+        _sentences(["가", "나", "다"]), "KR"
+    )
+    assert res.findings == []
+    assert len(res.unjudged) == 3
+
+
+def test_batches_span_multiple_calls():
+    """batch_size보다 많으면 여러 배치로 나눠 전역 번호로 되짚는다."""
+    vlm = FakeVLM(
+        [
+            {"n": 0, "label": "합법"},
+            {"n": 1, "label": "1호_의약품오인", "reason": "재생"},
+            {"n": 2, "label": "합법"},
+        ]
+    )
+    # batch_size=1이면 배치가 3번 도는데, FakeVLM은 매번 같은 results를 준다.
+    # 각 배치의 전역 번호(0,1,2)와 매칭되는 항목만 살아남는다.
+    res = PromptJudge(vlm, batch_size=1).judge(
+        _sentences(["보습", "피부 재생", "사용감"]), "KR"
+    )
+    assert len(res.findings) == 1
+    assert res.findings[0].violation_type.value == "1호_의약품오인"
+    assert res.findings[0].location.order == 1
+
+
+def test_stub_judge_returns_judge_result():
+    """StubJudge도 JudgeResult 계약을 지킨다(unjudged 없음)."""
+    res = StubJudge().judge(_sentences(["완벽한 보습", "순한 사용감"]), "KR")
+    assert isinstance(res, JudgeResult)
+    assert len(res.findings) == 1  # "완벽" → 4호
+    assert res.unjudged == []

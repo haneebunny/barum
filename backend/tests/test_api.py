@@ -5,9 +5,14 @@
     venv/bin/python -m pytest tests/test_api.py -q
 """
 
-from fastapi.testclient import TestClient
+import os
 
-from barum.api.app import app
+# 기본 judge는 PromptJudge(VLM 호출)라, API 테스트는 오프라인 stub로 고정한다.
+os.environ["JUDGE_KIND"] = "stub"
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from barum.api.app import app  # noqa: E402
 
 client = TestClient(app)
 

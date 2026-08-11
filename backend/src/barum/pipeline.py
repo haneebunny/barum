@@ -75,7 +75,8 @@ def run_check(
         for s in _split_text_to_sentences(ad_text):
             sentences.append({**s, "order": base + s["order"]})
 
-    findings = judge.judge(sentences, region)
+    result = judge.judge(sentences, region)
+    findings = result.findings
 
     counts: dict[str, int] = {}
     for f in findings:
@@ -86,6 +87,7 @@ def run_check(
         region=Region(region),
         n_sentences=len(sentences),
         n_findings=len(findings),
+        n_unjudged=len(result.unjudged),
         counts_by_type=counts,
     )
-    return CheckReport(findings=findings, summary=summary)
+    return CheckReport(findings=findings, unjudged=result.unjudged, summary=summary)

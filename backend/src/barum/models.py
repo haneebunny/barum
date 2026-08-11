@@ -66,17 +66,31 @@ class Finding(BaseModel):
     location: Location
 
 
+class UnjudgedSentence(BaseModel):
+    """판정하지 못한 문장.
+
+    VLM 호출 실패(429·빈응답 등)로 위반 여부를 못 가린 문장. 정책상 recall 우선이라
+    이걸 '합법'으로 삼키면 미탐이 숨는다. 그래서 findings에도 합법에도 넣지 않고
+    별도로 남겨 '미판정(재검사 필요)'으로 드러낸다.
+    """
+
+    sentence: str
+    location: Location
+
+
 class Summary(BaseModel):
     """리포트 상단 요약. 정책상 점수가 아니라 근거 개수로 표현한다."""
 
     region: Region
     n_sentences: int  # 판정에 투입된 문장 수
     n_findings: int  # 위반으로 지목된 건수(합법 제외)
+    n_unjudged: int = 0  # 판정 실패로 미판정된 문장 수
     counts_by_type: dict[str, int] = Field(default_factory=dict)  # 위반유형별 건수
 
 
 class CheckReport(BaseModel):
-    """`POST /check` 응답. findings + summary."""
+    """`POST /check` 응답. findings + unjudged + summary."""
 
     findings: list[Finding]
+    unjudged: list[UnjudgedSentence] = Field(default_factory=list)
     summary: Summary
