@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>조치 기안 · VeriCops</title>
+<title>조치 기안 · 바름</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<script>(function(){try{var s=localStorage.getItem('vericops-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+<script>(function(){try{var s=localStorage.getItem('barum-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 <style>
 /* =========================================================================
-   VeriCops - 조치·이관 (화면 03)
+   바름 - 조치·이관 (화면 03)
    판매자별로 묶어 공문 한 장. 조치 종류를 고르면 서식·받는 곳·결재선이 바뀐다.
    색은 '주목'에만 (위반 문구·기한 임박). 이관은 조치와 구분되는 별도 영역.
    ========================================================================= */
@@ -232,7 +232,7 @@ button{font-family:inherit; cursor:pointer;}
   <div class="brand">
     <span class="brand-mark">V</span>
     <span class="brand-txt">
-      <span class="brand-name">VeriCops</span>
+      <span class="brand-name">바름</span>
       <span class="brand-sub">허위·과대광고 사후 모니터링 · 식약처 사이버조사팀</span>
     </span>
   </div>
@@ -629,7 +629,7 @@ button{font-family:inherit; cursor:pointer;}
     btn.addEventListener('click', function(){
       var next = root.getAttribute('data-theme')==='dark' ? 'light':'dark';
       root.setAttribute('data-theme', next);
-      try{ localStorage.setItem('vericops-theme', next); }catch(e){}
+      try{ localStorage.setItem('barum-theme', next); }catch(e){}
     });
   })();
 </script>

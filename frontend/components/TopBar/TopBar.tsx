@@ -25,7 +25,7 @@ export function TopBar() {
         </span>
         <span className="flex flex-col leading-[1.15]">
           <span className="text-[16px] font-extrabold tracking-tight text-ink">
-            VeriCops
+            바름
           </span>
           <span className="mt-px text-[11px] text-ink-3">사후 모니터링 콘솔</span>
         </span>

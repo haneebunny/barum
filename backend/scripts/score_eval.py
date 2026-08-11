@@ -19,7 +19,7 @@ from pathlib import Path
 import openpyxl
 
 sys.path.insert(0, "src")
-from vericops.vlm import get_vlm  # noqa: E402
+from barum.vlm import get_vlm  # noqa: E402
 
 XLSX = Path("data/cosmetic_eval_labeling.xlsx")
 COMPARE = Path("data/eval_compare.csv")   # 모델별 요약 누적 → 비교표

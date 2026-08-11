@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vericops.preprocess.ocr import extract_product_sentences  # noqa: E402
-from vericops.vlm import get_vlm  # noqa: E402
+from barum.preprocess.ocr import extract_product_sentences  # noqa: E402
+from barum.vlm import get_vlm  # noqa: E402
 
 DETAILS_DIR = Path("11st_output/details")
 OUT_PATH = Path("data/ocr_sentences.jsonl")

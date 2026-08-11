@@ -1,4 +1,4 @@
-# frontend — vericops 웹 (Next.js)
+# frontend — barum 웹 (Next.js)
 
 식약처 사이버조사팀 허위·과대광고 사후 모니터링 콘솔의 실무자 UI(reviewer/admin).
 이번 컷은 **앱 골격 + 디자인 시스템**만 세운 상태다. 화면별 실제 콘텐츠·데이터·API·auth는 후속 컷.
@@ -22,6 +22,12 @@ npm run dev      # http://localhost:3000
 
 - `/` 검토 큐 · `/detail` · `/dashboard` · `/action` · `/inspection` (스텁)
 - `/styleguide` 디자인 시스템 쇼케이스(토큰 스와치 · StateBadge · EvidenceShield)
+
+## 코딩 관례
+
+1. **공통 레이아웃 우선.** 페이지는 공통 레이아웃(`AppShell`, `PagePlaceholder` 등)을 최대한 재사용한다. 페이지마다 상단바·셸·컨테이너를 새로 짜지 않는다.
+2. **반복 UI는 컴포넌트로 추출.** 두 곳 이상에서 쓰이거나 재사용될 UI는 `components/` 아래 별도 컴포넌트로 뺀다(`StateBadge`, `EvidenceShield`처럼). 페이지 안에 인라인으로 복제하지 않는다.
+3. **배치는 flex/grid + gap 우선.** 요소 간격·정렬은 `margin`이나 `absolute`가 아니라 `flex`/`grid` + `gap`으로 먼저 잡는다. `margin`·`absolute`는 그 방법으로 안 될 때만(겹침·오버레이·미세 보정) 쓴다.
 
 ## 디자인 규칙 (구속력, 어기면 반려)
 

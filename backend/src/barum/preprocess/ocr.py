@@ -7,7 +7,7 @@
 import re
 from pathlib import Path
 
-from vericops.vlm import VLM
+from barum.vlm import VLM
 
 BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 위에서 아래로 자른 조각들이다.
 **각 이미지마다 따로**, 보이는 모든 한국어 텍스트를 위에서 아래 순서로 읽어라.

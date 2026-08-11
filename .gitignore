@@ -13,7 +13,7 @@
 .env.*
 !.env.example
 
-# ── 운영/학습 데이터 (git 밖 — Supabase / 파일시스템에 둔다) ──
+# ── 운영/학습 데이터 (git 밖, Supabase / 파일시스템에 둔다) ──
 backend/data/
 backend/11st_output/
 backend/11st_probe_cosmetic/
@@ -25,6 +25,7 @@ backend/**/tiles/
 
 # ── 내부 문서(비공개) ──
 *.pdf
+*.docx
 
 # ── OS / 에디터 ──
 .DS_Store
@@ -32,8 +33,10 @@ backend/**/tiles/
 .idea/
 .vscode/
 
-# ── Claude Code 로컬 설정 ──
+# ── Claude Code 로컬 설정 · 설치된 스킬/플러그인 (툴링, repo에 안 넣음) ──
 .claude/settings.local.json
+.claude/skills/
+.claude/plugins/
 
 # ── frontend (Next.js) ──
 frontend/node_modules/

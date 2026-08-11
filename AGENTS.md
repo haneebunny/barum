@@ -1,4 +1,4 @@
-# AGENTS.md: vericops 협업 규칙
+# AGENTS.md: barum 협업 규칙
 
 > 작업 규칙(코드 취향·인터뷰·디자인)은 [CLAUDE.md](CLAUDE.md), 진행상황은 [ROADMAP.md](ROADMAP.md), 프로젝트 정의는 [PROJECT.md](PROJECT.md). 이 문서는 **Git 협업 규칙**을 담는다.
 

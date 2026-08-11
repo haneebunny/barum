@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바름 Git 가이드 · pull 받기 + 푸시 전 검증</title>
+<style>
+  :root{
+    --canvas:#f3f5f8; --surface:#fff; --ink:#1f2d44; --muted:#5b6472;
+    --line:#e2e6ec; --accent:#12509e; --crit:#c0392b; --crit-bg:#faeceb;
+    --code:#eef1f5; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--canvas); color:var(--ink);
+    font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    font-variant-numeric:tabular-nums; line-height:1.6;
+    padding:28px 20px 64px;
+  }
+  .wrap{max-width:860px; margin:0 auto}
+  header.top{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 16px; margin-bottom:6px}
+  .brand{font-size:21px; font-weight:800; letter-spacing:-.02em}
+  .brand b{color:var(--accent)}
+  .sub{color:var(--muted); font-size:14px}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 22px}
+  .chip{border:1px solid var(--line); background:var(--surface); border-radius:999px;
+    padding:5px 12px; font-size:13px; color:var(--muted)}
+  .chip strong{color:var(--ink); font-weight:700}
+
+  .flow{display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin:0 0 6px}
+  .flow .s{border:1px solid var(--line); border-radius:8px; padding:5px 11px; font-weight:700; font-size:13.5px}
+  .flow .s.hot{border-color:color-mix(in srgb, var(--crit) 45%, var(--line)); color:var(--crit)}
+  .flow .arw{color:var(--muted); font-weight:700}
+  .flow-note{color:var(--muted); font-size:13px; margin:0 0 26px}
+
+  h2{font-size:19px; font-weight:800; letter-spacing:-.01em; margin:30px 0 4px}
+  .lead{color:var(--muted); margin:0 0 10px; font-size:14.5px}
+  h3{font-size:14px; color:var(--muted); font-weight:700; margin:18px 0 6px}
+
+  section.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 20px; margin:10px 0 4px}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0; padding-left:20px}
+  li{margin:5px 0}
+
+  pre{background:var(--code); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; overflow-x:auto; margin:10px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px}
+  pre code{color:var(--ink); white-space:pre}
+  .k{color:var(--ink)}
+  .cmt{color:var(--muted)}
+  code.inline{background:var(--code); border:1px solid var(--line); border-radius:5px;
+    padding:1px 6px; font-size:12.5px}
+
+  .danger{background:var(--crit-bg); border:1px solid color-mix(in srgb, var(--crit) 45%, var(--line));
+    border-radius:var(--radius); padding:14px 16px; margin:12px 0}
+  .danger .h{font-weight:800; color:var(--crit); margin-bottom:2px}
+  .danger .b{color:var(--ink); font-size:14px}
+
+  .verdicts{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin:12px 0}
+  .v{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--surface)}
+  .v .t{font-weight:800; margin-bottom:2px}
+  .v.block .t{color:var(--crit)}
+  .v .d{color:var(--muted); font-size:13.5px}
+  .v .exit{font-size:12px; color:var(--muted); margin-top:6px}
+
+  footer{margin-top:30px; color:var(--muted); font-size:12.5px; display:flex; flex-wrap:wrap;
+    gap:6px 16px; align-items:center; border-top:1px solid var(--line); padding-top:14px}
+  footer .swatch{display:inline-block; width:10px; height:10px; border-radius:2px;
+    background:var(--crit); vertical-align:0; margin-right:5px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <span class="brand"><b>바름</b> Git 가이드</span>
+    <span class="sub">pull 받기 + 푸시 전 검증</span>
+  </header>
+
+  <div class="meta">
+    <span class="chip">환경 <strong>윈도우 + 맥</strong></span>
+    <span class="chip">브랜치 <strong>docs/example-branch</strong></span>
+    <span class="chip">원격 <strong>origin</strong></span>
+  </div>
+
+  <div class="flow">
+    <span class="s">pull</span><span class="arw">&rarr;</span>
+    <span class="s">작업</span><span class="arw">&rarr;</span>
+    <span class="s hot">preflight</span><span class="arw">&rarr;</span>
+    <span class="s">add</span><span class="arw">&rarr;</span>
+    <span class="s">commit</span><span class="arw">&rarr;</span>
+    <span class="s">push</span>
+  </div>
+  <p class="flow-note">일 시작할 때 최신을 받고(pull), 끝내고 올리기 전에 검사한다(preflight). 검사를 통과해야 push.</p>
+
+  <!-- ================= A. 시작할 때: pull ================= -->
+  <h2>A. 일 시작할 때: 최신 받기 (git pull)</h2>
+  <p class="lead">남이 올린 변경을 먼저 받아두면 충돌이 줄어든다. 특히 윈도우와 맥을 오가며 작업하면, 다른 기기에서 올린 걸 먼저 받는 게 중요하다.</p>
+
+  <section class="card">
+    <h3>1. 내 변경부터 정리</h3>
+    <p>먼저 지금 뭐가 바뀌었는지 본다.</p>
+    <pre><code><span class="k">git status</span>   <span class="cmt"># 바뀐 파일 확인</span></code></pre>
+    <p>바꾼 게 있으면 두 가지 중 하나로 정리한다. 커밋할 준비가 됐으면 커밋하고, 아직 아니면 잠시 보관한다.</p>
+    <pre><code><span class="cmt"># (준비됐으면) 커밋</span>
+<span class="k">git add -A</span>
+<span class="k">git commit -m </span><span class="cmt">"타입: 한 줄 설명"</span>
+
+<span class="cmt"># (아직이면) 임시 보관 후, pull 끝나고 되돌리기</span>
+<span class="k">git stash</span></code></pre>
+
+    <h3>2. 현재 브랜치 확인</h3>
+    <pre><code><span class="k">git branch --show-current</span>   <span class="cmt"># docs/example-branch 인지 확인</span></code></pre>
+
+    <h3>3. 최신 받기</h3>
+    <pre><code><span class="k">git pull</span></code></pre>
+    <p class="lead">현재 브랜치의 upstream이 <code class="inline">origin/docs/example-branch</code>으로 잡혀 있어서, 그냥 <code class="inline">git pull</code>이면 현재 브랜치 기준으로 받는다.</p>
+
+    <h3>4. 보관해 뒀으면 되돌리기</h3>
+    <pre><code><span class="k">git stash pop</span>   <span class="cmt"># 1번에서 git stash 했을 때만</span></code></pre>
+  </section>
+
+  <h3>충돌(conflict)이 나면</h3>
+  <section class="card">
+    <p>같은 줄을 서로 다르게 고쳤을 때 충돌이 난다. 당황하지 말고 순서대로.</p>
+    <ol>
+      <li><code class="inline">git status</code>로 충돌 난 파일을 확인한다.</li>
+      <li>그 파일을 열면 아래 표시가 있다. 표시 사이에서 <b>남길 내용만</b> 남기고 표시 줄은 지운다.
+        <pre><code><span class="cmt">&lt;&lt;&lt;&lt;&lt;&lt;&lt; 내 것
+   ... 내가 고친 내용 ...
+=======
+   ... 받아온 내용 ...
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; 상대 것</span></code></pre>
+      </li>
+      <li>정리한 파일을 다시 올린다.
+        <pre><code><span class="k">git add </span><span class="cmt">&lt;정리한 파일&gt;</span>
+<span class="k">git commit</span>   <span class="cmt"># merge 메시지가 뜨면 그대로 저장</span></code></pre>
+      </li>
+    </ol>
+    <div class="danger">
+      <div class="h">헷갈리면 멈추기</div>
+      <div class="b">어느 쪽을 남길지 확신이 없으면 억지로 진행하지 말고 물어본다. 충돌 정리를 잘못하면 남의 작업이 사라질 수 있다.</div>
+    </div>
+  </section>
+
+  <!-- ================= B. 끝낼 때: preflight ================= -->
+  <h2>B. 올리기 전에: 푸시 전 검증 (preflight)</h2>
+  <p class="lead">비밀 유출(키, .env, 문서)과 깨진 코드를 올리기 전에 한 번에 잡는다. 이 검사는 git 명령을 대신 실행하지 않는다. 통과하면 마지막에 복사해서 쓸 명령을 보여준다.</p>
+
+  <section class="card">
+    <h3>1. 검사 실행</h3>
+    <pre><code><span class="cmt"># 맥 / 리눅스</span>
+<span class="k">./preflight.sh</span>
+
+<span class="cmt"># 윈도우 PowerShell</span>
+<span class="k">.\preflight.ps1</span></code></pre>
+    <p>배포 전이거나 프론트를 크게 바꿨으면 빌드까지 확인한다. 옵션은 두 OS 모두 <code class="inline">--build</code>로 같다.</p>
+    <pre><code><span class="k">./preflight.sh --build</span>      <span class="cmt"># 맥</span>
+<span class="k">.\preflight.ps1 --build</span>     <span class="cmt"># 윈도우</span></code></pre>
+
+    <h3>2. 결과 읽기</h3>
+    <div class="verdicts">
+      <div class="v block">
+        <div class="t">차단 (FAIL)</div>
+        <div class="d">비밀 파일, 하드코딩 키, 민감 문서/대용량 데이터, 문법/lint/build/test 실패. 여기서 멈춘다. 사유를 고치고 다시 실행한다.</div>
+        <div class="exit">종료코드 1 · git 안내 안 뜸</div>
+      </div>
+      <div class="v">
+        <div class="t">경고 (WARN)</div>
+        <div class="d">이메일 노출, 추적 안 된 민감 파일, 큰 파일. 막지는 않는다. 눈으로 확인만 하고 넘어간다.</div>
+        <div class="exit">종료코드 0 · 진행 가능</div>
+      </div>
+      <div class="v">
+        <div class="t">통과 (OK)</div>
+        <div class="d">전부 통과하면 마지막에 아래 3번 git 명령이 그대로 출력된다. 복사해서 쓰면 된다.</div>
+        <div class="exit">종료코드 0 · git 안내 출력</div>
+      </div>
+    </div>
+
+    <h3>3. 통과했으면 올리기</h3>
+    <pre><code><span class="k">git add -A</span>                       <span class="cmt"># 특정 파일만: git add &lt;경로&gt;</span>
+<span class="k">git commit -m </span><span class="cmt">"타입: 한 줄 설명"</span>
+<span class="k">git push</span></code></pre>
+    <p class="lead">커밋 메시지 규칙: 한국어로, 접두어는 feat / fix / docs / chore / refactor 중 하나, 붙임표는 하이픈만 쓰고 em-dash는 쓰지 않는다. 예: <code class="inline">git commit -m "docs: git 가이드 추가"</code></p>
+  </section>
+
+  <div class="danger">
+    <div class="h">차단이 뜨면 절대 우회하지 말 것</div>
+    <div class="b">비밀 파일이나 키가 잡혔는데도 억지로 올리면(예: git add로 강제 추가) 유출이 그대로 원격에 남는다. 한 번 올라간 비밀은 지워도 기록에 남으니, 차단은 반드시 원인을 없애고 다시 검사한다. 자세한 검사 항목과 오탐 처리는 <a href="preflight.md">docs/preflight.md</a> 참고.</div>
+  </div>
+
+  <footer>
+    <span><span class="swatch"></span>빨강은 "차단 / 절대 하지 말 것"에만. 나머지 상태는 글자로 표시.</span>
+    <span>기준 문서: docs/preflight.md</span>
+  </footer>
+
+</div>
+</body>
+</html>

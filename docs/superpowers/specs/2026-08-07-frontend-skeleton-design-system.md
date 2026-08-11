@@ -1,7 +1,7 @@
 # 스펙: Frontend 앱 격 + 디자인 시스템 (Next.js)
 
 - **작성일:** 2026-08-07
-- **범위:** vericops 모노레포 `frontend/`에 Next.js 앱의 **골격 + 디자인 시스템**만 구축. 화면 콘텐츠·데이터·API는 후속.
+- **범위:** barum 모노레포 `frontend/`에 Next.js 앱의 **골격 + 디자인 시스템**만 구축. 화면 콘텐츠·데이터·API는 후속.
 - **근거 문서:** `design/mockups/HANDOFF.md`(디자인 시스템·구속 규칙), `PROJECT.md`(reviewer/admin·닫힌 순환), `CLAUDE.md` §F(디자인 규칙).
 
 ---

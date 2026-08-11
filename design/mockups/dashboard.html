@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>운영 대시보드 · VeriCops</title>
+<title>운영 대시보드 · 바름</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<script>(function(){try{var s=localStorage.getItem('vericops-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+<script>(function(){try{var s=localStorage.getItem('barum-theme');var d=s||'light';document.documentElement.setAttribute('data-theme',d);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 <style>
 /* =========================================================================
-   VeriCops - 운영 대시보드 (화면 05, 관리자 전용)
+   바름 - 운영 대시보드 (화면 05, 관리자 전용)
 
    KPI는 관리자의 네 가지 질문에 답한다
      1) 팀이 물량을 감당하나  -> 적체 순증 (유입 - 처리)
@@ -285,7 +285,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="brand">
     <span class="brand-mark">V</span>
     <span class="brand-txt">
-      <span class="brand-name">VeriCops</span>
+      <span class="brand-name">바름</span>
       <span class="brand-sub">허위·과대광고 사후 모니터링 · 식약처 사이버조사팀</span>
     </span>
   </div>
@@ -663,7 +663,7 @@ tbody tr:last-child td{border-bottom:none;}
     btn.addEventListener('click', function(){
       var next = root.getAttribute('data-theme')==='dark' ? 'light':'dark';
       root.setAttribute('data-theme', next);
-      try{ localStorage.setItem('vericops-theme', next); }catch(e){}
+      try{ localStorage.setItem('barum-theme', next); }catch(e){}
     });
   })();
 </script>

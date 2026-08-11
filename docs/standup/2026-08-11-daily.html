@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바름 데일리 가이드 · 2026-08-11</title>
+<style>
+  :root{
+    --canvas:#f3f5f8; --surface:#fff; --ink:#1f2d44; --muted:#5b6472;
+    --line:#e2e6ec; --accent:#12509e; --crit:#c0392b; --crit-bg:#faeceb;
+    --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --canvas:#121722; --surface:#1a2230; --ink:#e7ecf3; --muted:#9aa6b6;
+      --line:#2b3648; --accent:#5b9be8; --crit:#e0796d; --crit-bg:#2e1d1c;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--canvas); color:var(--ink);
+    font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    font-variant-numeric:tabular-nums; line-height:1.55;
+    padding:28px 20px 60px;
+  }
+  .wrap{max-width:960px; margin:0 auto}
+  header.top{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px; margin-bottom:6px}
+  .brand{font-size:20px; font-weight:800; letter-spacing:-.02em}
+  .brand b{color:var(--accent)}
+  .sub{color:var(--muted); font-size:14px}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 24px}
+  .chip{border:1px solid var(--line); background:var(--surface); border-radius:999px;
+    padding:5px 12px; font-size:13px; color:var(--muted)}
+  .chip strong{color:var(--ink); font-weight:700}
+  .chip.dday strong{color:var(--accent)}
+  h2{font-size:14px; letter-spacing:.02em; color:var(--muted); text-transform:none;
+    margin:26px 0 12px; font-weight:700}
+  .focus{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px}
+  .focus .wk{font-weight:700; margin-bottom:4px}
+  .focus ul{margin:8px 0 0; padding-left:18px; color:var(--muted)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px}
+  .card h3{margin:0 0 2px; font-size:16px; font-weight:800}
+  .card .role{color:var(--muted); font-size:12.5px; margin-bottom:10px}
+  ol.tasks{margin:0; padding-left:18px}
+  ol.tasks li{margin:7px 0}
+  .tag{display:inline-block; font-size:11.5px; font-weight:700; border:1px solid var(--line);
+    border-radius:6px; padding:1px 7px; color:var(--muted); margin-right:4px; vertical-align:1px}
+  .tag.top{color:var(--accent); border-color:color-mix(in srgb, var(--accent) 40%, var(--line))}
+  .muted{color:var(--muted)}
+  .block{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:6px 4px}
+  .block .row{display:flex; gap:10px; align-items:flex-start; padding:10px 14px; border-top:1px solid var(--line)}
+  .block .row:first-child{border-top:0}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--crit); margin-top:7px; flex:0 0 auto}
+  .row .who{font-weight:700; white-space:nowrap}
+  .owner{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:14px 18px; color:var(--muted); font-size:14px}
+  .owner b{color:var(--ink)}
+  .flow{font-weight:700; color:var(--ink)}
+  footer{margin-top:26px; color:var(--muted); font-size:12.5px; display:flex; flex-wrap:wrap;
+    gap:6px 16px; align-items:center}
+  .legend{display:inline-flex; align-items:center; gap:6px}
+  .legend .dot{margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <span class="brand"><b>바름</b> 데일리 가이드</span>
+    <span class="sub">화장품 광고 컴플라이언스 자가검증 · v1.5</span>
+  </header>
+
+  <div class="meta">
+    <span class="chip">2026-08-11 <strong>화</strong></span>
+    <span class="chip dday">발표까지 <strong>D-16</strong> (8/27 수)</span>
+    <span class="chip">1주차 · <strong>Day 1</strong> / 5</span>
+    <span class="chip">크리티컬 패스 <strong>규칙집 → 판정</strong></span>
+  </div>
+
+  <h2>이번 주 (1주차 · 8/11~15)</h2>
+  <div class="focus">
+    <div class="wk">디자인 확정 + 규칙집 시작</div>
+    <ul>
+      <li>화면 3개(홈 · 새 검사 · 리포트) 디자인 방향 확정</li>
+      <li>"넣는 것 / 나오는 것" 입출력 형식 한 장으로 약속 (셋이)</li>
+      <li>규칙집 착수: 화장품법 1~4호 + 금지 표현 + 기능성 성분표(미백·주름)</li>
+      <li>평가셋 43문장 라벨링 완료</li>
+    </ul>
+  </div>
+
+  <h2>오늘 각자 할 일</h2>
+  <div class="grid">
+
+    <div class="card">
+      <h3>대수</h3>
+      <div class="role">규칙집 · 평가셋 · (판정 준비)</div>
+      <ol class="tasks">
+        <li><span class="tag top">본업</span>평가셋 라벨링 43문장 (<span class="muted">cosmetic_eval_labeling.xlsx</span>): 위반/합법 + 1~4호 유형. 대수 혼자.</li>
+        <li>규칙집 마무리 → 하니 검수 요청 <span class="muted">(거의 완료)</span>.</li>
+        <li><span class="muted">여력 시:</span> 판정 프로그램 재활용 계획 스케치(식품 OCR·prescreen·vlm 어댑터를 화장품 프롬프트로 교체).</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>정빈</h3>
+      <div class="role">프론트 (화면 3개)</div>
+      <ol class="tasks">
+        <li>기획서 완료 → 하니 검수 요청.</li>
+        <li><span class="tag top">참여</span>입출력 형식 "셋이 약속"에 참여 + 화면 3개 요구사항 정리.</li>
+        <li>화면 목업은 디자인 세션이 제작 → 산출물 대기하며 기존 Next.js 골격 파악, v1.5 3화면 구조로 재구성 준비.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>하니</h3>
+      <div class="role">총괄 · 개발리드 (착수·검수)</div>
+      <ol class="tasks">
+        <li><span class="tag top">언블로커</span>입출력 형식 "셋이 약속" 소집 (오늘 최우선).</li>
+        <li>화면 3개 디자인 방향 확정(정빈과) → 디자인 세션에 제작 지시.</li>
+        <li>규칙집 · 평가셋 검수.</li>
+        <li>결정: 상세페이지 뼈대 생성 기능(v1.5) 주차 편성.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>디자인 세션</h3>
+      <div class="role">화면 목업 (하니 지시 대기)</div>
+      <ol class="tasks">
+        <li>화면 3개 목업: 홈 · 새 검사 · <b>결과 리포트</b>.</li>
+        <li>리포트 핵심: 문구 빨간 밑줄 + "무슨 법 몇 조 위반" + 위험도, 원본 링크 크게, 스크린샷 보존 표시.</li>
+        <li class="muted">착수 신호 = 하니의 디자인 방향 확정.</li>
+      </ol>
+    </div>
+
+  </div>
+
+  <h2>지금 급한 것 (블로커 · 하니 결정 대기)</h2>
+  <div class="block">
+    <div class="row"><span class="dot"></span><span><span class="who">입출력 형식 미확정</span> <span class="muted">— 정해져야 판정(대수)·화면(정빈)이 서로 안 기다리고 병렬 진행. 하니가 오늘 소집.</span></span></div>
+    <div class="row"><span class="dot"></span><span><span class="who">상세페이지 뼈대 기능 주차 미편성</span> <span class="muted">— v1.5 신규 범위. 어느 주차에 넣을지 하니 결정 필요.</span></span></div>
+  </div>
+
+  <h2>일하는 방식</h2>
+  <div class="owner">
+    모든 태스크는 <span class="flow">하니 착수(결정) → 담당 실행 → 하니 검수</span> 순서로 돈다. 시작과 끝은 하니를 거친다.
+    <br>비용은 사실상 0: 판정 AI는 Gemini 무료 키, 큰 배치 재실행 금지.
+  </div>
+
+  <footer>
+    <span class="legend"><span class="dot"></span> 빨강 = 지금 급한 것(블로커)에만. 나머지 상태는 글자로 표시.</span>
+    <span>기준: ROADMAP v1.5 (2026-08-10)</span>
+  </footer>
+
+</div>
+</body>
+</html>
