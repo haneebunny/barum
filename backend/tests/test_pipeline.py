@@ -11,7 +11,28 @@ import io
 from PIL import Image
 
 from barum.judge.cosmetic import JudgeResult, StubJudge
-from barum.pipeline import run_check
+from barum.pipeline import _attach_bands, run_check
+
+
+def test_attach_bands_sets_coordinates_by_tile():
+    """타일 이름으로 밴드를 찾아 문장에 y_start/y_end·원본 크기를 붙인다."""
+    sents = [
+        {"order": 0, "tile": "s_t00.png", "text": "a"},
+        {"order": 1, "tile": "s_t01.png", "text": "b"},
+    ]
+    bands = {"s_t00.png": (0, 1480), "s_t01.png": (1400, 2900)}
+    _attach_bands(sents, bands, source_w=1000, source_h=9000)
+    assert (sents[0]["y_start"], sents[0]["y_end"]) == (0, 1480)
+    assert (sents[1]["y_start"], sents[1]["y_end"]) == (1400, 2900)
+    assert all(s["source_w"] == 1000 and s["source_h"] == 9000 for s in sents)
+
+
+def test_attach_bands_unknown_tile_leaves_band_absent():
+    """밴드 맵에 없는 타일이면 좌표를 안 넣는다(잘못된 밴드 대신 없음이 안전)."""
+    sents = [{"order": 0, "tile": "unknown.png", "text": "a"}]
+    _attach_bands(sents, {"s_t00.png": (0, 100)}, source_w=1000, source_h=9000)
+    assert "y_start" not in sents[0]
+    assert sents[0]["source_w"] == 1000  # 원본 크기는 그래도 실린다
 
 
 class FakeVLM:
@@ -65,6 +86,29 @@ def test_image_path_uses_ocr():
     f = report.findings[0]
     assert f.violation_type.value == "1호_의약품오인"  # "재생"
     assert f.location.tile is not None  # 타일에서 왔다
+    # 타일 밴드 좌표·원본 크기가 실린다(200x200 통짜 → 밴드 0~200).
+    assert f.location.y_start == 0
+    assert f.location.y_end == 200
+    assert f.location.source_h == 200
+    assert f.location.source_w == 200
+
+
+def test_text_path_has_no_band_coordinates():
+    """텍스트 입력엔 타일이 없으니 밴드 좌표도 None."""
+    report = run_check(
+        region="KR",
+        ad_text="미백에 도움을 줍니다.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+    )
+    loc = report.findings[0].location
+    assert loc.tile is None
+    assert loc.y_start is None
+    assert loc.y_end is None
+    assert loc.source_h is None
+    assert loc.source_w is None
 
 
 def test_both_inputs_concatenate():

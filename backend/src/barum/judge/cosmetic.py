@@ -58,7 +58,19 @@ class CosmeticJudge(Protocol):
 
 
 def _loc(s: dict) -> Location:
-    return Location(tile=s.get("tile"), order=s.get("order", 0))
+    """문장 dict → Location. 밴드 좌표·원본 크기는 이미지 입력에만 실린다.
+
+    _ocr_image가 문장 dict에 넣어 준 y_start/y_end/source_h/source_w를 그대로
+    옮긴다. 텍스트 입력엔 이 키들이 없어 None으로 남는다(밴드 하이라이트 스킵).
+    """
+    return Location(
+        tile=s.get("tile"),
+        order=s.get("order", 0),
+        y_start=s.get("y_start"),
+        y_end=s.get("y_end"),
+        source_h=s.get("source_h"),
+        source_w=s.get("source_w"),
+    )
 
 
 # ── StubJudge (규칙집·VLM 없이 스키마 시연) ────────────────────────────────
