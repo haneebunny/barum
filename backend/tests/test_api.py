@@ -9,6 +9,8 @@ import os
 
 # 기본 judge는 PromptJudge(VLM 호출)라, API 테스트는 오프라인 stub로 고정한다.
 os.environ["JUDGE_KIND"] = "stub"
+# 이력 저장은 Supabase(네트워크)라 기본 테스트에선 끈다. 저장 경로는 test_history_api가 가짜로 검증.
+os.environ["CHECKS_PERSIST"] = "0"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
