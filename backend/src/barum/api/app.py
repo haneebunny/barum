@@ -9,7 +9,7 @@ import os
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from barum.judge.cosmetic import StubJudge
+from barum.judge.cosmetic import CosmeticJudge, PromptJudge, StubJudge
 from barum.models import CheckReport, Region
 from barum.pipeline import run_check
 from barum.vlm import get_vlm
@@ -24,6 +24,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _build_judge() -> CosmeticJudge:
+    """판정기를 만든다.
+
+    기본은 PromptJudge(VLM 제로샷, JUDGE_PROVIDER). 키가 없거나 오프라인에서
+    돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음).
+    """
+    if os.environ.get("JUDGE_KIND", "prompt") == "stub":
+        return StubJudge()
+    return PromptJudge(get_vlm(os.environ.get("JUDGE_PROVIDER", "gemini")))
 
 
 @app.get("/health")
@@ -48,15 +59,14 @@ async def check(
             status_code=422, detail="ad_text 또는 image 중 최소 하나는 필요하다."
         )
 
-    # 텍스트 전용 요청은 VLM이 필요 없다. 이미지가 있을 때만 어댑터를 만든다
-    # (없으면 GOOGLE_API_KEY 없이도 글 검사가 된다).
-    vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
+    # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
+    ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
 
     return run_check(
         region=region.value,
         ad_text=ad_text,
         image_bytes=image_bytes,
         image_filename=image.filename if image is not None else None,
-        vlm=vlm,
-        judge=StubJudge(),
+        vlm=ocr_vlm,
+        judge=_build_judge(),
     )

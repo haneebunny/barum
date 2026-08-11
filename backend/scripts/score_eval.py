@@ -19,6 +19,7 @@ from pathlib import Path
 import openpyxl
 
 sys.path.insert(0, "src")
+from barum.judge.cosmetic import JUDGE_PROMPT  # noqa: E402
 from barum.vlm import get_vlm  # noqa: E402
 
 XLSX = Path("data/cosmetic_eval_labeling.xlsx")
@@ -27,24 +28,8 @@ COMPARE = Path("data/eval_compare.csv")   # 모델별 요약 누적 → 비교�
 LABELS = ["합법", "1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만", "대상외"]
 VIOLATION = {"1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만"}
 
-JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·광고 규정을 위반하는지 판정한다.
-아래 문장 각각에 라벨 하나와 짧은 근거를 매겨라.
-
-라벨(정확히 이 중 하나만):
-- 합법 : 일반 보습·사용감·제형 설명 등 위반 소지 없음
-- 1호_의약품오인 : 질병·치료·재생·염증 등 의학적/의약품 같은 효능 암시
-- 2호_기능성오인 : 미백·주름개선·자외선차단 기능성 효능을 주장
-- 4호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
-- 대상외 : 광고 문구가 아님(성분명 나열, 거래·배송 안내, 인증서 표시, 단순 제품정보·브랜드명)
-
-규칙:
-- 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 4호 > 합법.
-- 미탐(위반을 합법으로 놓침)이 제일 나쁘다. 애매하면 위반 쪽으로 판단한다.
-
-문장:
-{items}
-
-JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."}}]}}"""
+# 판정 프롬프트는 barum.judge.cosmetic이 원본. 판정기(PromptJudge)와 채점기가 같은
+# 프롬프트를 써야 채점 결과가 실제 API 판정과 일치한다.
 
 
 def load_labeled():

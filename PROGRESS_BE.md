@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-08-11 · VLM 프롬프트 판정기 (PromptJudge)
+
+브랜치: `feature/be-prompt-judge` (origin/main 기준). push·PR 대기.
+목적: 규칙집(RAG) 없이도 지금 실판정. StubJudge를 실동작 판정기로 대체해 데모를 end-to-end로 돌린다.
+
+### 무엇을 만들었나
+- **`PromptJudge`** (`judge/cosmetic.py`): VLM 제로샷 판정. `score_eval.py`의 검증된 `JUDGE_PROMPT`를 공유(원본을 cosmetic.py로 옮기고 score_eval이 import). 문장 배치(기본 12) 판정 → 위반 라벨만 Finding.
+- **판정기 슬롯 계약 변경**: `CosmeticJudge.judge`가 `JudgeResult{findings, unjudged}` 반환. StubJudge도 맞춤.
+- **미판정(unjudged) 표현**: 모델 `models.py`에 `UnjudgedSentence` + `CheckReport.unjudged` + `Summary.n_unjudged` 추가.
+- **API 배선**: 기본 judge = PromptJudge(JUDGE_PROVIDER, 기본 Gemini). 오프라인/키없음용 `JUDGE_KIND=stub` 스위치.
+
+### 핵심 결정: 배치 실패는 '스킵'이 아니라 '미판정'
+recall 우선이라 판정 실패 문장을 조용히 버리면 '합법'으로 오인돼 미탐이 숨는다. 그래서:
+- VLM 호출은 재시도 안 함(과금 정책). 하지만 실패 문장을 드롭하지 않고 `unjudged`로 남겨 '재검사 필요'로 드러낸다.
+- 모델이 결과를 빠뜨리거나 규격 밖 라벨을 줘도 합법으로 삼키지 않고 미판정 처리.
+
+### 결정점 (하니 승인, veto 가능)
+1. span = 전체 문장 (프롬프트가 문장 단위 라벨). span 정밀추출은 후순위.
+2. risk = 유형별 고정 매핑(1호=고, 2호=중, 4호=중). 프롬프트가 위험도 안 줌.
+3. 배치 ~12문장, 실패 시 미판정.
+
+### 검증 결과
+- `pytest tests/ -q` → **30 passed** (신규 test_judge 5 포함). VLM은 가짜 어댑터 주입.
+- score_eval `--dry` 정상(공유 프롬프트 일치).
+- **실판정 스모크(Gemini)**: 텍스트 4문장 → 3위반(2호 주름개선·1호 아토피치료·4호 3배) 정확, 보습크림은 합법. 실이미지(OCR+판정 2회) → 6문장 4위반(완벽한→4호, 탄력→2호, 파워수분→4호, 진정→1호), 미판정 0, 에러 없음.
+
+### 다음
+- (여전히 블로커) 규칙집 완성 → `RagJudge`로 근거 조항·성분정합 정밀화. PromptJudge는 그 전까지의 실판정 베이스라인.
+- 규칙집+실judge 후 43문장 Gemini vs GPT 비교표(과금, 하니 승인).
+
+---
+
 ## 2026-08-11 · 판정 백엔드 API 골격 (규칙집 없이 선구축)
 
 브랜치: `feature/be-api-skeleton` (로컬 커밋 `52e1367`, push·PR 대기).
