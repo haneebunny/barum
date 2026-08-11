@@ -45,8 +45,23 @@ def _build_judge() -> CosmeticJudge:
         return StubJudge()
     vlm = get_vlm(os.environ.get("JUDGE_PROVIDER", "openai"))
     if kind == "rag":
-        return RagJudge(vlm)
+        return RagJudge(vlm, case_retriever=_maybe_case_retriever())
     return PromptJudge(vlm)
+
+
+def _maybe_case_retriever():
+    """사례 pgvector 검색기를 만든다. Supabase 설정이 없거나 실패하면 None.
+
+    None이면 RagJudge는 규정만으로 grounding(사례는 cases.md 통째 대신 없음). 판정
+    자체는 Supabase 없이도 돌아간다 — 사례 검색은 부가 근거일 뿐이라 없어도 죽지 않게.
+    """
+    try:
+        from barum.storage.cases_store import build_case_retriever
+
+        return build_case_retriever()
+    except Exception as e:
+        print(f"[warn] 사례 검색 비활성(규정 grounding만 사용): {type(e).__name__}: {e}")
+        return None
 
 
 @app.get("/health")

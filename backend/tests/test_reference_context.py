@@ -5,7 +5,21 @@
     ./venv/bin/python -m pytest tests/test_reference_context.py -q
 """
 
-from barum.reference.context import build_judgment_context
+from barum.reference.context import (
+    build_judgment_context,
+    build_regulation_context,
+)
+
+
+def test_regulation_context_excludes_cases():
+    """규정 전용 컨텍스트는 규정·판정기준은 넣되 cases.md(실사례)는 뺀다.
+
+    검색 경로(Phase3)는 규정 + '검색된' 사례만 넣으므로, cases.md 통째는 안 들어간다.
+    """
+    reg = build_regulation_context()
+    assert "아토피" in reg  # 규정·판정기준
+    assert "실증대상" in reg
+    assert "광고업무정지" not in reg  # cases.md의 실제 처분 문구는 빠짐
 
 
 def test_context_includes_key_reference_content():

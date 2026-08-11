@@ -18,7 +18,10 @@ from barum.models import (
     UnjudgedSentence,
     ViolationType,
 )
-from barum.reference.context import build_judgment_context
+from barum.reference.context import (
+    build_judgment_context,
+    build_regulation_context,
+)
 from barum.reference.ingredients import infer_category, match_ingredient
 from barum.reference.mapping import legal_basis_for
 from barum.reference.rules import RuleOutcome, match_rule
@@ -245,6 +248,10 @@ class PromptJudge:
 
             for j, s in enumerate(batch):
                 item = by_n.get(start + j)
+                # n이 빗나가도(모델이 1-based 등) 결과 수 = 문장 수면 순서로 대응한다.
+                # 개수가 다르면(누락·중복) 위치를 못 믿으니 fallback 안 함 → 미판정.
+                if item is None and len(raw_results) == len(batch):
+                    item = raw_results[j]
                 label = (item or {}).get("label", "")
                 label = label.strip() if isinstance(label, str) else ""
                 vtype = _LABEL_TO_TYPE.get(label)
@@ -303,15 +310,30 @@ class RagJudge:
     (Gemini가 진정·탄력을 1호로 과잉판정하던 문제를 규칙이 원천 차단).
 
     슬롯 구조: PromptJudge를 내부에 합성해 fallback으로 쓴다. StubJudge·PromptJudge는
-    안 건드린다. fallback LLM에는 규정·판정기준·실사례를 프롬프트에 실어(grounding)
-    "규정 보고 판단"하게 한다(context). 규칙이 이미 확정한 문장은 애초에 LLM에 안 가므로,
+    안 건드린다. fallback LLM에는 규정·판정기준·사례를 프롬프트에 실어(grounding)
+    "규정 보고 판단"하게 한다. 규칙이 이미 확정한 문장은 애초에 LLM에 안 가므로,
     규칙의 결정론적 판정은 grounding과 무관하게 그대로 유지된다.
+
+    case_retriever: 있으면 실사례를 pgvector로 검색해 규정 + '유사 사례'만 넣는다
+    (Phase3). 없으면 규정 + cases.md 통째를 넣는다(Phase1 기본). 검색은 판정할 문장에
+    따라 달라지므로 context를 judge()마다 만들어 PromptJudge를 그때 구성한다.
     """
 
-    def __init__(self, vlm: VLM, batch_size: int = 12):
-        self._prompt = PromptJudge(
-            vlm, batch_size, context=build_judgment_context()
-        )
+    def __init__(self, vlm: VLM, batch_size: int = 12, case_retriever=None):
+        self._vlm = vlm
+        self._batch_size = batch_size
+        self._retriever = case_retriever
+
+    def _context_for(self, remaining: list[dict]) -> str:
+        """fallback LLM에 실을 grounding 컨텍스트를 만든다.
+
+        retriever 없으면 Phase1(규정 + cases.md 통째). 있으면 규정 + 검색된 유사 사례.
+        """
+        if self._retriever is None:
+            return build_judgment_context()
+        cases_block = self._retriever.context_for(remaining)
+        reg = build_regulation_context()
+        return f"{reg}\n\n{cases_block}" if cases_block else reg
 
     def judge(
         self,
@@ -345,8 +367,12 @@ class RagJudge:
             )
 
         # 규칙 미확정분만 VLM 위임(2호 성분정합 등은 PromptJudge가 그대로 처리).
+        # context는 판정할 문장(remaining)에 따라 달라지므로 여기서 구성한다.
         if remaining:
-            vlm_result = self._prompt.judge(remaining, region, ingredients)
+            prompt_judge = PromptJudge(
+                self._vlm, self._batch_size, context=self._context_for(remaining)
+            )
+            vlm_result = prompt_judge.judge(remaining, region, ingredients)
             result.findings.extend(vlm_result.findings)
             result.unjudged.extend(vlm_result.unjudged)
 

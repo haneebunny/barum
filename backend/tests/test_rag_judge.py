@@ -107,6 +107,23 @@ def test_rag_fallback_prompt_includes_regulation_context():
     assert "광고업무정지" in vlm.prompts[0]  # cases.md 실제 적발 처분
 
 
+def test_rag_with_retriever_uses_regulation_plus_retrieved_cases():
+    """retriever 주입 시 규정 + '검색된' 사례를 넣고, cases.md 통째는 안 넣는다."""
+
+    class FakeRetriever:
+        def context_for(self, sentences):
+            return '### 유사 과거 적발사례\n- "검색된사례XYZ" → T1 / 정지'
+
+    vlm = RecordingVLM([{"n": 0, "label": "합법"}])
+    RagJudge(vlm, case_retriever=FakeRetriever()).judge(
+        _sentences(["촉촉하고 산뜻한 데일리 로션"]), "KR"
+    )
+    p = vlm.prompts[0]
+    assert "검색된사례XYZ" in p  # 검색된 사례가 프롬프트에 들어감
+    assert "아토피" in p  # 규정(build_regulation_context)도 들어감
+    assert "트리플 특허" not in p  # cases.md 통째의 사례는 안 들어감(검색 경로)
+
+
 def test_rule_findings_survive_vlm_failure():
     """VLM이 미확정분에서 실패해도 규칙 확정 finding은 남고 실패분은 unjudged."""
     res = RagJudge(BoomVLM()).judge(_sentences(["아토피 완화", "일반적인 사용감"]), "KR")
