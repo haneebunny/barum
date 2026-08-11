@@ -18,6 +18,8 @@ from barum.models import (
     UnjudgedSentence,
     ViolationType,
 )
+from barum.reference.ingredients import infer_category, match_ingredient
+from barum.reference.mapping import legal_basis_for
 from barum.vlm import VLM
 
 
@@ -36,28 +38,29 @@ class JudgeResult:
 class CosmeticJudge(Protocol):
     """판정기가 지켜야 할 최소 인터페이스."""
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         """문장 리스트를 받아 위반 findings + 미판정 목록을 낸다.
 
         입력 문장 dict: {order:int, tile:str|None, text:str} (파이프라인이 만든 형태).
         합법·대상외는 finding을 만들지 않는다(근거 개수 = 위반 건수).
+        ingredients: 선택적 전성분 목록. 있으면 2호(기능성오인) 판정에 성분
+        정합(고시원료 존재 여부) 대조를 덧붙인다.
         """
         ...
 
 
-# 위반유형별 근거 조항. 규칙집이 오면 RagJudge가 실제 조항·성분정합으로 채운다.
-_LEGAL_BASIS = {
-    ViolationType.type_1_drug_misperception: "화장품법 제13조 제1항 제1호 (의약품 오인)",
-    ViolationType.type_2_functional_misperception: "화장품법 제13조 제1항 제2호 (기능성 오인)",
-    ViolationType.type_4_falsity_deception: "화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
-}
-
+# 위반유형별 근거 조항은 reference.mapping이 단일 출처다(레퍼런스 팩과 드리프트 방지).
 # 위험도. 프롬프트가 위험도를 주지 않아 유형별로 고정 매핑한다. recall 우선이라
 # 위반은 최소 '중' 이상으로 둔다.
 _RISK = {
     ViolationType.type_1_drug_misperception: RiskLevel.high,
     ViolationType.type_2_functional_misperception: RiskLevel.medium,
-    ViolationType.type_4_falsity_deception: RiskLevel.medium,
+    ViolationType.type_5_deception: RiskLevel.medium,
 }
 
 
@@ -76,10 +79,10 @@ _KEYWORD_RULES: list[tuple[str, ViolationType]] = [
     ("미백", ViolationType.type_2_functional_misperception),
     ("주름", ViolationType.type_2_functional_misperception),
     ("자외선차단", ViolationType.type_2_functional_misperception),
-    ("3배", ViolationType.type_4_falsity_deception),
-    ("최고", ViolationType.type_4_falsity_deception),
-    ("완벽", ViolationType.type_4_falsity_deception),
-    ("100%", ViolationType.type_4_falsity_deception),
+    ("3배", ViolationType.type_5_deception),
+    ("최고", ViolationType.type_5_deception),
+    ("완벽", ViolationType.type_5_deception),
+    ("100%", ViolationType.type_5_deception),
 ]
 
 
@@ -91,7 +94,12 @@ class StubJudge:
     VLM을 안 부르므로 오프라인·키 없는 개발/테스트에 쓴다. 미판정은 없다.
     """
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         findings: list[Finding] = []
         for s in sentences:
             text = s.get("text", "")
@@ -102,7 +110,7 @@ class StubJudge:
                             span=keyword,
                             sentence=text,
                             violation_type=vtype,
-                            legal_basis=_LEGAL_BASIS[vtype],
+                            legal_basis=legal_basis_for(vtype),
                             risk=_RISK[vtype],
                             explanation=f"(더미 판정) '{keyword}' 표현이 {vtype.value}에 해당할 소지가 있다.",
                             location=_loc(s),
@@ -119,7 +127,7 @@ _LABEL_TO_TYPE = {
     "합법": ViolationType.legal,
     "1호_의약품오인": ViolationType.type_1_drug_misperception,
     "2호_기능성오인": ViolationType.type_2_functional_misperception,
-    "4호_거짓과장기만": ViolationType.type_4_falsity_deception,
+    "5호_거짓과장기만": ViolationType.type_5_deception,
     "대상외": ViolationType.out_of_scope,
 }
 # 위반 아님(=finding 안 만듦)인 유형.
@@ -133,17 +141,36 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 - 합법 : 일반 보습·사용감·제형 설명 등 위반 소지 없음
 - 1호_의약품오인 : 질병·치료·재생·염증 등 의학적/의약품 같은 효능 암시
 - 2호_기능성오인 : 미백·주름개선·자외선차단 기능성 효능을 주장
-- 4호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
+- 5호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
 - 대상외 : 광고 문구가 아님(성분명 나열, 거래·배송 안내, 인증서 표시, 단순 제품정보·브랜드명)
 
 규칙:
-- 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 4호 > 합법.
+- 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 5호 > 합법.
 - 미탐(위반을 합법으로 놓침)이 제일 나쁘다. 애매하면 위반 쪽으로 판단한다.
 
 문장:
 {items}
 
 JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."}}]}}"""
+
+
+def _ingredient_match_note(sentence: str, ingredients: list[str] | None) -> str | None:
+    """2호(기능성오인) finding에 붙일 성분 정합 안내. 붙일 게 없으면 None.
+
+    VLM은 '미백/주름/자외선차단을 표방했다'까지만 판정하고, 실제 전성분에 그
+    기능의 고시원료가 있는지는 모른다. 이건 정확 조회 문제라 여기서 결정론적으로
+    확인한다(functional_ingredients.md "판정에 쓰는 법"의 코드화).
+    """
+    if not ingredients:
+        return "(전성분 미입력 — 성분 정합 확인 못 함)"
+    category = infer_category(sentence)
+    if category is None:
+        return None  # 문구에서 기능성 카테고리를 못 정했으면 안내 생략
+    row = match_ingredient(category, ingredients)
+    if row is None:
+        return f"(전성분 대조: {category} 고시원료가 전성분에 없음 — 위반 소지 큼)"
+    함량 = row.get("기준 함량") or row.get("최대 함량", "")
+    return f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량})"
 
 
 class PromptJudge:
@@ -158,7 +185,12 @@ class PromptJudge:
         self.vlm = vlm
         self.batch_size = batch_size
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         result = JudgeResult()
         for start in range(0, len(sentences), self.batch_size):
             batch = sentences[start : start + self.batch_size]
@@ -200,14 +232,19 @@ class PromptJudge:
                     continue
                 if vtype in _NON_VIOLATION:
                     continue  # 합법·대상외 → finding 없음
+                explanation = item.get("reason") or f"{vtype.value} 소지"
+                if vtype == ViolationType.type_2_functional_misperception:
+                    note = _ingredient_match_note(s["text"], ingredients)
+                    if note:
+                        explanation = f"{explanation} {note}"
                 result.findings.append(
                     Finding(
                         span=s["text"],  # 이 프롬프트는 문장 단위 라벨 = span은 문장 전체
                         sentence=s["text"],
                         violation_type=vtype,
-                        legal_basis=_LEGAL_BASIS[vtype],
+                        legal_basis=legal_basis_for(vtype),
                         risk=_RISK[vtype],
-                        explanation=(item.get("reason") or f"{vtype.value} 소지"),
+                        explanation=explanation,
                         location=_loc(s),
                     )
                 )

@@ -48,10 +48,13 @@ async def check(
     region: Region = Form(...),
     ad_text: str | None = Form(None),
     image: UploadFile | None = File(None),
+    ingredients: str | None = Form(
+        None, description="전성분(콤마 구분). 있으면 2호 판정에 성분 정합 대조가 붙는다."
+    ),
 ) -> CheckReport:
     """광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.
 
-    이미지·글 중 최소 하나는 있어야 한다. 없으면 422.
+    이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients는 선택.
     """
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
@@ -69,4 +72,5 @@ async def check(
         image_filename=image.filename if image is not None else None,
         vlm=ocr_vlm,
         judge=_build_judge(),
+        ingredients=ingredients,
     )

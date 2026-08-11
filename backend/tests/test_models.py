@@ -18,12 +18,12 @@ def test_violation_type_labels():
     """직렬화 값은 한국어 라벨(reference/cosmetic_kr 기준). 3호는 없다."""
     assert ViolationType.type_1_drug_misperception.value == "1호_의약품오인"
     assert ViolationType.type_2_functional_misperception.value == "2호_기능성오인"
-    assert ViolationType.type_4_falsity_deception.value == "4호_거짓과장기만"
+    assert ViolationType.type_5_deception.value == "5호_거짓과장기만"
     assert {v.value for v in ViolationType} == {
         "합법",
         "1호_의약품오인",
         "2호_기능성오인",
-        "4호_거짓과장기만",
+        "5호_거짓과장기만",
         "대상외",
     }
 

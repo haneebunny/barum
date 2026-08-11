@@ -18,6 +18,11 @@ from barum.vlm import VLM
 _SENT_SPLIT = re.compile(r"[\n。.!?！？]+")
 
 
+def _split_ingredients(text: str) -> list[str]:
+    """전성분 문자열을 성분명 리스트로 쪼갠다. 전성분표는 보통 콤마로 나열된다."""
+    return [s.strip() for s in re.split(r"[,\n]+", text) if s.strip()]
+
+
 def _split_text_to_sentences(ad_text: str) -> list[dict]:
     """글 입력을 문장 dict 리스트로 쪼갠다. 이미지가 없으니 tile은 None."""
     out: list[dict] = []
@@ -58,12 +63,15 @@ def run_check(
     image_filename: str | None,
     vlm: VLM,
     judge: CosmeticJudge,
+    ingredients: str | None = None,
     verbose: bool = False,
 ) -> CheckReport:
     """한 번의 검사 요청을 처리해 CheckReport를 만든다.
 
     이미지·글 둘 다 오면 이미지 문장 뒤에 글 문장을 이어 붙인다. 둘 다 없으면
     빈 리포트(호출 전 API가 422로 막는다).
+    ingredients: 선택적 전성분 문자열(콤마 구분). 있으면 2호(기능성오인) 판정에
+    성분 정합 대조가 붙는다(judge가 지원하는 경우).
     """
     sentences: list[dict] = []
 
@@ -75,7 +83,8 @@ def run_check(
         for s in _split_text_to_sentences(ad_text):
             sentences.append({**s, "order": base + s["order"]})
 
-    result = judge.judge(sentences, region)
+    ingredient_list = _split_ingredients(ingredients) if ingredients else None
+    result = judge.judge(sentences, region, ingredients=ingredient_list)
     findings = result.findings
 
     counts: dict[str, int] = {}

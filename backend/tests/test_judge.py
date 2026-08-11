@@ -49,7 +49,8 @@ def test_maps_labels_to_findings():
     assert f.risk.value == "중"
     assert f.legal_basis.startswith("화장품법 제13조")
     assert f.span == "멜라닌 막아 미백"  # 문장 단위 = span은 문장 전체
-    assert f.explanation == "미백 주장"
+    # ingredients 미입력이면 원 근거 뒤에 '성분 정합 확인 못 함' 안내가 붙는다.
+    assert f.explanation == "미백 주장 (전성분 미입력 — 성분 정합 확인 못 함)"
 
 
 def test_missing_or_bad_label_becomes_unjudged():
@@ -97,5 +98,45 @@ def test_stub_judge_returns_judge_result():
     """StubJudge도 JudgeResult 계약을 지킨다(unjudged 없음)."""
     res = StubJudge().judge(_sentences(["완벽한 보습", "순한 사용감"]), "KR")
     assert isinstance(res, JudgeResult)
-    assert len(res.findings) == 1  # "완벽" → 4호
+    assert len(res.findings) == 1  # "완벽" → 5호
     assert res.unjudged == []
+
+
+def test_stub_judge_accepts_ingredients_param_and_ignores_it():
+    """StubJudge는 성분 정합을 안 하지만 인터페이스(ingredients 파라미터)는 지킨다."""
+    res = StubJudge().judge(
+        _sentences(["미백에 도움"]), "KR", ingredients=["나이아신아마이드"]
+    )
+    assert isinstance(res, JudgeResult)
+
+
+def test_ingredient_match_found_appends_note():
+    """전성분에 고시원료가 있으면 확인됐다는 안내가 근거에 붙는다."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "나이아신아마이드", "글리세린"],
+    )
+    assert len(res.findings) == 1
+    assert "나이아신아마이드 확인됨" in res.findings[0].explanation
+
+
+def test_ingredient_match_missing_appends_warning():
+    """전성분에 해당 기능 고시원료가 없으면 위반 소지가 크다는 안내가 붙는다."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "글리세린"],  # 미백 고시원료 없음
+    )
+    assert "고시원료가 전성분에 없음" in res.findings[0].explanation
+
+
+def test_ingredient_match_skipped_for_non_functional_violation():
+    """1호·5호는 성분표 대조 대상이 아니라 안내가 안 붙는다."""
+    vlm = FakeVLM([{"n": 0, "label": "1호_의약품오인", "reason": "재생 효과"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["피부 재생 효과"]), "KR", ingredients=["정제수"]
+    )
+    assert res.findings[0].explanation == "재생 효과"  # 안내 안 붙음
