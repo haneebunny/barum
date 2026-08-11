@@ -50,9 +50,19 @@ def load_labeled():
 
 
 def judge_batch(vlm, batch):
-    """문장 배치를 LLM에 판정시켜 번호→라벨 dict 반환."""
+    """문장 배치를 LLM에 판정시켜 번호→(라벨,근거) dict 반환.
+
+    모델이 가끔 {"results":[...]} 대신 통짜 리스트를 뱉는다. 그때 res.get()이
+    AttributeError를 던져 채점 전체가 죽던 걸(핸드오프 §2.3) 예상된 실패로 흡수한다.
+    이 배치는 빈 결과로 두면 되고(호출자가 "(없음)"으로 처리), 다음 배치는 계속 돈다.
+    PromptJudge는 이미 같은 방식으로 고쳐져 있다.
+    """
     items = "\n".join(f'{b["n"]}. {b["text"]}' for b in batch)
     res = vlm.generate_json(JUDGE_PROMPT.format(items=items), [])
+    if not isinstance(res, dict):
+        print(f"    [skip] judge 배치 {batch[0]['n']}~{batch[-1]['n']}: "
+              f"dict 아님({type(res).__name__}) — 이 배치 미판정")
+        return {}
     out = {}
     for item in res.get("results", []):
         try:
