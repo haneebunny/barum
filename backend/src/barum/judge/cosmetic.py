@@ -18,6 +18,7 @@ from barum.models import (
     UnjudgedSentence,
     ViolationType,
 )
+from barum.reference.ingredients import infer_category, match_ingredient
 from barum.reference.mapping import legal_basis_for
 from barum.vlm import VLM
 
@@ -37,11 +38,18 @@ class JudgeResult:
 class CosmeticJudge(Protocol):
     """판정기가 지켜야 할 최소 인터페이스."""
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         """문장 리스트를 받아 위반 findings + 미판정 목록을 낸다.
 
         입력 문장 dict: {order:int, tile:str|None, text:str} (파이프라인이 만든 형태).
         합법·대상외는 finding을 만들지 않는다(근거 개수 = 위반 건수).
+        ingredients: 선택적 전성분 목록. 있으면 2호(기능성오인) 판정에 성분
+        정합(고시원료 존재 여부) 대조를 덧붙인다.
         """
         ...
 
@@ -86,7 +94,12 @@ class StubJudge:
     VLM을 안 부르므로 오프라인·키 없는 개발/테스트에 쓴다. 미판정은 없다.
     """
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         findings: list[Finding] = []
         for s in sentences:
             text = s.get("text", "")
@@ -141,6 +154,25 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."}}]}}"""
 
 
+def _ingredient_match_note(sentence: str, ingredients: list[str] | None) -> str | None:
+    """2호(기능성오인) finding에 붙일 성분 정합 안내. 붙일 게 없으면 None.
+
+    VLM은 '미백/주름/자외선차단을 표방했다'까지만 판정하고, 실제 전성분에 그
+    기능의 고시원료가 있는지는 모른다. 이건 정확 조회 문제라 여기서 결정론적으로
+    확인한다(functional_ingredients.md "판정에 쓰는 법"의 코드화).
+    """
+    if not ingredients:
+        return "(전성분 미입력 — 성분 정합 확인 못 함)"
+    category = infer_category(sentence)
+    if category is None:
+        return None  # 문구에서 기능성 카테고리를 못 정했으면 안내 생략
+    row = match_ingredient(category, ingredients)
+    if row is None:
+        return f"(전성분 대조: {category} 고시원료가 전성분에 없음 — 위반 소지 큼)"
+    함량 = row.get("기준 함량") or row.get("최대 함량", "")
+    return f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량})"
+
+
 class PromptJudge:
     """VLM 제로샷 판정기. 규칙집(RAG) 없이도 실판정을 낸다.
 
@@ -153,7 +185,12 @@ class PromptJudge:
         self.vlm = vlm
         self.batch_size = batch_size
 
-    def judge(self, sentences: list[dict], region: str) -> JudgeResult:
+    def judge(
+        self,
+        sentences: list[dict],
+        region: str,
+        ingredients: list[str] | None = None,
+    ) -> JudgeResult:
         result = JudgeResult()
         for start in range(0, len(sentences), self.batch_size):
             batch = sentences[start : start + self.batch_size]
@@ -195,6 +232,11 @@ class PromptJudge:
                     continue
                 if vtype in _NON_VIOLATION:
                     continue  # 합법·대상외 → finding 없음
+                explanation = item.get("reason") or f"{vtype.value} 소지"
+                if vtype == ViolationType.type_2_functional_misperception:
+                    note = _ingredient_match_note(s["text"], ingredients)
+                    if note:
+                        explanation = f"{explanation} {note}"
                 result.findings.append(
                     Finding(
                         span=s["text"],  # 이 프롬프트는 문장 단위 라벨 = span은 문장 전체
@@ -202,7 +244,7 @@ class PromptJudge:
                         violation_type=vtype,
                         legal_basis=legal_basis_for(vtype),
                         risk=_RISK[vtype],
-                        explanation=(item.get("reason") or f"{vtype.value} 소지"),
+                        explanation=explanation,
                         location=_loc(s),
                     )
                 )

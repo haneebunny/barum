@@ -10,7 +10,7 @@ import io
 
 from PIL import Image
 
-from barum.judge.cosmetic import StubJudge
+from barum.judge.cosmetic import JudgeResult, StubJudge
 from barum.pipeline import run_check
 
 
@@ -82,3 +82,42 @@ def test_both_inputs_concatenate():
     orders = sorted(s for s in [f.location.order for f in report.findings])
     assert orders == [0, 1]  # 이미지 문장 order=0, 글 문장 order=1
     assert report.summary.counts_by_type == {"2호_기능성오인": 1, "5호_거짓과장기만": 1}
+
+
+class RecordingJudge:
+    """judge에 뭐가 넘어오는지 기록만 하는 가짜 판정기(전달 배선 검증용)."""
+
+    def __init__(self):
+        self.received_ingredients = "not called"
+
+    def judge(self, sentences, region, ingredients=None):
+        self.received_ingredients = ingredients
+        return JudgeResult()
+
+
+def test_ingredients_string_is_split_and_passed_to_judge():
+    """콤마로 나열된 전성분 문자열이 리스트로 쪼개져 judge에 전달된다."""
+    judge = RecordingJudge()
+    run_check(
+        region="KR",
+        ad_text="촉촉한 보습감.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=judge,
+        ingredients="정제수, 나이아신아마이드,글리세린",
+    )
+    assert judge.received_ingredients == ["정제수", "나이아신아마이드", "글리세린"]
+
+
+def test_no_ingredients_passes_none_to_judge():
+    judge = RecordingJudge()
+    run_check(
+        region="KR",
+        ad_text="촉촉한 보습감.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=judge,
+    )
+    assert judge.received_ingredients is None

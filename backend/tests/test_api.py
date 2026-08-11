@@ -44,3 +44,20 @@ def test_check_rejects_bad_region():
     """region enum 밖 값은 422(FastAPI 검증)."""
     r = client.post("/check", data={"region": "JP", "ad_text": "미백"})
     assert r.status_code == 422
+
+
+def test_check_accepts_optional_ingredients_field():
+    """ingredients는 선택 필드라, 없어도 있어도 요청이 통과한다.
+
+    StubJudge는 성분 정합을 안 하므로 여기선 요청 형태(shape)만 확인한다.
+    실제 정합 동작은 test_judge.py가 PromptJudge로 검증.
+    """
+    r = client.post(
+        "/check",
+        data={
+            "region": "KR",
+            "ad_text": "미백에 도움",
+            "ingredients": "정제수, 나이아신아마이드",
+        },
+    )
+    assert r.status_code == 200
