@@ -112,6 +112,19 @@ def test_maps_labels_to_findings():
     assert f.explanation == "미백 주장 (전성분 미입력 — 성분 정합 확인 못 함)"
 
 
+def test_result_matched_by_position_when_n_is_offset():
+    """모델이 1-based n(0-based 항목에 n=1)을 줘도, 개수가 맞으면 순서로 매칭한다.
+
+    grounded 긴 프롬프트에서 모델이 출력 예시(n:1)를 따라 1-indexing하는 일이 있다.
+    그때 n 조회가 빗나가 미판정으로 흘리지 않게, 결과 수 = 문장 수면 순서로 대응한다.
+    """
+    vlm = FakeVLM([{"n": 1, "label": "5호_거짓과장기만", "reason": "과장"}])
+    res = PromptJudge(vlm).judge(_sentences(["무조건 안전한 제품"]), "KR")
+    assert len(res.findings) == 1
+    assert res.findings[0].violation_type.value == "5호_거짓과장기만"
+    assert res.unjudged == []
+
+
 def test_missing_or_bad_label_becomes_unjudged():
     """모델이 결과를 빠뜨리거나 규격 밖 라벨을 주면 '합법'이 아니라 미판정."""
     vlm = FakeVLM(

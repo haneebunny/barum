@@ -20,26 +20,38 @@ from pathlib import Path
 _BACKEND = Path(__file__).resolve().parents[3]
 _REF_DIR = _BACKEND.parent / "reference" / "cosmetic_kr"
 
-# 프롬프트에 실을 판정 근거 문서(정본 md). 순서 = 프롬프트에 붙는 순서.
-_CONTEXT_FILES: tuple[str, ...] = (
+# 규정·판정기준 문서(정본 md). 순서 = 프롬프트에 붙는 순서. 실사례(cases.md)는 별도.
+_REGULATION_FILES: tuple[str, ...] = (
     "prohibited_expressions.md",
     "violation_types/type_1_drug_misperception.md",
     "violation_types/type_2_functional_misperception.md",
     "violation_types/type_5_deception.md",
     "functional_ingredients.md",
-    "cases.md",
 )
+# 실사례. Phase1은 통째로, Phase3은 pgvector 검색 top-K로 대체한다.
+_CASES_FILE = "cases.md"
+
+
+def _read_block(rel: str) -> str:
+    """근거 문서 하나를 읽어 헤더 붙인 블록으로. 없으면 FileNotFoundError(삼키지 않음)."""
+    text = (_REF_DIR / rel).read_text(encoding="utf-8").strip()
+    return f"### 근거 문서: {rel}\n{text}"
+
+
+@lru_cache(maxsize=1)
+def build_regulation_context() -> str:
+    """규정·판정기준 문서만 합친 컨텍스트(cases.md 제외).
+
+    검색 경로(Phase3)는 여기에 '검색된 사례'만 덧붙인다(cases.md 통째 안 넣음).
+    """
+    return "\n\n".join(_read_block(rel) for rel in _REGULATION_FILES)
 
 
 @lru_cache(maxsize=1)
 def build_judgment_context() -> str:
-    """판정 근거 문서를 합쳐 프롬프트용 컨텍스트 블록을 만든다.
+    """규정 + 실사례(cases.md 통째)를 합친 컨텍스트(Phase1 기본 grounding).
 
-    문서가 없으면(레퍼런스 팩 누락) FileNotFoundError로 즉시 터뜨린다 — 예상 못 한
-    실패라 삼키지 않는다. 결과는 캐시한다(md는 런타임에 안 바뀜).
+    Phase3에서 사례를 pgvector 검색으로 바꾸면 이건 안 쓰이고 build_regulation_context
+    + 검색결과 조합으로 넘어간다. 결과는 캐시(md는 런타임에 안 바뀜).
     """
-    blocks: list[str] = []
-    for rel in _CONTEXT_FILES:
-        text = (_REF_DIR / rel).read_text(encoding="utf-8").strip()
-        blocks.append(f"### 근거 문서: {rel}\n{text}")
-    return "\n\n".join(blocks)
+    return build_regulation_context() + "\n\n" + _read_block(_CASES_FILE)
