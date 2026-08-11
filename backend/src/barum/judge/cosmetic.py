@@ -18,6 +18,7 @@ from barum.models import (
     UnjudgedSentence,
     ViolationType,
 )
+from barum.reference.mapping import legal_basis_for
 from barum.vlm import VLM
 
 
@@ -45,13 +46,7 @@ class CosmeticJudge(Protocol):
         ...
 
 
-# 위반유형별 근거 조항. 규칙집이 오면 RagJudge가 실제 조항·성분정합으로 채운다.
-_LEGAL_BASIS = {
-    ViolationType.type_1_drug_misperception: "화장품법 제13조 제1항 제1호 (의약품 오인)",
-    ViolationType.type_2_functional_misperception: "화장품법 제13조 제1항 제2호 (기능성 오인)",
-    ViolationType.type_5_deception: "화장품법 제13조 제1항 제5호 (거짓·과장·기만)",
-}
-
+# 위반유형별 근거 조항은 reference.mapping이 단일 출처다(레퍼런스 팩과 드리프트 방지).
 # 위험도. 프롬프트가 위험도를 주지 않아 유형별로 고정 매핑한다. recall 우선이라
 # 위반은 최소 '중' 이상으로 둔다.
 _RISK = {
@@ -102,7 +97,7 @@ class StubJudge:
                             span=keyword,
                             sentence=text,
                             violation_type=vtype,
-                            legal_basis=_LEGAL_BASIS[vtype],
+                            legal_basis=legal_basis_for(vtype),
                             risk=_RISK[vtype],
                             explanation=f"(더미 판정) '{keyword}' 표현이 {vtype.value}에 해당할 소지가 있다.",
                             location=_loc(s),
@@ -205,7 +200,7 @@ class PromptJudge:
                         span=s["text"],  # 이 프롬프트는 문장 단위 라벨 = span은 문장 전체
                         sentence=s["text"],
                         violation_type=vtype,
-                        legal_basis=_LEGAL_BASIS[vtype],
+                        legal_basis=legal_basis_for(vtype),
                         risk=_RISK[vtype],
                         explanation=(item.get("reason") or f"{vtype.value} 소지"),
                         location=_loc(s),
