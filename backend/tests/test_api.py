@@ -21,6 +21,16 @@ def test_health():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_build_judge_rag_returns_rag_judge(monkeypatch):
+    """JUDGE_KIND=rag면 RagJudge를 만든다(VLM은 가짜 주입, 키 불필요)."""
+    from barum.api import app as app_module
+    from barum.judge.cosmetic import RagJudge
+
+    monkeypatch.setattr(app_module, "get_vlm", lambda provider: object())
+    monkeypatch.setenv("JUDGE_KIND", "rag")
+    assert isinstance(app_module._build_judge(), RagJudge)
+
+
 def test_check_requires_input():
     """이미지·글 둘 다 없으면 422."""
     r = client.post("/check", data={"region": "KR"})

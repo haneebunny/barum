@@ -9,7 +9,7 @@ import os
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from barum.judge.cosmetic import CosmeticJudge, PromptJudge, StubJudge
+from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
 from barum.models import CheckReport, Region
 from barum.pipeline import run_check
 from barum.vlm import get_vlm
@@ -30,7 +30,9 @@ def _build_judge() -> CosmeticJudge:
     """판정기를 만든다.
 
     기본은 PromptJudge(VLM 제로샷, JUDGE_PROVIDER). 키가 없거나 오프라인에서
-    돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음).
+    돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음). JUDGE_KIND=rag면
+    RagJudge(규칙집 우선 + VLM fallback)를 쓴다 — 검증된 1호 경계표현은 규칙이
+    확정하고 나머지만 VLM에 위임한다.
 
     기본 provider = openai(gpt-5-mini). 43문장 평가셋 비교(2026-08-11)에서
     Gemini는 미탐 4건(52.5% 일치)으로 recall 우선 정책에 제일 안 맞았고,
@@ -38,9 +40,13 @@ def _build_judge() -> CosmeticJudge:
     전환(ROADMAP.md §3). OCR_PROVIDER는 안 건드림 — 이 비교는 판정 정확도에
     대한 것이지 OCR 품질에 대한 게 아니다.
     """
-    if os.environ.get("JUDGE_KIND", "prompt") == "stub":
+    kind = os.environ.get("JUDGE_KIND", "prompt")
+    if kind == "stub":
         return StubJudge()
-    return PromptJudge(get_vlm(os.environ.get("JUDGE_PROVIDER", "openai")))
+    vlm = get_vlm(os.environ.get("JUDGE_PROVIDER", "openai"))
+    if kind == "rag":
+        return RagJudge(vlm)
+    return PromptJudge(vlm)
 
 
 @app.get("/health")
