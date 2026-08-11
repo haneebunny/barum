@@ -1,0 +1,41 @@
+{
+  "findings": [
+    {
+      "span": "파워 수분 공급",
+      "sentence": "콜라겐 함유로 파워 수분 공급.",
+      "violation_type": "4호_거짓과장기만",
+      "legal_basis": "화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
+      "risk": "중",
+      "explanation": "'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
+      "location": {
+        "tile": "detail_002_t00.png",
+        "order": 0
+      }
+    }
+  ],
+  "unjudged": [
+    {
+      "sentence": "7가지 한방 추출물로 피부 진정에 탁월",
+      "location": {
+        "tile": "detail_002_t00.png",
+        "order": 1
+      }
+    },
+    {
+      "sentence": "탄력 있는 피부로 가꿔주는 펩타이드 앰플",
+      "location": {
+        "tile": "detail_002_t01.png",
+        "order": 2
+      }
+    }
+  ],
+  "summary": {
+    "region": "KR",
+    "n_sentences": 3,
+    "n_findings": 1,
+    "n_unjudged": 2,
+    "counts_by_type": {
+      "4호_거짓과장기만": 1
+    }
+  }
+}
