@@ -97,5 +97,5 @@ def test_stub_judge_returns_judge_result():
     """StubJudge도 JudgeResult 계약을 지킨다(unjudged 없음)."""
     res = StubJudge().judge(_sentences(["완벽한 보습", "순한 사용감"]), "KR")
     assert isinstance(res, JudgeResult)
-    assert len(res.findings) == 1  # "완벽" → 4호
+    assert len(res.findings) == 1  # "완벽" → 5호
     assert res.unjudged == []

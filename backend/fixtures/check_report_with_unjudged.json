@@ -3,8 +3,8 @@
     {
       "span": "파워 수분 공급",
       "sentence": "콜라겐 함유로 파워 수분 공급.",
-      "violation_type": "4호_거짓과장기만",
-      "legal_basis": "화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
+      "violation_type": "5호_거짓과장기만",
+      "legal_basis": "화장품법 제13조 제1항 제5호 (거짓·과장·기만)",
       "risk": "중",
       "explanation": "'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
       "location": {
@@ -35,7 +35,7 @@
     "n_findings": 1,
     "n_unjudged": 2,
     "counts_by_type": {
-      "4호_거짓과장기만": 1
+      "5호_거짓과장기만": 1
     }
   }
 }

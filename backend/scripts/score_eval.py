@@ -25,8 +25,8 @@ from barum.vlm import get_vlm  # noqa: E402
 XLSX = Path("data/cosmetic_eval_labeling.xlsx")
 COMPARE = Path("data/eval_compare.csv")   # 모델별 요약 누적 → 비교표
 
-LABELS = ["합법", "1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만", "대상외"]
-VIOLATION = {"1호_의약품오인", "2호_기능성오인", "4호_거짓과장기만"}
+LABELS = ["합법", "1호_의약품오인", "2호_기능성오인", "5호_거짓과장기만", "대상외"]
+VIOLATION = {"1호_의약품오인", "2호_기능성오인", "5호_거짓과장기만"}
 
 # 판정 프롬프트는 barum.judge.cosmetic이 원본. 판정기(PromptJudge)와 채점기가 같은
 # 프롬프트를 써야 채점 결과가 실제 API 판정과 일치한다.

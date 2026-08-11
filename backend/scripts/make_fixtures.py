@@ -46,7 +46,7 @@ def _summary(region, n_sentences, findings, n_unjudged=0) -> Summary:
 def image_case() -> CheckReport:
     """이미지 입력 케이스. location.tile 채워짐(원문 이미지 위 하이라이트용).
 
-    문장 5개 중 3개 위반(1/2/4호), 1개 합법(finding 없음), 나머지도 합법.
+    문장 5개 중 3개 위반(1/2/5호), 1개 합법(finding 없음), 나머지도 합법.
     """
     findings = [
         Finding(
@@ -70,8 +70,8 @@ def image_case() -> CheckReport:
         Finding(
             span="시중 제품 대비 3배 빠른 흡수",
             sentence="시중 제품 대비 3배 빠른 흡수를 자랑합니다.",
-            violation_type=ViolationType.type_4_falsity_deception,
-            legal_basis="화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
+            violation_type=ViolationType.type_5_deception,
+            legal_basis="화장품법 제13조 제1항 제5호 (거짓·과장·기만)",
             risk=RiskLevel.medium,
             explanation="객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
             location=Location(tile="detail_000_t01.png", order=3),
@@ -121,8 +121,8 @@ def unjudged_case() -> CheckReport:
         Finding(
             span="파워 수분 공급",
             sentence="콜라겐 함유로 파워 수분 공급.",
-            violation_type=ViolationType.type_4_falsity_deception,
-            legal_basis="화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
+            violation_type=ViolationType.type_5_deception,
+            legal_basis="화장품법 제13조 제1항 제5호 (거짓·과장·기만)",
             risk=RiskLevel.medium,
             explanation="'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
             location=Location(tile="detail_002_t00.png", order=0),

@@ -49,7 +49,7 @@ class CosmeticJudge(Protocol):
 _LEGAL_BASIS = {
     ViolationType.type_1_drug_misperception: "화장품법 제13조 제1항 제1호 (의약품 오인)",
     ViolationType.type_2_functional_misperception: "화장품법 제13조 제1항 제2호 (기능성 오인)",
-    ViolationType.type_4_falsity_deception: "화장품법 제13조 제1항 제4호 (거짓·과장·기만)",
+    ViolationType.type_5_deception: "화장품법 제13조 제1항 제5호 (거짓·과장·기만)",
 }
 
 # 위험도. 프롬프트가 위험도를 주지 않아 유형별로 고정 매핑한다. recall 우선이라
@@ -57,7 +57,7 @@ _LEGAL_BASIS = {
 _RISK = {
     ViolationType.type_1_drug_misperception: RiskLevel.high,
     ViolationType.type_2_functional_misperception: RiskLevel.medium,
-    ViolationType.type_4_falsity_deception: RiskLevel.medium,
+    ViolationType.type_5_deception: RiskLevel.medium,
 }
 
 
@@ -76,10 +76,10 @@ _KEYWORD_RULES: list[tuple[str, ViolationType]] = [
     ("미백", ViolationType.type_2_functional_misperception),
     ("주름", ViolationType.type_2_functional_misperception),
     ("자외선차단", ViolationType.type_2_functional_misperception),
-    ("3배", ViolationType.type_4_falsity_deception),
-    ("최고", ViolationType.type_4_falsity_deception),
-    ("완벽", ViolationType.type_4_falsity_deception),
-    ("100%", ViolationType.type_4_falsity_deception),
+    ("3배", ViolationType.type_5_deception),
+    ("최고", ViolationType.type_5_deception),
+    ("완벽", ViolationType.type_5_deception),
+    ("100%", ViolationType.type_5_deception),
 ]
 
 
@@ -119,7 +119,7 @@ _LABEL_TO_TYPE = {
     "합법": ViolationType.legal,
     "1호_의약품오인": ViolationType.type_1_drug_misperception,
     "2호_기능성오인": ViolationType.type_2_functional_misperception,
-    "4호_거짓과장기만": ViolationType.type_4_falsity_deception,
+    "5호_거짓과장기만": ViolationType.type_5_deception,
     "대상외": ViolationType.out_of_scope,
 }
 # 위반 아님(=finding 안 만듦)인 유형.
@@ -133,11 +133,11 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 - 합법 : 일반 보습·사용감·제형 설명 등 위반 소지 없음
 - 1호_의약품오인 : 질병·치료·재생·염증 등 의학적/의약품 같은 효능 암시
 - 2호_기능성오인 : 미백·주름개선·자외선차단 기능성 효능을 주장
-- 4호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
+- 5호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
 - 대상외 : 광고 문구가 아님(성분명 나열, 거래·배송 안내, 인증서 표시, 단순 제품정보·브랜드명)
 
 규칙:
-- 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 4호 > 합법.
+- 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 5호 > 합법.
 - 미탐(위반을 합법으로 놓침)이 제일 나쁘다. 애매하면 위반 쪽으로 판단한다.
 
 문장:

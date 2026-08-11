@@ -81,4 +81,4 @@ def test_both_inputs_concatenate():
     assert report.summary.n_sentences == 2
     orders = sorted(s for s in [f.location.order for f in report.findings])
     assert orders == [0, 1]  # 이미지 문장 order=0, 글 문장 order=1
-    assert report.summary.counts_by_type == {"2호_기능성오인": 1, "4호_거짓과장기만": 1}
+    assert report.summary.counts_by_type == {"2호_기능성오인": 1, "5호_거짓과장기만": 1}
