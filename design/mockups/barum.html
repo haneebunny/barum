@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>바름 // 홈</title>
+<link rel="icon" type="image/png" href="barum-favicon.png">
 <!-- 기본 테마 light. 시스템 다크 자동추종 안 함. 키 barum-theme -->
 <script>(function(){try{var s=localStorage.getItem('barum-theme');document.documentElement.setAttribute('data-theme',s||'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -52,7 +53,7 @@
 
   /* ============ 상단바 ============ */
   .topbar{display:flex; align-items:center; gap:12px; padding:11px 15px; border-bottom:1px solid var(--line-2); background:var(--surface-sub)}
-  .mark{width:22px; height:22px; background:var(--brand-deep); color:var(--on-brand); display:inline-flex; align-items:center; justify-content:center; font-family:var(--mono); font-weight:700; font-size:14px; flex:0 0 auto}
+  .mark{width:32px; height:32px; flex:0 0 auto; display:block}
   .brand{color:var(--ink); display:inline-flex; align-items:center}
   .brand .wordmark{height:20px; width:auto; display:block}
   .tag{color:var(--ink-3); font-family:var(--mono); font-size:11px; border:1px solid var(--line-2); padding:2px 7px}
@@ -141,8 +142,7 @@
   .rstat svg{width:13px; height:13px}
   .rstat.need{color:var(--crit); border-color:var(--crit-bd); background:var(--crit-bg); font-weight:600}
   .rstat.done{color:var(--ink-2); border-color:var(--line-2)}   /* 완료=중립. 그린은 합격/안전 신호로 안 씀(CVD) */
-  .grade{font-family:var(--mono); font-weight:700; font-size:15px; width:22px; text-align:center; color:var(--ink-2)}
-  .grade.d{color:var(--crit)}
+  .raction{font-family:var(--mono); font-size:11px; color:var(--ink-3); white-space:nowrap}
   .rupd{color:var(--ink-3); font-family:var(--mono); font-size:10.5px; white-space:nowrap}
 
   /* 컴플라이언스 + 상태바 */
@@ -171,6 +171,9 @@
   .modal .opt.on{background:var(--nav-active-bg); color:var(--ink); font-weight:700}
   .modal .opt .rc{color:var(--brand-ink)}
   .modal .opt .rd{margin-left:auto; color:var(--ink-3); font-size:11px}
+  .modal .opt:disabled{color:var(--ink-3); cursor:not-allowed}
+  .modal .opt:disabled:hover{background:transparent; color:var(--ink-3)}
+  .modal .opt:disabled .rc{color:var(--ink-3)}
 
   @media (max-width:900px){
     .shell, .shell.nav-collapsed{grid-template-columns:1fr}
@@ -190,9 +193,12 @@
   <div class="app">
     <!-- 상단바 -->
     <div class="topbar">
-      <span class="mark">바</span>
+      <svg class="mark" viewBox="0 0 170 170" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="바름">
+        <circle cx="101.542" cy="97.5538" r="42.3692" fill="#95DDB7"/>
+        <circle cx="67.8038" cy="72.4461" r="42.3692" fill="#00813E" fill-opacity="0.5"/>
+      </svg>
       <span class="brand" aria-label="바름"><svg class="wordmark" viewBox="2.6 -86.2 176.8 98.2" role="img" aria-label="바름"><path fill="currentColor" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke" d="M77.10 1.20Q77.10 2.50 77.95 3.30Q78.80 4.10 81.40 5L81.40 5L72.10 9.80Q71.70 10 71.30 10L71.30 10Q70.80 10 70.40 9.50L70.40 9.50Q69.80 8.60 69.45 7.45Q69.10 6.30 69.10 4.30L69.10 4.30L69.10-76.30Q69.10-77.60 68.25-78.40Q67.40-79.20 64.80-80.10L64.80-80.10L74.10-84Q74.50-84.20 74.90-84.20L74.90-84.20Q77.10-84.20 77.10-78.20L77.10-78.20L77.10-40.50L91.50-40.50L89.90-35L77.10-35L77.10 1.20ZM8.40-65.30Q8.40-66.80 7.60-67.65Q6.80-68.50 4.60-69.50L4.60-69.50L13.40-73Q14.80-73.60 15.60-72.15Q16.40-70.70 16.40-67.50L16.40-67.50L16.40-48.40L43.40-48.40L43.40-67.70Q43.40-69.20 42.60-70.05Q41.80-70.90 39.60-71.90L39.60-71.90L48.10-75.40Q49.50-76 50.30-74.55Q51.10-73.10 51.10-69.90L51.10-69.90L51.10-15.70Q54.40-16 57.60-16.30L57.60-16.30L55.70-9.90L29.60-9.90Q22.70-9.90 17-8.80Q11.30-7.70 7.40-5.70L7.40-5.70Q7.80-7.50 8.10-10.35Q8.40-13.20 8.40-15.90L8.40-15.90L8.40-65.30ZM16.40-12.70Q19.20-14.30 22.40-15Q25.60-15.70 30.60-15.70L30.60-15.70L43.40-15.70L43.40-42.80L16.40-42.80L16.40-12.70ZM105.60-75L107.60-80.30L166.40-80.30Q165.50-76.30 165.50-73.50L165.50-73.50L165.50-60.20L115.20-60.20L115.20-49.10Q117.70-49.80 120.95-50.05Q124.20-50.30 129.40-50.30L129.40-50.30L167.80-50.30L166.20-45.20L128.50-45.20Q120.90-45.20 116.25-44.75Q111.60-44.30 106.60-43.20L106.60-43.20Q107.20-46.40 107.20-51L107.20-51L107.20-58.80Q107.20-62.20 105.60-65.20L105.60-65.20L157.50-65.20L157.50-75L105.60-75ZM114.60 3.30Q119.60 2.70 128.80 2.70L128.80 2.70L157.80 2.70L157.80-14L114.60-14L114.60 3.30ZM101.90-29.20Q98.70-29.20 97.25-29.85Q95.80-30.50 95.80-31.50L95.80-31.50Q95.80-32 96.10-32.30L96.10-32.30L100.50-37.80Q101.50-36 102.55-35.40Q103.60-34.80 105.20-34.80L105.20-34.80L177.40-34.80L175.80-29.20L101.90-29.20ZM105.40-19L166.70-19Q165.80-16 165.80-12.20L165.80-12.20L165.80 2.60Q168.40 2.40 170.20 2L170.20 2L168.30 8L127.80 8Q114.20 8 105.50 9.90L105.50 9.90Q106 8.60 106.30 6.35Q106.60 4.10 106.60 2L106.60 2L106.60-11Q106.60-15.90 105.40-19L105.40-19Z"/></svg></span>
-      <span class="tag">규제 검수 콘솔</span>
+      <span class="tag">규제 검증 콘솔</span>
       <div class="right">
         <div class="themetog" id="themetog" role="group" aria-label="테마 전환">
           <button data-m="light" class="on" aria-label="라이트 모드" title="라이트">
@@ -219,9 +225,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/></svg>
             <span class="lbl">홈</span>
           </div>
-          <div class="sitem" title="검수 이력">
+          <div class="sitem" title="검사 이력">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-            <span class="lbl">검수 이력</span>
+            <span class="lbl">검사 이력</span>
           </div>
           <div class="sitem" title="설정">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
@@ -236,16 +242,16 @@
         <!-- 대기 건수 0이면 자동 숨김(상시 빨강 아님). data-count로 제어 -->
         <div class="needbar" id="needbar" data-count="2">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>
-          <span><b>검토 필요 2건.</b> 위반 소지가 큰 표현이 있어요. 확인을 권장합니다.</span>
+          <span><b>확인 안 한 항목 2건.</b> 게시 전 검토해 주세요.</span>
           <span class="go">보기
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </span>
         </div>
 
         <div class="hero">
-          <div class="eyebrow"><span class="dotpulse"></span>바름 · 셀프서비스 규제 검수</div>
+          <div class="eyebrow"><span class="dotpulse"></span>바름 · 셀프서비스 규제 검증</div>
           <h1>게시하기 전에, 규제부터 확인하세요<span class="cursor" aria-hidden="true"></span></h1>
-          <p>상세페이지와 광고 문구를 검사해 위반 위험을 조항, 근거와 함께 보여드려요. 원하면 안전한 표현으로 수정안까지 만들어드립니다.</p>
+          <p>상세페이지와 광고 문구를 검사해 위반 위험을 조항, 근거와 함께 보여드려요. 원하면 위험을 낮춘 수정 권고안까지 만들어드립니다.</p>
         </div>
 
         <div class="doorwrap">
@@ -265,7 +271,7 @@
               <div class="dbody">
                 <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></div>
                 <h3>해외 수출용으로<br>검증할래요</h3>
-                <p>같은 자료에 대상국만 고르면 그 나라 규제 기준으로 검증해드려요. 리전별 리포트를 제공합니다.</p>
+                <p>같은 자료에 대상국만 고르면 미국 수출 기준으로 먼저 검증해드려요. 다른 국가는 순차 지원 예정입니다.</p>
                 <div class="region">대상국 <span class="sel">미국 FDA·FTC ▾</span></div>
                 <div class="inp"><span class="ic">이미지</span><span class="ic">문구</span><span class="ic">제품정보</span></div>
                 <div class="cta"><span>해외 검증 시작</span><span class="mono">→</span></div>
@@ -286,33 +292,33 @@
             <span class="rname">글로우 세럼 · 미국 상세페이지</span>
             <span class="rtag">해외 · 미국</span>
             <span class="rstat need"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>검토 필요</span>
-            <span class="grade">C</span>
+            <span class="raction">리포트 다시 보기</span>
             <span class="rupd">방금</span>
           </div>
           <div class="rrow">
             <span class="rname">수분 크림 리뉴얼 상세페이지</span>
             <span class="rtag">국내</span>
-            <span class="rstat done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M4 12l5 5L20 6"/></svg>검수 완료</span>
-            <span class="grade">A</span>
+            <span class="rstat done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M4 12l5 5L20 6"/></svg>검사 완료</span>
+            <span class="raction">리포트 다시 보기</span>
             <span class="rupd">2일 전</span>
           </div>
           <div class="rrow">
             <span class="rname">선크림 SPF50 신제품</span>
             <span class="rtag">해외 · 미국·EU</span>
             <span class="rstat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="square"><path d="M12 20h9"/><path d="M14 4l6 6L8 22H2v-6L14 4z"/></svg>작성중</span>
-            <span class="grade">B</span>
+            <span class="raction">이어서 작성</span>
             <span class="rupd">어제</span>
           </div>
         </div>
 
         <div class="compliance">
-          바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) '통과'가 100% 안전을 보장하진 않습니다. <b>적용 기준: 화장품법 · 고시 2025-79호 · 미국 FDA/FTC (리전별 자동 적용)</b>
+          바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) '통과'가 100% 안전을 보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다. <b>적용 기준: 화장품법 · 고시 2025-79호 · 미국 FDA/FTC (리전별 자동 적용)</b>
         </div>
         <div class="statusbar">
           <span class="seg inv">바름</span>
           <span class="seg">glowskin</span>
           <span class="seg grow">홈 · 2개 입구 중 선택</span>
-          <span class="seg">^N 새 검수</span>
+          <span class="seg">^N 새 검사</span>
         </div>
       </main>
     </div>
@@ -327,9 +333,9 @@
       </div>
       <div class="modal-body">
         <button class="opt on" data-v="미국 FDA·FTC"><span class="rc">›</span> 미국 <span class="rd">FDA · FTC</span></button>
-        <button class="opt" data-v="유럽연합 EU CPR"><span class="rc">›</span> 유럽연합 <span class="rd">EU CPR</span></button>
-        <button class="opt" data-v="일본 PMDA"><span class="rc">›</span> 일본 <span class="rd">PMDA</span></button>
-        <button class="opt" data-v="중국 NMPA"><span class="rc">›</span> 중국 <span class="rd">NMPA</span></button>
+        <button class="opt" disabled title="준비 중"><span class="rc">›</span> 유럽연합 <span class="rd">준비 중</span></button>
+        <button class="opt" disabled title="준비 중"><span class="rc">›</span> 일본 <span class="rd">준비 중</span></button>
+        <button class="opt" disabled title="준비 중"><span class="rc">›</span> 중국 <span class="rd">준비 중</span></button>
       </div>
     </div>
   </div>
