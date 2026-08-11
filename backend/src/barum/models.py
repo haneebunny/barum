@@ -113,8 +113,28 @@ class Summary(BaseModel):
 
 
 class CheckReport(BaseModel):
-    """`POST /check` 응답. findings + unjudged + summary."""
+    """`POST /check` 응답. findings + unjudged + summary.
+
+    result_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면
+    (JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다.
+    """
 
     findings: list[Finding]
     unjudged: list[UnjudgedSentence] = Field(default_factory=list)
     summary: Summary
+    result_id: str | None = None
+
+
+class StoredCheck(BaseModel):
+    """`GET /reports/{result_id}` 응답 (다시 보기).
+
+    저장된 CheckReport를 감싸고 저장 메타를 얹는다. 리포트 자체는 그대로라 프론트가
+    "방금 결과"와 "다시 보기"를 같은 컴포넌트로 렌더할 수 있다. 원본 이미지는
+    별도 프록시(`GET /reports/{id}/image`)로 받는다(image_available이 true일 때).
+    """
+
+    result_id: str
+    created_at: str
+    region: Region
+    image_available: bool
+    report: CheckReport
