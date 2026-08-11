@@ -13,8 +13,8 @@ from typing import Protocol
 
 from barum.models import (
     Finding,
+    JudgmentFlag,
     Location,
-    RiskLevel,
     UnjudgedSentence,
     ViolationType,
 )
@@ -55,13 +55,6 @@ class CosmeticJudge(Protocol):
 
 
 # 위반유형별 근거 조항은 reference.mapping이 단일 출처다(레퍼런스 팩과 드리프트 방지).
-# 위험도. 프롬프트가 위험도를 주지 않아 유형별로 고정 매핑한다. recall 우선이라
-# 위반은 최소 '중' 이상으로 둔다.
-_RISK = {
-    ViolationType.type_1_drug_misperception: RiskLevel.high,
-    ViolationType.type_2_functional_misperception: RiskLevel.medium,
-    ViolationType.type_5_deception: RiskLevel.medium,
-}
 
 
 def _loc(s: dict) -> Location:
@@ -111,7 +104,7 @@ class StubJudge:
                             sentence=text,
                             violation_type=vtype,
                             legal_basis=legal_basis_for(vtype),
-                            risk=_RISK[vtype],
+                            flag=JudgmentFlag.violation,  # 데모용, 근거 인프라 없음
                             explanation=f"(더미 판정) '{keyword}' 표현이 {vtype.value}에 해당할 소지가 있다.",
                             location=_loc(s),
                         )
@@ -154,23 +147,32 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."}}]}}"""
 
 
-def _ingredient_match_note(sentence: str, ingredients: list[str] | None) -> str | None:
-    """2호(기능성오인) finding에 붙일 성분 정합 안내. 붙일 게 없으면 None.
+def _functional_evidence(
+    sentence: str, ingredients: list[str] | None
+) -> tuple[str | None, JudgmentFlag]:
+    """2호(기능성오인) finding의 근거를 성분표로 확인해 (안내문, 플래그)를 낸다.
 
     VLM은 '미백/주름/자외선차단을 표방했다'까지만 판정하고, 실제 전성분에 그
     기능의 고시원료가 있는지는 모른다. 이건 정확 조회 문제라 여기서 결정론적으로
     확인한다(functional_ingredients.md "판정에 쓰는 법"의 코드화).
+
+    - 전성분 미입력/카테고리 불명 → 대조 근거 자체가 없다 → 검토필요.
+    - 고시원료 없음 → 표방한 기능의 근거가 없다는 확증 → 위반.
+    - 고시원료 있음 → 원료는 있으나 그 제품이 실제 기능성 심사·등록을 받았는지는
+      알 수 없다(우리 입력엔 등록 여부가 없다) → 단정 못 하고 검토필요.
     """
     if not ingredients:
-        return "(전성분 미입력 — 성분 정합 확인 못 함)"
+        return "(전성분 미입력 — 성분 정합 확인 못 함)", JudgmentFlag.needs_review
     category = infer_category(sentence)
     if category is None:
-        return None  # 문구에서 기능성 카테고리를 못 정했으면 안내 생략
+        return None, JudgmentFlag.needs_review  # 카테고리도 못 정함 — 안내는 생략
     row = match_ingredient(category, ingredients)
     if row is None:
-        return f"(전성분 대조: {category} 고시원료가 전성분에 없음 — 위반 소지 큼)"
+        note = f"(전성분 대조: {category} 고시원료가 전성분에 없음 — 위반 소지 큼)"
+        return note, JudgmentFlag.violation
     함량 = row.get("기준 함량") or row.get("최대 함량", "")
-    return f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량})"
+    note = f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량} — 등록 여부 불명, 단정 못 함)"
+    return note, JudgmentFlag.needs_review
 
 
 class PromptJudge:
@@ -200,8 +202,11 @@ class PromptJudge:
             )
             try:
                 res = self.vlm.generate_json(JUDGE_PROMPT.format(items=numbered), [])
+                # res가 dict가 아니면(가끔 모델이 {"results":[...]} 대신 통짜 리스트를
+                # 뱉는다) .get()이 AttributeError를 던진다 — 이것도 예상된 실패로 본다.
+                raw_results = res.get("results", [])
             except Exception as e:
-                # 예상된 실패(429·타임아웃·빈 응답). 재시도 없이 배치 전체 미판정.
+                # 예상된 실패(429·타임아웃·빈 응답·형식불일치). 재시도 없이 배치 전체 미판정.
                 print(
                     f"    [skip] judge 배치 {start}~{start + len(batch) - 1}: "
                     f"{type(e).__name__}: {e}"
@@ -213,7 +218,7 @@ class PromptJudge:
                 continue
 
             by_n: dict[int, dict] = {}
-            for item in res.get("results", []):
+            for item in raw_results:
                 try:
                     by_n[int(item["n"])] = item
                 except (KeyError, ValueError, TypeError):
@@ -233,8 +238,11 @@ class PromptJudge:
                 if vtype in _NON_VIOLATION:
                     continue  # 합법·대상외 → finding 없음
                 explanation = item.get("reason") or f"{vtype.value} 소지"
+                # 근거 대조 수단이 있는 유형(2호)만 검토필요로 내려갈 수 있다.
+                # 1호·5호는 RagJudge 붙기 전엔 대조 수단이 없어 잠정 위반(recall 우선).
+                flag = JudgmentFlag.violation
                 if vtype == ViolationType.type_2_functional_misperception:
-                    note = _ingredient_match_note(s["text"], ingredients)
+                    note, flag = _functional_evidence(s["text"], ingredients)
                     if note:
                         explanation = f"{explanation} {note}"
                 result.findings.append(
@@ -243,7 +251,7 @@ class PromptJudge:
                         sentence=s["text"],
                         violation_type=vtype,
                         legal_basis=legal_basis_for(vtype),
-                        risk=_RISK[vtype],
+                        flag=flag,
                         explanation=explanation,
                         location=_loc(s),
                     )

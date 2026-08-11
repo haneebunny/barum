@@ -6,6 +6,7 @@ VLM은 가짜 객체(캔드 results 반환/예외)를 주입한다. 진짜 판�
 """
 
 from barum.judge.cosmetic import JudgeResult, PromptJudge, StubJudge
+from barum.models import JudgmentFlag
 
 
 def _sentences(texts: list[str]) -> list[dict]:
@@ -46,7 +47,8 @@ def test_maps_labels_to_findings():
     assert len(res.unjudged) == 0
     f = res.findings[0]
     assert f.violation_type.value == "2호_기능성오인"
-    assert f.risk.value == "중"
+    # ingredients 미입력 → 대조 근거가 없어 검토필요.
+    assert f.flag == JudgmentFlag.needs_review
     assert f.legal_basis.startswith("화장품법 제13조")
     assert f.span == "멜라닌 막아 미백"  # 문장 단위 = span은 문장 전체
     # ingredients 미입력이면 원 근거 뒤에 '성분 정합 확인 못 함' 안내가 붙는다.
@@ -91,6 +93,7 @@ def test_batches_span_multiple_calls():
     )
     assert len(res.findings) == 1
     assert res.findings[0].violation_type.value == "1호_의약품오인"
+    assert res.findings[0].flag == JudgmentFlag.violation  # 1호는 대조수단 없어 잠정 위반
     assert res.findings[0].location.order == 1
 
 
@@ -99,6 +102,7 @@ def test_stub_judge_returns_judge_result():
     res = StubJudge().judge(_sentences(["완벽한 보습", "순한 사용감"]), "KR")
     assert isinstance(res, JudgeResult)
     assert len(res.findings) == 1  # "완벽" → 5호
+    assert res.findings[0].flag == JudgmentFlag.violation  # StubJudge는 항상 위반
     assert res.unjudged == []
 
 
@@ -110,8 +114,8 @@ def test_stub_judge_accepts_ingredients_param_and_ignores_it():
     assert isinstance(res, JudgeResult)
 
 
-def test_ingredient_match_found_appends_note():
-    """전성분에 고시원료가 있으면 확인됐다는 안내가 근거에 붙는다."""
+def test_ingredient_match_found_is_needs_review():
+    """전성분에 고시원료가 있어도 등록 여부는 모르니 단정 못 하고 검토필요."""
     vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
     res = PromptJudge(vlm).judge(
         _sentences(["멜라닌 억제해 미백에 도움"]),
@@ -119,24 +123,43 @@ def test_ingredient_match_found_appends_note():
         ingredients=["정제수", "나이아신아마이드", "글리세린"],
     )
     assert len(res.findings) == 1
-    assert "나이아신아마이드 확인됨" in res.findings[0].explanation
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.needs_review
+    assert "나이아신아마이드 확인됨" in f.explanation
 
 
-def test_ingredient_match_missing_appends_warning():
-    """전성분에 해당 기능 고시원료가 없으면 위반 소지가 크다는 안내가 붙는다."""
+def test_ingredient_match_missing_is_violation():
+    """전성분에 해당 기능 고시원료가 없으면 근거로 확증된 위반."""
     vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
     res = PromptJudge(vlm).judge(
         _sentences(["멜라닌 억제해 미백에 도움"]),
         "KR",
         ingredients=["정제수", "글리세린"],  # 미백 고시원료 없음
     )
-    assert "고시원료가 전성분에 없음" in res.findings[0].explanation
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.violation
+    assert "고시원료가 전성분에 없음" in f.explanation
+
+
+def test_ingredient_category_unclear_is_needs_review_without_note():
+    """카테고리를 못 정하면(문구에 미백/주름/자외선 키워드 없음) 검토필요, 안내문은 생략."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "기능성 표방"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["피부에 좋은 효과"]),  # 카테고리 키워드 없음
+        "KR",
+        ingredients=["정제수", "나이아신아마이드"],
+    )
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.needs_review
+    assert f.explanation == "기능성 표방"  # 안내 안 붙음
 
 
 def test_ingredient_match_skipped_for_non_functional_violation():
-    """1호·5호는 성분표 대조 대상이 아니라 안내가 안 붙는다."""
+    """1호·5호는 성분표 대조 대상이 아니라 항상 위반, 안내도 안 붙는다."""
     vlm = FakeVLM([{"n": 0, "label": "1호_의약품오인", "reason": "재생 효과"}])
     res = PromptJudge(vlm).judge(
         _sentences(["피부 재생 효과"]), "KR", ingredients=["정제수"]
     )
-    assert res.findings[0].explanation == "재생 효과"  # 안내 안 붙음
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.violation
+    assert f.explanation == "재생 효과"  # 안내 안 붙음

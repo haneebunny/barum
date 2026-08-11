@@ -6,9 +6,9 @@
 from barum.models import (
     CheckReport,
     Finding,
+    JudgmentFlag,
     Location,
     Region,
-    RiskLevel,
     Summary,
     ViolationType,
 )
@@ -29,19 +29,19 @@ def test_violation_type_labels():
 
 
 def test_finding_json_serializes_korean():
-    """finding을 JSON으로 덤프하면 위반유형·위험도가 한국어 문자열로 나간다."""
+    """finding을 JSON으로 덤프하면 위반유형·판정 플래그가 한국어 문자열로 나간다."""
     f = Finding(
         span="미백",
         sentence="멜라닌을 막아 미백에 도움",
         violation_type=ViolationType.type_2_functional_misperception,
         legal_basis="화장품법 제13조 제1항 제2호",
-        risk=RiskLevel.medium,
+        flag=JudgmentFlag.needs_review,
         explanation="기능성 효능 주장",
         location=Location(tile="source_t00.png", order=0),
     )
     dumped = f.model_dump(mode="json")
     assert dumped["violation_type"] == "2호_기능성오인"
-    assert dumped["risk"] == "중"
+    assert dumped["flag"] == "검토필요"
     assert dumped["location"] == {"tile": "source_t00.png", "order": 0}
 
 
@@ -55,3 +55,15 @@ def test_check_report_roundtrips():
     assert dumped["summary"]["region"] == "KR"
     assert dumped["summary"]["counts_by_type"] == {}
     assert dumped["findings"] == []
+
+
+def test_judgment_flag_is_binary():
+    """v1.8: 위험도(고/중/저) 폐지, 위반/검토필요 이진 플래그만 존재한다."""
+    assert {v.value for v in JudgmentFlag} == {"위반", "검토필요"}
+
+
+def test_summary_defaults_violation_and_review_counts_to_zero():
+    s = Summary(region=Region.KR, n_sentences=1, n_findings=0)
+    assert s.n_violation == 0
+    assert s.n_needs_review == 0
+    assert s.n_unjudged == 0
