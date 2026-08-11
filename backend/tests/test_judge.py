@@ -5,8 +5,36 @@ VLM은 가짜 객체(캔드 results 반환/예외)를 주입한다. 진짜 판�
     venv/bin/python -m pytest tests/test_judge.py -q
 """
 
-from barum.judge.cosmetic import JudgeResult, PromptJudge, StubJudge
+from barum.judge.cosmetic import JUDGE_PROMPT, JudgeResult, PromptJudge, StubJudge
 from barum.models import JudgmentFlag
+
+
+class CapturingVLM:
+    """VLM에 넘어간 프롬프트를 붙잡아 두는 가짜(문법 검증용)."""
+
+    def __init__(self):
+        self.prompt = None
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        self.prompt = prompt
+        return {"results": [{"n": 0, "label": "합법"}]}
+
+
+def test_prompt_judge_prepends_context_to_prompt():
+    """context를 주면 판정 프롬프트 앞에 붙어 VLM에 전달된다."""
+    vlm = CapturingVLM()
+    PromptJudge(vlm, context="[규정컨텍스트마커]").judge(
+        [{"order": 0, "tile": None, "text": "문구"}], "KR"
+    )
+    assert "[규정컨텍스트마커]" in vlm.prompt
+    assert "라벨" in vlm.prompt  # 기존 판정 지시도 그대로
+
+
+def test_prompt_judge_without_context_is_exactly_base_prompt():
+    """context 미지정이면 기존 JUDGE_PROMPT 그대로(회귀 방지)."""
+    vlm = CapturingVLM()
+    PromptJudge(vlm).judge([{"order": 0, "tile": None, "text": "문구"}], "KR")
+    assert vlm.prompt == JUDGE_PROMPT.format(items="0. 문구")
 
 
 def _sentences(texts: list[str]) -> list[dict]:

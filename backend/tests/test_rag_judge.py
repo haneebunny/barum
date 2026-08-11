@@ -83,14 +83,28 @@ def test_unmatched_sentence_delegates_to_vlm():
 
 
 def test_rule_confirmed_sentence_excluded_from_vlm_prompt():
-    """규칙 확정분은 VLM 프롬프트에서 빠지고 미확정분만 넘어간다(과금 절감·핵심)."""
+    """규칙 확정분은 VLM 프롬프트에서 빠지고 미확정분만 넘어간다(과금 절감·핵심).
+
+    규정 근거(context)에도 '아토피'가 들어 있어 프롬프트 통짜 substring 검사는 못 쓴다.
+    판정 대상 문장이 담기는 '문장:' 이후 items 블록만 떼어 확인한다.
+    """
     vlm = RecordingVLM([{"n": 0, "label": "합법"}])
     res = RagJudge(vlm).judge(_sentences(["아토피 완화", "촉촉한 보습감"]), "KR")
     assert vlm.calls == 1
-    assert "아토피" not in vlm.prompts[0]  # 규칙 확정분은 VLM에 안 감
-    assert "보습감" in vlm.prompts[0]  # 미확정분만 감
+    items_block = vlm.prompts[0].split("문장:\n")[-1]  # 판정 투입 문장만
+    assert "아토피" not in items_block  # 규칙 확정분은 판정 대상에서 빠짐
+    assert "보습감" in items_block  # 미확정분만 판정 대상
     assert len(res.findings) == 1
     assert res.findings[0].span == "아토피"
+
+
+def test_rag_fallback_prompt_includes_regulation_context():
+    """규칙 미매칭 문장은 규정·판정기준·실사례 근거가 실린 프롬프트로 LLM에 간다."""
+    vlm = RecordingVLM([{"n": 0, "label": "합법"}])
+    RagJudge(vlm).judge(_sentences(["촉촉하고 산뜻한 데일리 로션"]), "KR")
+    assert vlm.calls == 1
+    assert "판정 근거" in vlm.prompts[0]  # grounding 블록 헤더
+    assert "광고업무정지" in vlm.prompts[0]  # cases.md 실제 적발 처분
 
 
 def test_rule_findings_survive_vlm_failure():
