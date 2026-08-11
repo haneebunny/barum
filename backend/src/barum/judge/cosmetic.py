@@ -18,6 +18,7 @@ from barum.models import (
     UnjudgedSentence,
     ViolationType,
 )
+from barum.reference.context import build_judgment_context
 from barum.reference.ingredients import infer_category, match_ingredient
 from barum.reference.mapping import legal_basis_for
 from barum.reference.rules import RuleOutcome, match_rule
@@ -182,11 +183,28 @@ class PromptJudge:
     문장을 배치로 묶어 한 번에 판정한다(과금·throttle 절감). 배치 호출이 실패하면
     재시도하지 않고(과금 호출) 그 배치 문장들을 미판정으로 남긴다. 모델이 특정
     문장 결과를 빠뜨리거나 규격 밖 라벨을 주면, '합법'으로 삼키지 않고 미판정 처리.
+
+    context: 선택적 판정 근거 블록(규정·판정기준·사례). 주면 판정 프롬프트 앞에
+    붙어 LLM이 규정을 실제로 참고하게 한다(RagJudge가 채운다). 안 주면 기존 제로샷
+    프롬프트 그대로라 score_eval·기존 동작에 영향 없다.
     """
 
-    def __init__(self, vlm: VLM, batch_size: int = 12):
+    def __init__(self, vlm: VLM, batch_size: int = 12, context: str = ""):
         self.vlm = vlm
         self.batch_size = batch_size
+        self.context = context
+
+    def _build_prompt(self, numbered: str) -> str:
+        """판정 프롬프트를 만든다. context가 있으면 근거 블록을 앞에 붙인다."""
+        base = JUDGE_PROMPT.format(items=numbered)
+        if not self.context:
+            return base
+        return (
+            "아래 [판정 근거]는 화장품법 규정·판정기준·실제 적발사례다. "
+            "반드시 이 근거에 비추어 판정하라.\n\n"
+            f"[판정 근거]\n{self.context}\n\n"
+            f"[판정 지시]\n{base}"
+        )
 
     def judge(
         self,
@@ -202,7 +220,7 @@ class PromptJudge:
                 f"{start + j}. {s['text']}" for j, s in enumerate(batch)
             )
             try:
-                res = self.vlm.generate_json(JUDGE_PROMPT.format(items=numbered), [])
+                res = self.vlm.generate_json(self._build_prompt(numbered), [])
                 # res가 dict가 아니면(가끔 모델이 {"results":[...]} 대신 통짜 리스트를
                 # 뱉는다) .get()이 AttributeError를 던진다 — 이것도 예상된 실패로 본다.
                 raw_results = res.get("results", [])
@@ -285,11 +303,15 @@ class RagJudge:
     (Gemini가 진정·탄력을 1호로 과잉판정하던 문제를 규칙이 원천 차단).
 
     슬롯 구조: PromptJudge를 내부에 합성해 fallback으로 쓴다. StubJudge·PromptJudge는
-    안 건드린다.
+    안 건드린다. fallback LLM에는 규정·판정기준·실사례를 프롬프트에 실어(grounding)
+    "규정 보고 판단"하게 한다(context). 규칙이 이미 확정한 문장은 애초에 LLM에 안 가므로,
+    규칙의 결정론적 판정은 grounding과 무관하게 그대로 유지된다.
     """
 
     def __init__(self, vlm: VLM, batch_size: int = 12):
-        self._prompt = PromptJudge(vlm, batch_size)
+        self._prompt = PromptJudge(
+            vlm, batch_size, context=build_judgment_context()
+        )
 
     def judge(
         self,
