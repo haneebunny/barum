@@ -62,7 +62,7 @@ def image_case() -> CheckReport:
             violation_type=ViolationType.type_2_functional_misperception,
             legal_basis=legal_basis_for(ViolationType.type_2_functional_misperception),
             flag=JudgmentFlag.needs_review,  # 성분 정합 미확인 상태 시연
-            explanation="미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력 — 성분 정합 확인 못 함)",
+            explanation="미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
             location=Location(
                 tile="detail_000_t00.png", order=0,
                 y_start=0, y_end=1480, source_h=9000, source_w=1000,
@@ -110,7 +110,7 @@ def text_case() -> CheckReport:
             violation_type=ViolationType.type_2_functional_misperception,
             legal_basis=legal_basis_for(ViolationType.type_2_functional_misperception),
             flag=JudgmentFlag.needs_review,
-            explanation="주름개선은 기능성 화장품 심사가 필요한 표현이다. (전성분 미입력 — 성분 정합 확인 못 함)",
+            explanation="주름개선은 기능성 화장품 심사가 필요한 표현이다. (전성분 미입력, 성분 정합 확인 못 함)",
             location=Location(tile=None, order=0),
         ),
         Finding(
