@@ -12,11 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
 from barum.models import (
     CheckReport,
+    GenerateRequest,
+    GenerateResponse,
     Region,
     RemediationRequest,
     RemediationResponse,
     StoredCheck,
 )
+from barum.generate.content import generate_content
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check
 from barum.storage.checks_store import (
@@ -221,3 +224,20 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
         suggestions=suggestions,
         disclaimer=disclaimer,
     )
+
+
+def _section_vlm():
+    """저위험 서술 생성용 LLM. 테스트는 이걸 가짜로 갈아낀다.
+
+    GENERATE_PROVIDER로 따로 지정 가능, 없으면 판정 provider(gpt-5-mini) 재사용.
+    """
+    return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
+
+
+@app.post("/generate", response_model=GenerateResponse)
+def generate(req: GenerateRequest) -> GenerateResponse:
+    """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve).
+
+    위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.
+    """
+    return generate_content(req, judge=_build_judge(), vlm=_section_vlm())
