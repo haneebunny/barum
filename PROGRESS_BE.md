@@ -297,4 +297,4 @@ cd backend
 ### 다음
 - (블로커) 규칙집(레퍼런스팩) 완성 → `RagJudge`를 `judge/cosmetic.py` 슬롯에 구현. 나머지 코드 불변.
 - 규칙집+실judge 붙은 뒤 43문장으로 Gemini vs GPT 비교표(과금, 하니 승인).
-- 프론트(팀원A)가 `CheckReport` 스키마에 붙기 시작.
+- 프론트(팀원B)가 `CheckReport` 스키마에 붙기 시작.
