@@ -142,6 +142,45 @@
           }
         }
       }
+    },
+    "/remediate": {
+      "post": {
+        "summary": "Remediate",
+        "description": "위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다.",
+        "operationId": "remediate_remediate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -372,6 +411,76 @@
         ],
         "title": "Region",
         "description": "검사 대상 국가. 지금은 국내(KR)만 실동작, 미국(US)은 2단계."
+      },
+      "RemediationRequest": {
+        "properties": {
+          "sentence": {
+            "type": "string",
+            "title": "Sentence",
+            "description": "탐지된 위반 문구 전체"
+          },
+          "violation_type": {
+            "$ref": "#/components/schemas/ViolationType",
+            "description": "위반유형 라벨"
+          },
+          "span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span",
+            "description": "위반으로 지목된 세부 표현 (생략 시 sentence 전체)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence",
+          "violation_type"
+        ],
+        "title": "RemediationRequest",
+        "description": "수정 권고안 생성 요청."
+      },
+      "RemediationResponse": {
+        "properties": {
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "violation_type": {
+            "$ref": "#/components/schemas/ViolationType"
+          },
+          "span": {
+            "type": "string",
+            "title": "Span"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggestions",
+            "description": "대체 표현 후보들"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer",
+            "description": "권고 사항 고지 안내 문구"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence",
+          "violation_type",
+          "span",
+          "suggestions",
+          "disclaimer"
+        ],
+        "title": "RemediationResponse",
+        "description": "수정 권고안 생성 응답."
       },
       "StoredCheck": {
         "properties": {

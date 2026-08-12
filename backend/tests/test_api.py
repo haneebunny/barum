@@ -73,3 +73,38 @@ def test_check_accepts_optional_ingredients_field():
         },
     )
     assert r.status_code == 200
+
+
+def test_remediate_endpoint():
+    """/remediate POST 엔드포인트가 올바르게 작동하는지 검증."""
+    r = client.post(
+        "/remediate",
+        json={
+            "sentence": "피부 재생을 도와 주름을 개선합니다.",
+            "violation_type": "1호_의약품오인",
+            "span": "피부 재생",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sentence"] == "피부 재생을 도와 주름을 개선합니다."
+    assert body["violation_type"] == "1호_의약품오인"
+    assert body["span"] == "피부 재생"
+    assert isinstance(body["suggestions"], list)
+    assert len(body["suggestions"]) > 0
+    assert "극건성 피부용 보습" not in body["suggestions"] # 재생 매칭 suggestions
+    assert "피부 장벽 강화" in body["suggestions"]
+    assert "disclaimer" in body
+
+
+def test_remediate_endpoint_validation():
+    """/remediate POST 엔드포인트 필드 누락 시 422 반환 검증."""
+    r = client.post(
+        "/remediate",
+        json={
+            "sentence": "문구",
+            # violation_type 누락
+        },
+    )
+    assert r.status_code == 422
+

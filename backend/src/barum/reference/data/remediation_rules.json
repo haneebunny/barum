@@ -1,0 +1,101 @@
+{
+  "rules": [
+    {
+      "keywords": ["아토피", "건선", "가려움"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["극건성 피부용 보습", "건조함으로 인한 가려움 완화"]
+    },
+    {
+      "keywords": ["염증", "항염", "진통"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["피부 진정", "자극 완화"]
+    },
+    {
+      "keywords": ["여드름", "트러블"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["민감성 피부 케어", "피부 청결 유지"]
+    },
+    {
+      "keywords": ["치료", "의학", "치유"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["피부 장벽 케어", "피부 보호"]
+    },
+    {
+      "keywords": ["재생", "세포재생"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["피부 장벽 강화", "피부 생기 부여"]
+    },
+    {
+      "keywords": ["소독", "살균", "항균"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["피부 세정", "청결 관리"]
+    },
+    {
+      "keywords": ["상처", "화상"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["자극받은 피부 보호", "일시적 손상 케어"]
+    },
+    {
+      "keywords": ["탈모", "발모", "양모", "육모"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["두피 영양 공급", "모발 윤광/탄력 케어"]
+    },
+    {
+      "keywords": ["다이어트", "지방분해", "체중감량"],
+      "violation_type": "1호_의약품오인",
+      "suggestions": ["피부 탄력 증진", "바디 탄력 케어"]
+    },
+    {
+      "keywords": ["미백", "화이트닝"],
+      "violation_type": "2호_기능성오인",
+      "suggestions": ["피부 톤 개선", "맑고 투명한 피부 연출"]
+    },
+    {
+      "keywords": ["주름", "안티링클", "링클"],
+      "violation_type": "2호_기능성오인",
+      "suggestions": ["피부 탄력 개선", "영양 공급"]
+    },
+    {
+      "keywords": ["자외선차단", "선케어", "자외선"],
+      "violation_type": "2호_기능성오인",
+      "suggestions": ["자외선으로부터 피부 보호"]
+    },
+    {
+      "keywords": ["병원용", "피부과전용", "약국용", "약국전용", "병원전용"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["홈케어 전용", "에스테틱 스킨케어"]
+    },
+    {
+      "keywords": ["바늘", "니들", "미세침", "MTS"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["피부 흡수율을 높인 포뮬러", "스피큘 성분 함유 케어"]
+    },
+    {
+      "keywords": ["완벽", "최고", "최상", "100%"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["우수한 효과", "만족스러운 사용감"]
+    },
+    {
+      "keywords": ["피부나이", "나이 감소", "어려지는"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["탄력 케어", "피부 건강 유지"]
+    },
+    {
+      "keywords": ["부작용", "안전한"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["피부 저자극 테스트 완료"]
+    },
+    {
+      "keywords": ["엑소좀", "줄기세포"],
+      "violation_type": "5호_거짓과장기만",
+      "suggestions": ["줄기세포 배양액 함유", "피부 장벽 강화 효과"]
+    }
+  ],
+  "fallbacks": {
+    "1호_의약품오인": ["일반 보습 및 피부 장벽 강화", "피부 보호"],
+    "2호_기능성오인": ["피부 수분/영양 공급", "피부 보습 케어"],
+    "5호_거짓과장기만": ["우수한 효과", "만족스러운 사용감"],
+    "합법": [],
+    "대상외": []
+  }
+}
