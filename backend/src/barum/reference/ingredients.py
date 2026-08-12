@@ -101,6 +101,19 @@ def check_amount_threshold(category: str, row: dict, amount: str) -> bool:
     return g_low <= t_high  # 최대 함량: 이하면 통과
 
 
+def find_amount_for(row: dict, ingredient_amounts: list[tuple[str, str]]) -> str | None:
+    """고시원료 행(row)에 해당하는 성분의 함량 표기를 찾는다. 없으면 None(함량 자체를 안 줌).
+
+    판정(`/check`)에서 "이름은 있는데 함량을 줬는지/안 줬는지"를 구분해야 할 때 쓴다
+    (안 줬으면 기존처럼 검토필요 유지, 줬는데 기준 미달이면 위반으로 올림).
+    """
+    target = _normalize(row["성분명"])
+    for name, amount in ingredient_amounts:
+        if _normalize(name) == target:
+            return amount
+    return None
+
+
 def match_ingredient_strict(category: str, ingredient_amounts: list[tuple[str, str]]) -> dict | None:
     """성분명 매칭 + 함량 명시 + 함량 기준 충족을 모두 확인한다(create 모드 전용).
 

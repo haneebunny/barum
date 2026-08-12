@@ -133,9 +133,11 @@ class RecordingJudge:
 
     def __init__(self):
         self.received_ingredients = "not called"
+        self.received_ingredient_amounts = "not called"
 
-    def judge(self, sentences, region, ingredients=None):
+    def judge(self, sentences, region, ingredients=None, ingredient_amounts=None):
         self.received_ingredients = ingredients
+        self.received_ingredient_amounts = ingredient_amounts
         return JudgeResult()
 
 
@@ -165,3 +167,34 @@ def test_no_ingredients_passes_none_to_judge():
         judge=judge,
     )
     assert judge.received_ingredients is None
+    assert judge.received_ingredient_amounts is None
+
+
+def test_ingredient_amounts_string_is_parsed_and_passed_to_judge():
+    """"성분:함량" 콤마 문자열이 (이름,함량) 튜플 목록으로 쪼개져 judge에 전달된다."""
+    judge = RecordingJudge()
+    run_check(
+        region="KR",
+        ad_text="촉촉한 보습감.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=judge,
+        ingredient_amounts="나이아신아마이드:3%, 알부틴:10%",
+    )
+    assert judge.received_ingredient_amounts == [("나이아신아마이드", "3%"), ("알부틴", "10%")]
+
+
+def test_ingredient_amounts_skips_entries_without_colon():
+    """":" 없는 항목(함량 미표기)은 건너뛴다 — 그 성분은 기존처럼 이름만 대조된다."""
+    judge = RecordingJudge()
+    run_check(
+        region="KR",
+        ad_text="촉촉한 보습감.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=judge,
+        ingredient_amounts="정제수, 나이아신아마이드:3%",
+    )
+    assert judge.received_ingredient_amounts == [("나이아신아마이드", "3%")]

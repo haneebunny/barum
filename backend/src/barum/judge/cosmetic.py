@@ -22,7 +22,12 @@ from barum.reference.context import (
     build_judgment_context,
     build_regulation_context,
 )
-from barum.reference.ingredients import infer_category, match_ingredient
+from barum.reference.ingredients import (
+    check_amount_threshold,
+    find_amount_for,
+    infer_category,
+    match_ingredient,
+)
 from barum.reference.mapping import legal_basis_for
 from barum.reference.rules import RuleOutcome, match_rule
 from barum.vlm import VLM
@@ -48,6 +53,7 @@ class CosmeticJudge(Protocol):
         sentences: list[dict],
         region: str,
         ingredients: list[str] | None = None,
+        ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         """문장 리스트를 받아 위반 findings + 미판정 목록을 낸다.
 
@@ -55,6 +61,9 @@ class CosmeticJudge(Protocol):
         합법·대상외는 finding을 만들지 않는다(근거 개수 = 위반 건수).
         ingredients: 선택적 전성분 목록. 있으면 2호(기능성오인) 판정에 성분
         정합(고시원료 존재 여부) 대조를 덧붙인다.
+        ingredient_amounts: 선택적 (성분명, 함량) 목록. 있으면 성분 정합에 함량기준
+        충족 여부까지 더해 판정을 더 정확히 가른다(이름만 있고 함량이 없거나
+        미달이면 위반 쪽으로, 이름+함량 다 맞아도 등록 여부는 확인 못 해 검토필요 유지).
         """
         ...
 
@@ -110,6 +119,7 @@ class StubJudge:
         sentences: list[dict],
         region: str,
         ingredients: list[str] | None = None,
+        ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         findings: list[Finding] = []
         for s in sentences:
@@ -166,18 +176,25 @@ JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."
 
 
 def _functional_evidence(
-    sentence: str, ingredients: list[str] | None
+    sentence: str,
+    ingredients: list[str] | None,
+    ingredient_amounts: list[tuple[str, str]] | None = None,
 ) -> tuple[str | None, JudgmentFlag]:
     """2호(기능성오인) finding의 근거를 성분표로 확인해 (안내문, 플래그)를 낸다.
 
     VLM은 '미백/주름/자외선차단을 표방했다'까지만 판정하고, 실제 전성분에 그
-    기능의 고시원료가 있는지는 모른다. 이건 정확 조회 문제라 여기서 결정론적으로
-    확인한다(functional_ingredients.md "판정에 쓰는 법"의 코드화).
+    기능의 고시원료가 있는지, 함량이 기준을 채우는지는 모른다. 이건 정확 조회
+    문제라 여기서 결정론적으로 확인한다(functional_ingredients.md "판정에 쓰는
+    법"의 코드화). 이름·함량이 다 맞아도 "합법"까지는 못 간다 — 그 제품이 실제
+    기능성 심사·보고 등록을 받았는지는 우리 입력에 없어서 여전히 모른다. 이름+함량은
+    "위반이 아닐 가능성"의 근거일 뿐, "합법"을 확정하는 근거가 아니다.
 
     - 전성분 미입력/카테고리 불명 → 대조 근거 자체가 없다 → 검토필요.
     - 고시원료 없음 → 표방한 기능의 근거가 없다는 확증 → 위반.
-    - 고시원료 있음 → 원료는 있으나 그 제품이 실제 기능성 심사·등록을 받았는지는
-      알 수 없다(우리 입력엔 등록 여부가 없다) → 단정 못 하고 검토필요.
+    - 고시원료 있음 + 함량 미입력 → 이름만으론 등록 여부까지 단정 못 함 → 검토필요.
+    - 고시원료 있음 + 함량 기준 미달 → 정식 심사 대상인데 안 밟았다는 근거 → 위반.
+    - 고시원료 있음 + 함량 기준 충족 → 등록 여부는 여전히 불명 → 검토필요(안내문에
+      "등록 확인되면 합법 전환 가능" 명시).
     """
     if not ingredients:
         return "(전성분 미입력, 성분 정합 확인 못 함)", JudgmentFlag.needs_review
@@ -188,8 +205,16 @@ def _functional_evidence(
     if row is None:
         note = f"(전성분 대조: {category} 고시원료가 전성분에 없음, 위반 소지 큼)"
         return note, JudgmentFlag.violation
-    함량 = row.get("기준 함량") or row.get("최대 함량", "")
-    note = f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량}, 등록 여부 불명이라 단정 못 함)"
+
+    기준 = row.get("기준 함량") or row.get("최대 함량", "")
+    given_amount = find_amount_for(row, ingredient_amounts or [])
+    if given_amount is None:
+        note = f"(전성분 대조: {row['성분명']} 확인됨, 기준 {기준}, 함량 미입력이라 기준충족 여부 확인 못 함. 등록 여부도 불명이라 단정 못 함)"
+        return note, JudgmentFlag.needs_review
+    if not check_amount_threshold(category, row, given_amount):
+        note = f"(전성분 대조: {row['성분명']} 확인됐으나 함량 {given_amount}이 고시 기준({기준}) 미달, 정식 심사 대상인데 안 밟은 것으로 보여 위반 소지 큼)"
+        return note, JudgmentFlag.violation
+    note = f"(전성분 대조: {row['성분명']} {given_amount} 확인됨, 고시 기준({기준}) 충족. 다만 실제 기능성 심사·보고 등록 여부는 확인 불가라 검토필요로 유지, 등록 확인되면 합법 전환 가능)"
     return note, JudgmentFlag.needs_review
 
 
@@ -227,6 +252,7 @@ class PromptJudge:
         sentences: list[dict],
         region: str,
         ingredients: list[str] | None = None,
+        ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         result = JudgeResult()
         for start in range(0, len(sentences), self.batch_size):
@@ -281,7 +307,7 @@ class PromptJudge:
                 # 1호·5호는 RagJudge 붙기 전엔 대조 수단이 없어 잠정 위반(recall 우선).
                 flag = JudgmentFlag.violation
                 if vtype == ViolationType.type_2_functional_misperception:
-                    note, flag = _functional_evidence(s["text"], ingredients)
+                    note, flag = _functional_evidence(s["text"], ingredients, ingredient_amounts)
                     if note:
                         explanation = f"{explanation} {note}"
                 result.findings.append(
@@ -353,6 +379,7 @@ class RagJudge:
         sentences: list[dict],
         region: str,
         ingredients: list[str] | None = None,
+        ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         result = JudgeResult()
         remaining: list[dict] = []  # 규칙 미확정 → VLM에 넘길 문장
@@ -385,7 +412,7 @@ class RagJudge:
             prompt_judge = PromptJudge(
                 self._vlm, self._batch_size, context=self._context_for(remaining)
             )
-            vlm_result = prompt_judge.judge(remaining, region, ingredients)
+            vlm_result = prompt_judge.judge(remaining, region, ingredients, ingredient_amounts)
             result.findings.extend(vlm_result.findings)
             result.unjudged.extend(vlm_result.unjudged)
 

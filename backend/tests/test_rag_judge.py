@@ -124,6 +124,20 @@ def test_rag_with_retriever_uses_regulation_plus_retrieved_cases():
     assert "트리플 특허" not in p  # cases.md 통째의 사례는 안 들어감(검색 경로)
 
 
+def test_ingredient_amounts_forwarded_to_fallback_prompt_judge():
+    """ingredient_amounts는 규칙 미매칭 문장의 fallback 판정까지 그대로 전달된다."""
+    vlm = RecordingVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = RagJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "알부틴"],
+        ingredient_amounts=[("알부틴", "10%")],  # 기준 2~5% 초과 → 위반으로 올라가야 함
+    )
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.violation
+    assert "함량" in f.explanation and "미달" in f.explanation
+
+
 def test_rule_findings_survive_vlm_failure():
     """VLM이 미확정분에서 실패해도 규칙 확정 finding은 남고 실패분은 unjudged."""
     res = RagJudge(BoomVLM()).judge(_sentences(["아토피 완화", "일반적인 사용감"]), "KR")

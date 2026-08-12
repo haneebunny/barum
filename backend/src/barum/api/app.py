@@ -173,13 +173,19 @@ async def check(
     ingredients: str | None = Form(
         None, description="전성분(콤마 구분). 있으면 2호 판정에 성분 정합 대조가 붙는다."
     ),
+    ingredient_amounts: str | None = Form(
+        None,
+        description='"성분:함량" 콤마구분(예: "나이아신아마이드:3%,알부틴:10%"). '
+        "명시된 성분만 함량기준 대조까지 더해져 2호 판정이 더 정확해진다.",
+    ),
     product_name: str | None = Form(
         None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
     ),
 ) -> CheckReport:
     """광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.
 
-    이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, product_name은 선택.
+    이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, ingredient_amounts,
+    product_name은 선택.
     """
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
@@ -198,6 +204,7 @@ async def check(
         vlm=ocr_vlm,
         judge=_build_judge(),
         ingredients=ingredients,
+        ingredient_amounts=ingredient_amounts,
         product_name=product_name,
     )
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.

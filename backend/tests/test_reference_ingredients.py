@@ -5,6 +5,7 @@
 
 from barum.reference.ingredients import (
     check_amount_threshold,
+    find_amount_for,
     infer_category,
     match_ingredient,
     match_ingredient_strict,
@@ -90,3 +91,13 @@ def test_match_ingredient_strict_requires_name_amount_and_threshold():
     assert match_ingredient_strict("미백", [("알부틴", "10%")]) is None
     # 함량 자체가 없음(리스트에 없는 성분) → 스킵
     assert match_ingredient_strict("미백", [("정제수", "50%")]) is None
+
+
+def test_find_amount_for_matches_by_normalized_name():
+    row = {"성분명": "알파-비사보롤", "기준 함량": "0.5%"}
+    assert find_amount_for(row, [("알파 비사보롤", "1%")]) == "1%"  # 공백·하이픈 차이 흡수
+
+
+def test_find_amount_for_returns_none_when_not_given():
+    row = {"성분명": "나이아신아마이드", "기준 함량": "2~5%"}
+    assert find_amount_for(row, [("알부틴", "3%")]) is None
