@@ -238,23 +238,81 @@ export function ReportClient({ envelope }: ReportClientProps) {
               })()
             ) : (
               (() => {
-                const seen: Record<string, Array<{ span: string; cls: string; badge: number }>> = {};
-                const orderList: string[] = [];
+                // 텍스트 모드: findings 및 unjudged 문장들을 통합하여 order 순으로 렌더링
+                // 1. findings 문장 분류
+                const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number }>> = {};
+                const sentenceOrders: Record<string, number> = {};
 
                 findByOrder.forEach((o) => {
                   const sentence = o.f.sentence;
-                  if (!seen[sentence]) {
-                    seen[sentence] = [];
-                    orderList.push(sentence);
+                  if (!seenFindings[sentence]) {
+                    seenFindings[sentence] = [];
+                    sentenceOrders[sentence] = o.f.location.order;
                   }
-                  seen[sentence].push({
+                  seenFindings[sentence].push({
                     span: o.f.span,
                     cls: o.f.flag === "위반" ? "violation" : "review",
                     badge: o.num,
                   });
                 });
 
-                const htmlContent = orderList.map((s) => markSentence(s, seen[s])).join(" ");
+                // 2. unjudged 문장 분류
+                const unjudgedSentences: Array<{ sentence: string; letter: string; order: number }> = [];
+                ujByOrder.forEach((u, i) => {
+                  unjudgedSentences.push({
+                    sentence: u.sentence,
+                    letter: String.fromCharCode(65 + i),
+                    order: u.location.order,
+                  });
+                });
+
+                // 3. 모든 문장 목록 구성 및 order 순 정렬
+                interface TextSentenceNode {
+                  type: "find" | "uj";
+                  sentence: string;
+                  order: number;
+                  // find type extra
+                  hlItems?: Array<{ span: string; cls: string; badge: number }>;
+                  // uj type extra
+                  letter?: string;
+                }
+
+                const allSentences: TextSentenceNode[] = [];
+
+                Object.keys(seenFindings).forEach((s) => {
+                  allSentences.push({
+                    type: "find",
+                    sentence: s,
+                    order: sentenceOrders[s],
+                    hlItems: seenFindings[s],
+                  });
+                });
+
+                unjudgedSentences.forEach((u) => {
+                  allSentences.push({
+                    type: "uj",
+                    sentence: u.sentence,
+                    order: u.order,
+                    letter: u.letter,
+                  });
+                });
+
+                allSentences.sort((a, b) => a.order - b.order);
+
+                // 4. HTML 생성
+                const htmlContent = allSentences
+                  .map((node) => {
+                    if (node.type === "find" && node.hlItems) {
+                      return markSentence(node.sentence, node.hlItems);
+                    } else if (node.type === "uj" && node.letter) {
+                      return `<span class="hlspan unjudged"><span class="tag">${node.letter}</span>${escapeHtml(
+                        node.sentence
+                      )}</span>`;
+                    }
+                    return "";
+                  })
+                  .join(" ");
+
                 return (
                   <div
                     className="textpanel"
