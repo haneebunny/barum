@@ -1,12 +1,53 @@
 # PROGRESS_BE: 바름 백엔드 진행상황
 
 > 성격: 백엔드 세션 진행 기록(가변). 확정 결정은 `PROJECT.md`, 전체 로드맵은 `ROADMAP.md`, 작업 규칙은 `CLAUDE.md`.
-> 갱신일: 2026-08-11. 담당: 백엔드 세션(팀원B) / 검수: 하니.
+> 갱신일: 2026-08-12. 담당: 백엔드 세션(백엔드2) / 검수: 하니.
 
 > ⚠ **PM 정정 (2026-08-11, 하니 확인)**: 기획서 v1.7 확인 결과 거짓·과장·기만이 개정법(2026.11.27 시행)에서
 > **4호 → 5호**로 밀림(AI 전문가보증 조항이 신설 4호). `models.py`·`judge/cosmetic.py`·픽스처·reference를
 > `type_5_deception`/`5호_거짓과장기만`으로 이미 정정·검증(pytest 35 passed) 완료. 아래 로그의 "4호" 언급은
 > 그 시점 기준 원기록이라 남겨두되, 현재 코드 기준은 5호다. 상세: `reference/cosmetic_kr/statute/law_article_13.md`.
+
+---
+
+## 2026-08-12 · 콘텐츠 생성 FR-11/13 (improve MVP, A+B단계 완료)
+
+브랜치 `feature/be-generate-a`(PR #48) → `feature/be-generate-b`(PR #49, A 위 스택). PM4 지시, 착수 전 하니 인터뷰로 스코프 확정 → 디디(프론트)와 `POST /generate` 계약 조율 → CLAUDE.md B규칙대로 계획 승인 후 착수.
+
+### 확정 스코프 (하니 인터뷰)
+- **모드 = 개선(improve) 우선.** 신규 생성(원본 없이 자료만으로 처음부터)은 후순위.
+- **효능·기능 표현은 자유창작 금지, 조건표(기존 `remediation.py`)로 결정적 치환** — FR-14와 같은 원칙 재사용.
+- **저위험 서술(제품개요·사용법·주의사항)만 LLM 실제 생성** + 실패 시 템플릿 폴백(기획서 "완성도 미달 시 큐레이션 폴백" 반영).
+- **FR-13 이미지는 배치 + 가드레일만.** 실제 이미지 생성기(provider)는 안 붙임 — 업로드 사진 배치, 생성요청은 사칭(의사·의료진·전문가) 키워드 필터로 허용/거부만 판단.
+- **생성물은 반드시 `/check`(RagJudge)로 재검증.**
+- 내보내기(PNG/PDF/HTML)는 **프론트 클라이언트 export**로 확정, 백엔드 스코프 제외(하니 결정).
+
+### API 계약 (디디와 조율, `POST /generate`)
+입력: `content`(필수, 원본 텍스트 — 저장된 검사엔 위반 문장만 있고 원문 전체가 없어 프론트가 넘김) + `result_id`?(이미지·맥락 참조) + `materials`(ingredients·certifications·notes) + `image_generation`?.
+출력: `sections[]`(kind·text·source={llm|remediation|template}) · `replacements[]`(원문→대체, "이렇게 고쳤어요" 대조용) · `image_plan`(placed·generation) · `pii_removed[]` · `risk_confirmations[]`(id 포함, 체크리스트 UI) · `recheck`(safe·n_findings·n_violation·n_needs_review — safe=false만 빨강 배지, 색규칙 정합) · `disclaimer`.
+
+### 구현 (A단계 = 순수 로직, B단계 = LLM+오케스트레이션)
+- `reference/pii.py`: 이메일·전화·주민번호 정규식 제거(순수, TDD).
+- `reference/impersonation.py`: 이미지 생성요청 사칭 키워드 필터(순수, TDD).
+- `generate/replace.py`: 위반 finding → `remediation.get_remediation()`으로 안전표현 조립(기존 조건표 재사용만, remediation.py 안 건드림).
+- `generate/content.py`: 검사(judge 주입) → 조건표 치환 → LLM 저위험 서술(vlm 주입, 전용 프롬프트로 효능표현 명시적 금지) → PII 제거 → 이미지 배치·가드레일 → **재검증**(run_check 재사용) → 남은 위반은 `risk_confirmations`로 노출. 계획의 "C단계(재검증 통합)"가 오케스트레이션에 흡수돼 B로 완결.
+- `POST /generate` 엔드포인트(`api/app.py`), `_section_vlm()` seam으로 테스트 가짜 주입.
+- **판정기(RagJudge·PromptJudge)·remediation.py는 안 건드림, 재사용만.**
+
+### 재검증 안전망 확인 (실 스모크, RagJudge+gpt-5-mini)
+입력 "아토피 완화에 좋은 재생 크림, 병원에서도 추천, 전화번호 포함" → 치환(아토피→"극건성 피부용 보습", 병원추천→remediation 대체) → LLM 섹션 생성(효능표현 없음) → PII 제거 확인. **재검증에서 `safe=False`로 남은 위험 2건이 정직하게 노출됨**:
+1. 한 문장에 위반 여럿이면 첫 것만 치환됨("재생"이 안 잡힘) — 다음 이터레이션에서 "재검증 findings 재치환 루프" 넣으면 개선 가능.
+2. `remediation_rules.json`의 일부 대체표현 자체가 위반 소지("우수한 효과" 등, 데이터 품질 이슈, `reference/data/remediation_rules.json` 소관).
+둘 다 안전에는 문제없음(숨기지 않고 확인 요청으로 노출).
+
+### 테스트
+신규 20(A: pii 5·impersonation 3·models 3·replace 3, B: content 4·api 2, 합 20) — 전체 **155 통과**.
+
+### 다음(미착수)
+- 신규 생성(create) 모드.
+- 재검증 findings 재치환 자동 루프.
+- 이미지 실제 생성기 도입 여부(현재는 가드레일만).
+- remediation_rules.json 데이터 품질(대체표현 자체 위반 소지 있는 항목 점검) — 팀원B 소관.
 
 ---
 
@@ -58,6 +99,37 @@ score_eval.py는 base PromptJudge(제로샷)만 재므로 실제 제품 정확�
 
 ### 테스트
 `test_rag_rules.py`(7) + `test_rag_judge.py`(6) + `test_api.py` 팩토리 1 = 신규 14. 전체 **74 통과**. §3 경계표현 12건 오프라인 스모크 일치 확인.
+
+---
+
+## 2026-08-11~12 · Location 좌표 · score_eval 버그 · RAG 보강(4 Phase) · Supabase DB
+
+RagJudge(PR #16) 위에 이어서 진행한 작업들. 브랜치는 각각 origin/main 기준(또는 명시한 대로 스택), PR 별도, 전부 TDD.
+
+### Location 좌표 확장 (PR #18)
+이미지 밴드 하이라이트용. `tile_split.split_image()`가 `(path, top, bot)` 튜플로 밴드 좌표를 함께 반환하게 확장 → `pipeline._ocr_image`가 원본 크기 읽어 문장 dict에 `y_start/y_end/source_h/source_w` 실음 → `judge._loc()`이 `Location`에 채움. 텍스트 입력은 전부 None. fixtures·openapi 재생성.
+
+### score_eval.py 500버그 수정 (PR #21)
+`judge_batch`의 `res.get("results")`가 VLM이 리스트를 뱉으면 `AttributeError`로 터지던 것(`PromptJudge`는 이미 고쳐져 있었음). try 안으로 옮겨 예상된 실패로 흡수.
+
+### RAG 보강 — 4 Phase (PR #17·#19·#20, 계획은 하니 인터뷰로 확정)
+RagJudge 미매칭 문장이 LLM으로 갈 때, "규정 문서·판정기준·실사례를 실제로 참고해 판단"하게 하는 작업.
+- **Phase1 — 규정 인라인 grounding** (`reference/context.py`): 판정 근거 md(금지표현·판정기준·성분표)를 프롬프트에 통째로 인라인. `PromptJudge`에 선택적 `context` 파라미터 추가(기본 `''`라 기존 동작·score_eval 무영향). 벡터검색 안 씀(코퍼스가 작아 통째 인라인으로 충분, PM 확정). 실 스모크: LLM이 별표1·2·5 조항을 실제 인용해 판정.
+- **Phase2 — Supabase 기반** (`storage/client.py`, `db/schema.sql`): env(`SUPABASE_URL`·`SUPABASE_KEY`)로 클라이언트 생성. **주의**: 대시보드에서 REST 엔드포인트 전체(`.../rest/v1/`)를 URL로 복사하는 실수가 흔해 `PGRST125`로 깨진다 — 클라이언트가 URL을 자동 정규화(`/rest/v1`·끝슬래시 제거)하게 방어 처리함.
+- **Phase3 — 사례 pgvector 검색** (`reference/cases.py`, `storage/cases_store.py`, `reference/case_retriever.py`): `cases.md`의 실사례를 `text-embedding-3-small`로 임베딩해 `reference_cases`에 적재(`scripts/load_cases.py`, 배포 시 1회, 멱등) → 판정 시 문장 임베딩으로 유사 top-K(기본 3, cap 6)만 검색해 프롬프트에 삽입(cases.md 통째 대신). 검색 실패해도 빈 블록으로 degrade(판정은 규정만으로 계속). **부수로 잡은 버그**: 모델이 1-based n을 주면(우리 항목은 0-based) 조회가 빗나가 판정이 조용히 미판정으로 흐르던 것 — 결과 수=문장 수면 순서로 매칭하게 고침(개수 다르면 fallback 안 함=안전). grounded 긴 프롬프트에서 특히 잘 재현됨, `PromptJudge` 전체에 영향 있던 신뢰도 문제.
+- RagJudge는 `case_retriever` 선택 주입(없으면 Phase1 방식, 있으면 규정+검색사례).
+
+### Supabase DB 도입 — 이력·증거 저장 (PR #22/#25, Task2)
+FR-1(증거보존)·FR-8(다시보기) 충족. **로그인 없음** — 추측불가 `result_id`(`secrets.token_urlsafe(32)`)가 접근권. 기존 `schema.sql`(식품/감독기관용 7테이블)은 재사용 안 하고 `db/schema.sql`에 신규 최소 스키마(`checks`·`reference_cases`, RLS 켜짐 — secret key는 우회하니 백엔드 접근엔 문제없고 anon 직접접근만 막는 방어층).
+- `models`: `CheckReport.result_id`(optional) + `StoredCheck`(리포트 감싸는 다시보기 응답).
+- `storage/checks_store.py`: sha256 해시 + private Storage 버킷(`evidence`) 업/다운로드.
+- API: `POST /check`가 결과·증거 저장 후 `result_id` 응답(저장 실패해도 응답은 살아있음, 예상된 실패 스킵) · `GET /reports/{id}`(다시보기) · `GET /reports/{id}/image`(백엔드 프록시 스트리밍, 서명URL 없음).
+
+### 검증 (전체, RagJudge 이후 누계)
+`pytest tests/ -q` → **155 passed**(신규 총 81). 실 Supabase 스모크: 버킷 생성 → 이미지 라운드트립(바이트 일치) → 이력 저장/조회 전부 확인. `data/eval_ragjudge.py` 재평가(PR #29): base 제로샷 60.0%/미탐1 → 배포 RagJudge 65.0%/**미탐0**(상세는 위 "배포 파이프라인 재평가" 항목).
+
+### 사고 1건 — 공유 워크트리 git checkout
+작업A(score_eval 재평가, 팀원B 소관으로 최종 확정) 착수 전 "최신 코드로 돌리려고" 메인 워크트리에서 `git checkout main`을 실행했다가, 로컬 main이 origin/main보다 70커밋 뒤처진 낡은 지점으로 HEAD가 튐(PM3가 복구, 유실 없음). **재발 방지**: 이후 전부 `git worktree add <임시경로> ... origin/main`으로 격리해서 작업, 메인 워크트리 HEAD는 안 건드림.
 
 ---
 
