@@ -158,3 +158,103 @@ class RemediationResponse(BaseModel):
     span: str
     suggestions: list[str] = Field(..., description="대체 표현 후보들")
     disclaimer: str = Field(..., description="권고 사항 고지 안내 문구")
+
+
+# ── 콘텐츠 생성 (FR-11/13) ──────────────────────────────────────────────────
+
+
+class Section(BaseModel):
+    """생성된 콘텐츠 한 섹션. 화면은 섹션 카드로 렌더한다."""
+
+    kind: str  # 제품개요 | 사용법 | 주의사항 | 광고문구
+    text: str
+    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구)
+
+
+class Replacement(BaseModel):
+    """위반 문구 → 안전 표현 치환 내역(조건표 기반). '이렇게 고쳤어요' 대조용."""
+
+    original: str
+    replaced: str
+    violation_type: ViolationType
+    basis: str  # 합법 표기 틀 근거
+
+
+class PlacedImage(BaseModel):
+    """초안 레이아웃에 배치된 업로드 이미지."""
+
+    slot: str  # hero | body 등
+    image_url: str  # 예: /reports/{result_id}/image
+
+
+class ImageGenResult(BaseModel):
+    """이미지 생성 요청 처리 결과(FR-13). 이번 MVP는 실제 생성 안 함(가드레일만).
+
+    requested=True인데 allowed=False면 사칭 필터에 걸린 것(reason에 사유).
+    allowed=True여도 ai_labeled/생성물은 없다(생성기 미도입, 폴백).
+    """
+
+    requested: bool = False
+    allowed: bool | None = None
+    reason: str | None = None
+    ai_labeled: bool = False
+
+
+class ImagePlan(BaseModel):
+    """이미지 배치 + 생성 가드레일 결과(FR-13)."""
+
+    placed: list[PlacedImage] = Field(default_factory=list)
+    generation: ImageGenResult = Field(default_factory=ImageGenResult)
+
+
+class RiskConfirmation(BaseModel):
+    """자동으로 못 고쳐 남은 위험 항목. 사용자가 확인해야 생성 확정(체크리스트 UI)."""
+
+    id: str  # 체크 상태 추적용
+    text: str
+    reason: str
+    requires_confirmation: bool = True
+
+
+class RecheckSummary(BaseModel):
+    """생성물을 /check로 재검증한 요약. safe=False면 화면이 빨강 경고 배지."""
+
+    safe: bool
+    n_findings: int
+    n_violation: int = 0
+    n_needs_review: int = 0
+
+
+class ImageGenRequest(BaseModel):
+    """이미지 생성 요청 입력(선택). requested=True일 때 prompt를 필터링한다."""
+
+    requested: bool = False
+    prompt: str | None = None
+
+
+class GenerateRequest(BaseModel):
+    """`POST /generate` 요청 (개선 모드). content(원본 광고 텍스트)가 필수.
+
+    저장된 검사엔 위반 문장만 있고 원문 전체가 없어, 개선하려면 프론트가 원본
+    텍스트를 넘긴다(하니 승인). result_id는 이미지·검사맥락 참조용(선택).
+    """
+
+    content: str = Field(..., description="개선 대상 원본 광고 텍스트")
+    result_id: str | None = Field(None, description="검사 결과 참조(이미지·맥락)")
+    product_name: str | None = None
+    ingredients: str | None = Field(None, description="전성분(콤마 구분)")
+    certifications: list[str] = Field(default_factory=list)
+    notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
+    image_generation: ImageGenRequest | None = None
+
+
+class GenerateResponse(BaseModel):
+    """`POST /generate` 응답. 구조화 콘텐츠 + 치환내역 + 이미지계획 + 재검증."""
+
+    sections: list[Section]
+    replacements: list[Replacement]
+    image_plan: ImagePlan
+    pii_removed: list[str] = Field(default_factory=list)
+    risk_confirmations: list[RiskConfirmation] = Field(default_factory=list)
+    recheck: RecheckSummary
+    disclaimer: str
