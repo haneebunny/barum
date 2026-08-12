@@ -5,7 +5,7 @@
 > 갱신: 2026-08-12 오후 (D-15, 발표 8/27). 이 세션(PM3 루루)이 하루 종일 쓴 뒤 다음 세션(4대 루루)에 넘김.
 
 ## 프로젝트
-- **barum(바름):** 화장품 광고 컴플라이언스 **자가검증(브랜드용)**. 기획서 **v1.9**(`~/Downloads/2조_최종프로젝트_기획서_v1.9.docx`). LLM+RAG(규칙 우선 + VLM fallback + 벡터 사례검색).
+- **barum(바름):** 화장품 광고 컴플라이언스 **자가검증(브랜드용)**. 기획서 **v1.9**(`docs/2조_최종프로젝트_기획서_v1.9.docx`, repo 안에 있음, Downloads 아님). LLM+RAG(규칙 우선 + VLM fallback + 벡터 사례검색).
 - 화면 5개(v1.9에서 마이페이지=FR-15 신규): 홈 · 새 검사 · 결과 리포트 · 콘텐츠 생성 · 마이페이지.
 - 참조: `ROADMAP.md`(v1.9로 갱신 완료), `PROJECT.md`, `CLAUDE.md`(작업규칙), `AGENTS.md`(git 규칙), `PROGRESS_BE.md`, `docs/handoffs/`, `docs/api/README.md`.
 
