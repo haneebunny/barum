@@ -10,8 +10,9 @@ FastAPI Form/File로 받는다(→ api/app.py).
 """
 
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Region(str, Enum):
@@ -168,7 +169,7 @@ class Section(BaseModel):
 
     kind: str  # 제품개요 | 사용법 | 주의사항 | 광고문구
     text: str
-    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구)
+    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구) | approved_claim(인증서-인정문구 매칭, create 모드)
 
 
 class Replacement(BaseModel):
@@ -232,20 +233,51 @@ class ImageGenRequest(BaseModel):
     prompt: str | None = None
 
 
-class GenerateRequest(BaseModel):
-    """`POST /generate` 요청 (개선 모드). content(원본 광고 텍스트)가 필수.
+class IngredientAmount(BaseModel):
+    """create 모드 전용: 성분명 + 함량(원문 표기 그대로, 예 "2%"·"2,500 IU/g").
 
-    저장된 검사엔 위반 문장만 있고 원문 전체가 없어, 개선하려면 프론트가 원본
-    텍스트를 넘긴다(하니 승인). result_id는 이미지·검사맥락 참조용(선택).
+    기존 `ingredients`(콤마 성분명 문자열)는 함량이 없어 인정문구 함량기준
+    대조에 못 쓴다. improve 모드는 이 필드를 쓰지 않는다(회귀 없음).
     """
 
-    content: str = Field(..., description="개선 대상 원본 광고 텍스트")
+    name: str
+    amount: str = Field(..., description='함량 원문 표기, 예: "2%", "2~5%", "2,500 IU/g"')
+
+
+class GenerateRequest(BaseModel):
+    """`POST /generate` 요청. `mode`로 improve(개선)/create(신규 생성) 분기.
+
+    improve: content(원본 광고 텍스트) 필수. 저장된 검사엔 위반 문장만 있고
+    원문 전체가 없어, 개선하려면 프론트가 원본 텍스트를 넘긴다(하니 승인).
+    create: content 없이 product_name·ingredient_amounts·certifications만으로
+    인증서 매칭 인정문구를 조립한다(효능표현 자유창작 금지, 조건표 대신
+    인증서-인정문구 매칭이 소스).
+    """
+
+    mode: Literal["improve", "create"] = "improve"
+    content: str | None = Field(None, description="개선 대상 원본 광고 텍스트(improve 모드 필수)")
     result_id: str | None = Field(None, description="검사 결과 참조(이미지·맥락)")
     product_name: str | None = None
-    ingredients: str | None = Field(None, description="전성분(콤마 구분)")
+    ingredients: str | None = Field(None, description="전성분(콤마 구분, improve 모드용)")
+    ingredient_amounts: list[IngredientAmount] | None = Field(
+        None, description="성분명+함량(create 모드 전용, 인정문구 함량기준 대조에 씀)"
+    )
     certifications: list[str] = Field(default_factory=list)
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
     image_generation: ImageGenRequest | None = None
+
+    @model_validator(mode="after")
+    def _content_required_for_improve(self) -> "GenerateRequest":
+        if self.mode == "improve" and not self.content:
+            raise ValueError("mode='improve'는 content(원본 광고 텍스트)가 필수입니다")
+        return self
+
+
+class SkippedClaim(BaseModel):
+    """create 모드에서 조건 미충족으로 생성하지 않은 인정문구 카테고리. 조용히 빠지지 않게 명시."""
+
+    category: str
+    reason: str
 
 
 class GenerateResponse(BaseModel):
@@ -256,5 +288,6 @@ class GenerateResponse(BaseModel):
     image_plan: ImagePlan
     pii_removed: list[str] = Field(default_factory=list)
     risk_confirmations: list[RiskConfirmation] = Field(default_factory=list)
+    skipped_claims: list[SkippedClaim] = Field(default_factory=list)
     recheck: RecheckSummary
     disclaimer: str

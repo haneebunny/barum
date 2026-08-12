@@ -107,7 +107,7 @@
     "/check": {
       "post": {
         "summary": "Check",
-        "description": "광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.\n\n이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients는 선택.",
+        "description": "광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.\n\n이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, product_name은 선택.",
         "operationId": "check_check_post",
         "requestBody": {
           "content": {
@@ -181,6 +181,45 @@
           }
         }
       }
+    },
+    "/generate": {
+      "post": {
+        "summary": "Generate",
+        "description": "검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve).\n\n위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.",
+        "operationId": "generate_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -224,6 +263,18 @@
             ],
             "title": "Ingredients",
             "description": "전성분(콤마 구분). 있으면 2호 판정에 성분 정합 대조가 붙는다."
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
           }
         },
         "type": "object",
@@ -312,6 +363,172 @@
         "title": "Finding",
         "description": "문구 하나에 대한 판정 결과. 리포트에 한 줄로 렌더된다."
       },
+      "GenerateRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "improve",
+              "create"
+            ],
+            "title": "Mode",
+            "default": "improve"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "개선 대상 원본 광고 텍스트(improve 모드 필수)"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id",
+            "description": "검사 결과 참조(이미지·맥락)"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "ingredients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredients",
+            "description": "전성분(콤마 구분, improve 모드용)"
+          },
+          "ingredient_amounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IngredientAmount"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredient Amounts",
+            "description": "성분명+함량(create 모드 전용, 인정문구 함량기준 대조에 씀)"
+          },
+          "certifications": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Certifications"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes",
+            "description": "설문/추가 제품정보 자유서술"
+          },
+          "image_generation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageGenRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "GenerateRequest",
+        "description": "`POST /generate` 요청. `mode`로 improve(개선)/create(신규 생성) 분기.\n\nimprove: content(원본 광고 텍스트) 필수. 저장된 검사엔 위반 문장만 있고\n원문 전체가 없어, 개선하려면 프론트가 원본 텍스트를 넘긴다(하니 승인).\ncreate: content 없이 product_name·ingredient_amounts·certifications만으로\n인증서 매칭 인정문구를 조립한다(효능표현 자유창작 금지, 조건표 대신\n인증서-인정문구 매칭이 소스)."
+      },
+      "GenerateResponse": {
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/Section"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "replacements": {
+            "items": {
+              "$ref": "#/components/schemas/Replacement"
+            },
+            "type": "array",
+            "title": "Replacements"
+          },
+          "image_plan": {
+            "$ref": "#/components/schemas/ImagePlan"
+          },
+          "pii_removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pii Removed"
+          },
+          "risk_confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/RiskConfirmation"
+            },
+            "type": "array",
+            "title": "Risk Confirmations"
+          },
+          "skipped_claims": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedClaim"
+            },
+            "type": "array",
+            "title": "Skipped Claims"
+          },
+          "recheck": {
+            "$ref": "#/components/schemas/RecheckSummary"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sections",
+          "replacements",
+          "image_plan",
+          "recheck",
+          "disclaimer"
+        ],
+        "title": "GenerateResponse",
+        "description": "`POST /generate` 응답. 구조화 콘텐츠 + 치환내역 + 이미지계획 + 재검증."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -324,6 +541,105 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ImageGenRequest": {
+        "properties": {
+          "requested": {
+            "type": "boolean",
+            "title": "Requested",
+            "default": false
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          }
+        },
+        "type": "object",
+        "title": "ImageGenRequest",
+        "description": "이미지 생성 요청 입력(선택). requested=True일 때 prompt를 필터링한다."
+      },
+      "ImageGenResult": {
+        "properties": {
+          "requested": {
+            "type": "boolean",
+            "title": "Requested",
+            "default": false
+          },
+          "allowed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "ai_labeled": {
+            "type": "boolean",
+            "title": "Ai Labeled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ImageGenResult",
+        "description": "이미지 생성 요청 처리 결과(FR-13). 이번 MVP는 실제 생성 안 함(가드레일만).\n\nrequested=True인데 allowed=False면 사칭 필터에 걸린 것(reason에 사유).\nallowed=True여도 ai_labeled/생성물은 없다(생성기 미도입, 폴백)."
+      },
+      "ImagePlan": {
+        "properties": {
+          "placed": {
+            "items": {
+              "$ref": "#/components/schemas/PlacedImage"
+            },
+            "type": "array",
+            "title": "Placed"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/ImageGenResult"
+          }
+        },
+        "type": "object",
+        "title": "ImagePlan",
+        "description": "이미지 배치 + 생성 가드레일 결과(FR-13)."
+      },
+      "IngredientAmount": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "함량 원문 표기, 예: \"2%\", \"2~5%\", \"2,500 IU/g\""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "amount"
+        ],
+        "title": "IngredientAmount",
+        "description": "create 모드 전용: 성분명 + 함량(원문 표기 그대로, 예 \"2%\"·\"2,500 IU/g\").\n\n기존 `ingredients`(콤마 성분명 문자열)는 함량이 없어 인정문구 함량기준\n대조에 못 쓴다. improve 모드는 이 필드를 쓰지 않는다(회귀 없음)."
       },
       "JudgmentFlag": {
         "type": "string",
@@ -394,6 +710,17 @@
               }
             ],
             "title": "Source W"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -402,6 +729,54 @@
         ],
         "title": "Location",
         "description": "문구가 잡힌 위치.\n\nOCR은 글자 좌표(bbox)를 주지 않는다. 우리가 확보하는 위치 정보는 어느 타일의\n몇 번째 문장이냐까지다. 타일 단위 세로 밴드(y_start~y_end)를 원본 이미지\n좌표로 실어, 프론트가 원본 위에 밴드를 하이라이트할 수 있게 한다. 문장 단위\n정밀 좌표는 없다(OCR이 bbox를 안 주므로 타일 밴드가 최선).\n\n이미지 입력만 좌표가 있다. 텍스트 입력(이미지 없음)이면 tile과 좌표 모두 None.\nsource_h/source_w는 원본 이미지 크기라 프론트가 밴드를 원본 축척에 맞춘다."
+      },
+      "PlacedImage": {
+        "properties": {
+          "slot": {
+            "type": "string",
+            "title": "Slot"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slot",
+          "image_url"
+        ],
+        "title": "PlacedImage",
+        "description": "초안 레이아웃에 배치된 업로드 이미지."
+      },
+      "RecheckSummary": {
+        "properties": {
+          "safe": {
+            "type": "boolean",
+            "title": "Safe"
+          },
+          "n_findings": {
+            "type": "integer",
+            "title": "N Findings"
+          },
+          "n_violation": {
+            "type": "integer",
+            "title": "N Violation",
+            "default": 0
+          },
+          "n_needs_review": {
+            "type": "integer",
+            "title": "N Needs Review",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "safe",
+          "n_findings"
+        ],
+        "title": "RecheckSummary",
+        "description": "생성물을 /check로 재검증한 요약. safe=False면 화면이 빨강 경고 배지."
       },
       "Region": {
         "type": "string",
@@ -482,6 +857,106 @@
         "title": "RemediationResponse",
         "description": "수정 권고안 생성 응답."
       },
+      "Replacement": {
+        "properties": {
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "replaced": {
+            "type": "string",
+            "title": "Replaced"
+          },
+          "violation_type": {
+            "$ref": "#/components/schemas/ViolationType"
+          },
+          "basis": {
+            "type": "string",
+            "title": "Basis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original",
+          "replaced",
+          "violation_type",
+          "basis"
+        ],
+        "title": "Replacement",
+        "description": "위반 문구 → 안전 표현 치환 내역(조건표 기반). '이렇게 고쳤어요' 대조용."
+      },
+      "RiskConfirmation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requires_confirmation": {
+            "type": "boolean",
+            "title": "Requires Confirmation",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "reason"
+        ],
+        "title": "RiskConfirmation",
+        "description": "자동으로 못 고쳐 남은 위험 항목. 사용자가 확인해야 생성 확정(체크리스트 UI)."
+      },
+      "Section": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text",
+          "source"
+        ],
+        "title": "Section",
+        "description": "생성된 콘텐츠 한 섹션. 화면은 섹션 카드로 렌더한다."
+      },
+      "SkippedClaim": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "reason"
+        ],
+        "title": "SkippedClaim",
+        "description": "create 모드에서 조건 미충족으로 생성하지 않은 인정문구 카테고리. 조용히 빠지지 않게 명시."
+      },
       "StoredCheck": {
         "properties": {
           "result_id": {
@@ -498,6 +973,17 @@
           "image_available": {
             "type": "boolean",
             "title": "Image Available"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
           },
           "report": {
             "$ref": "#/components/schemas/CheckReport"
