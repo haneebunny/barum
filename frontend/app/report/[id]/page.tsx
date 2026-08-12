@@ -3,9 +3,9 @@ import { ReportClient } from "./ReportClient";
 
 export default async function ReportPage({ params }: PageProps<"/report/[id]">) {
   const { id } = await params;
+  let envelope;
   try {
-    const envelope = await getReport(id);
-    return <ReportClient envelope={envelope} />;
+    envelope = await getReport(id);
   } catch (error) {
     return (
       <div className="mono" style={{ padding: "24px", color: "var(--crit)" }}>
@@ -15,4 +15,6 @@ export default async function ReportPage({ params }: PageProps<"/report/[id]">) 
       </div>
     );
   }
+
+  return <ReportClient envelope={envelope} />;
 }

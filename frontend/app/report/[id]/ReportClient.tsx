@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ReportEnvelope } from "@/lib/api/schema";
+import { getReport } from "@/lib/api/client";
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -14,9 +15,49 @@ interface ReportClientProps {
   envelope: ReportEnvelope;
 }
 
+function escapeHtml(s: string) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+}
+
+function markSentence(sentence: string, hlItems: Array<{ span: string; cls: string; badge: number }>) {
+  let out = escapeHtml(sentence);
+  const items = [...hlItems].sort((a, b) => b.span.length - a.span.length);
+  items.forEach((it) => {
+    const needle = escapeHtml(it.span);
+    if (out.indexOf(needle) === -1) return;
+    out = out.replace(
+      needle,
+      `<span class="hlspan ${it.cls}"><span class="tag">${it.badge}</span>${needle}</span>`
+    );
+  });
+  return out;
+}
+
 export function ReportClient({ envelope }: ReportClientProps) {
-  const d = envelope.report;
-  const [actions] = useState<Record<number, "accept" | "exclude" | "hold" | null>>({});
+  const [activeEnvelope, setActiveEnvelope] = useState<ReportEnvelope>(envelope);
+  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
+    if (envelope.result_id === "demo-text-id" || envelope.result_id === "text") return "text";
+    if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
+    return "image";
+  });
+  const [loading, setLoading] = useState(false);
+  const [actions, setActions] = useState<Record<number, "accept" | "exclude" | "hold" | null>>({});
+
+  const handleFixtureChange = async (key: "image" | "text" | "unjudged") => {
+    setLoading(true);
+    try {
+      const data = await getReport(key);
+      setActiveEnvelope(data);
+      setActiveFixture(key);
+      setActions({});
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const d = activeEnvelope.report;
 
   // 10단계에서 제외(exclude) 처리 시 수치 실시간 계산을 위한 바인딩 연동
   let nViol = 0;
@@ -39,6 +80,17 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
+  // findings의 order 기준으로 순서(num: 1, 2, 3...) 매기기
+  const findByOrder = d.findings
+    .map((f, i) => ({ f, idx: i, num: 0 }))
+    .sort((a, b) => a.f.location.order - b.f.location.order);
+  findByOrder.forEach((item, index) => {
+    item.num = index + 1;
+  });
+
+  // unjudged의 order 기준으로 정렬
+  const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
@@ -49,6 +101,32 @@ export function ReportClient({ envelope }: ReportClientProps) {
           </Link>{" "}
           <span className="sep">›</span> 국내 광고 검증 <span className="sep">›</span> 리포트
         </span>
+        <div className="modeswitch">
+          <span className="msl devnote">목업 전용 · 실제 화면엔 없음:</span>
+          <div className="msbtns" id="fixtureSwitch" role="group" aria-label="fixture 전환">
+            <button
+              onClick={() => handleFixtureChange("image")}
+              className={activeFixture === "image" ? "on" : ""}
+              disabled={loading}
+            >
+              이미지 예시
+            </button>
+            <button
+              onClick={() => handleFixtureChange("text")}
+              className={activeFixture === "text" ? "on" : ""}
+              disabled={loading}
+            >
+              텍스트 예시
+            </button>
+            <button
+              onClick={() => handleFixtureChange("unjudged")}
+              className={activeFixture === "unjudged" ? "on" : ""}
+              disabled={loading}
+            >
+              미판정 포함
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 요약 상단바 */}
@@ -88,16 +166,103 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </span>
           </div>
           <div id="origPanel">
-            <p
-              className="devnote"
-              style={{
-                padding: "12px",
-                border: "1px dashed var(--line-2)",
-                background: "var(--surface-sub)",
-              }}
-            >
-              원문 하이라이트 영역 (Micro-step 9에서 구현 예정)
-            </p>
+            {loading ? (
+              <p className="devnote" style={{ padding: "12px" }}>
+                로딩 중...
+              </p>
+            ) : isImageMode ? (
+              (() => {
+                const byTile: Record<
+                  string,
+                  Array<
+                    | { type: "find"; num: number; item: typeof d.findings[number] }
+                    | { type: "uj"; letter: string; item: typeof d.unjudged[number] }
+                  >
+                > = {};
+
+                findByOrder.forEach((o) => {
+                  const t = o.f.location.tile;
+                  if (t) {
+                    if (!byTile[t]) byTile[t] = [];
+                    byTile[t].push({ type: "find", num: o.num, item: o.f });
+                  }
+                });
+
+                ujByOrder.forEach((u, i) => {
+                  const t = u.location.tile;
+                  if (t) {
+                    if (!byTile[t]) byTile[t] = [];
+                    byTile[t].push({ type: "uj", letter: String.fromCharCode(65 + i), item: u });
+                  }
+                });
+
+                const tiles = Object.keys(byTile).sort();
+
+                return (
+                  <>
+                    {tiles.map((t) => {
+                      const rows = byTile[t].sort(
+                        (a, b) => a.item.location.order - b.item.location.order
+                      );
+                      return (
+                        <div className="tileblock" key={t}>
+                          <div className="tilehead">{t}</div>
+                          <div className="tilebg">
+                            {rows.map((r, ri) => {
+                              if (r.type === "find") {
+                                const cls = r.item.flag === "위반" ? "violation" : "review";
+                                return (
+                                  <div className={`hlband ${cls}`} key={ri}>
+                                    <span className="hlbadge">{r.num}</span>
+                                    <span className="hltxt">{r.item.span}</span>
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="hlband unjudged" key={ri}>
+                                    <span className="hlbadge">{r.letter}</span>
+                                    <span className="hltxt">{r.item.sentence}</span>
+                                  </div>
+                                );
+                              }
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="devnote" style={{ marginTop: "8px" }}>
+                      실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
+                    </p>
+                  </>
+                );
+              })()
+            ) : (
+              (() => {
+                const seen: Record<string, Array<{ span: string; cls: string; badge: number }>> = {};
+                const orderList: string[] = [];
+
+                findByOrder.forEach((o) => {
+                  const sentence = o.f.sentence;
+                  if (!seen[sentence]) {
+                    seen[sentence] = [];
+                    orderList.push(sentence);
+                  }
+                  seen[sentence].push({
+                    span: o.f.span,
+                    cls: o.f.flag === "위반" ? "violation" : "review",
+                    badge: o.num,
+                  });
+                });
+
+                const htmlContent = orderList.map((s) => markSentence(s, seen[s])).join(" ");
+                return (
+                  <div
+                    className="textpanel"
+                    dangerouslySetInnerHTML={{ __html: htmlContent }}
+                  />
+                );
+              })()
+            )}
           </div>
         </div>
         <div className="repcol right">
