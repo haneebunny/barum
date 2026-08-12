@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-08-12 · [Micro-step 2] 홈 화면(HomePage) 정적 레이아웃 이식 완료
+
+### 무엇
+- `barum.html` 목업을 기반으로 홈 화면의 정적 마크업을 [page.tsx](file:///c:/dev/barum/frontend/app/page.tsx)에 완벽히 이식하였습니다.
+  - 미확인 알림 바(`needbar`), 히어로 영역, 국내/해외 2입구 카드, 최근 프로젝트 목록, 하단 컴플라이언스 및 상태바 마크업 이식.
+  - 대상국 선택 모달(`regionModal`)은 `hidden` 상태로 마크업만 배치 완료. (상태 제어는 Micro-step 3에서 추가 예정)
+- [globals.css](file:///c:/dev/barum/frontend/app/globals.css) 하단에 홈 화면 전용 CSS 스타일 및 모바일 반응형 미디어 쿼리를 이식하였습니다.
+- 로컬 PC 환경에 대응하여 PATH 환경 변수를 갱신하고 `npm run lint` 및 `npm run build` 검증(Turbopack)을 성공적으로 마쳤습니다.
+- Windows 환경에서의 preflight 실행 호환성을 위해 [preflight.py](file:///c:/dev/barum/scripts/preflight.py)의 `cp949` 유니코드 인코딩 크래시 오류(em-dash)를 수정하였으며, 최종 preflight 빌드 및 테스트 패스를 확인하였습니다.
+
+---
+
 ## 2026-08-12 · [Micro-step 1] AppShell 사이드바 내비게이션 활성화 완료
 
 ### 무엇

@@ -290,6 +290,338 @@ body {
   flex-direction: column;
 }
 
+/* 알림 바: 급한 것만 = 빨강 + 아이콘 + 글자 */
+.needbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--crit-bd);
+  background: var(--crit-bg);
+  color: var(--crit);
+  font-size: 13px;
+}
+.needbar svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.needbar b {
+  font-weight: 700;
+}
+.needbar .go {
+  margin-left: auto;
+  color: var(--crit);
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+/* 히어로 */
+.hero {
+  padding: 30px 22px 8px;
+}
+.hero .eyebrow {
+  color: var(--brand-ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  margin-bottom: 11px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.hero .eyebrow .dotpulse {
+  width: 7px;
+  height: 7px;
+  background: var(--brand);
+  display: inline-block;
+}
+.hero h1 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  line-height: 1.25;
+}
+.hero p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 14px;
+  max-width: 52ch;
+}
+
+/* 3 도어 */
+.doorwrap {
+  padding: 18px 22px 4px;
+}
+.doors {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 13px;
+}
+.door {
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.door:hover {
+  border-color: var(--brand);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+.door .dtop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-sub);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.3px;
+}
+.door .dno {
+  background: var(--brand-deep);
+  color: var(--on-brand);
+  font-weight: 700;
+  padding: 1px 6px;
+}
+.door .dbody {
+  padding: 16px 15px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.door .glyph {
+  color: var(--brand-ink);
+  margin-bottom: 11px;
+}
+.door .glyph svg {
+  width: 26px;
+  height: 26px;
+}
+.door h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.3px;
+}
+.door p {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  flex: 1;
+}
+.door .region {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.door .sel {
+  border: 1px solid var(--line-2);
+  background: var(--surface-sub);
+  color: var(--ink);
+  padding: 3px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.door .sel:hover {
+  border-color: var(--ink-3);
+}
+.door .inp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.door .inp .ic {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  border: 1px solid var(--line-2);
+  padding: 2px 7px;
+  color: var(--brand-ink);
+  background: var(--surface-sub);
+}
+.door .cta {
+  border-top: 1px dashed var(--line-2);
+  padding-top: 12px;
+  color: var(--brand-ink);
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 최근 */
+.recent {
+  padding: 22px 22px 8px;
+}
+.seclabel {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 13px;
+}
+.seclabel .n {
+  color: var(--on-brand);
+  background: var(--brand-deep);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+}
+.seclabel .n svg {
+  width: 13px;
+  height: 13px;
+}
+.seclabel h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.2px;
+}
+.seclabel .rule {
+  flex: 1;
+  height: 0;
+  border-top: 1px dashed var(--line-2);
+}
+.seclabel .hint {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+.rrow {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 11px 14px;
+  margin-bottom: 7px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+.rrow:hover {
+  border-color: var(--brand);
+}
+.rname {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.rtag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  border: 1px solid var(--line-2);
+  padding: 2px 7px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* 상태 칩: 색이 아니라 아이콘+글자로. 급한 것(검토 필요)만 빨강 */
+.rstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border: 1px solid var(--line-2);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.rstat svg {
+  width: 13px;
+  height: 13px;
+}
+.rstat.need {
+  color: var(--crit);
+  border-color: var(--crit-bd);
+  background: var(--crit-bg);
+  font-weight: 600;
+}
+.rstat.done {
+  color: var(--ink-2);
+  border-color: var(--line-2);
+}
+.raction {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.rupd {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* 컴플라이언스 + 상태바 */
+.compliance {
+  margin-top: 22px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-sub);
+  font-size: 11px;
+  color: var(--ink-3);
+  line-height: 1.65;
+}
+.compliance b {
+  color: var(--brand-ink);
+  font-weight: 600;
+}
+.statusbar {
+  display: flex;
+  border-top: 1px solid var(--line-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--surface-sub);
+}
+.statusbar .seg {
+  padding: 7px 13px;
+  border-right: 1px solid var(--line);
+  color: var(--ink-3);
+}
+.statusbar .seg.inv {
+  background: var(--brand-deep);
+  color: var(--on-brand);
+  font-weight: 700;
+}
+.statusbar .seg.grow {
+  flex: 1;
+  border-right: none;
+  color: var(--ink-3);
+}
+
 /* 터미널 커서(컨셉): 입력 대기 신호. reduced-motion이면 정지(보임 유지) */
 @keyframes blink {
   50% {
@@ -304,6 +636,111 @@ body {
   margin-left: 6px;
   vertical-align: -3px;
   animation: blink 1.1s steps(1) infinite;
+}
+
+/* 모달 = 터미널 다이얼로그 (전부 모노). 브래킷 타이틀 + 프롬프트 항목 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 11, 8, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  font-family: var(--mono);
+  box-shadow:
+    0 14px 44px rgba(7, 11, 8, 0.28);
+  animation: modalin 0.16s ease;
+}
+@keyframes modalin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-2);
+  background: var(--surface-sub);
+  font-size: 12px;
+  color: var(--brand-ink);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.modal-x {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 5px;
+}
+.modal-x:hover {
+  color: var(--ink);
+}
+.modal-body {
+  padding: 8px;
+}
+.modal .opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 9px 10px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.modal .opt:hover {
+  background: var(--nav-hover);
+  color: var(--ink);
+}
+.modal .opt.on {
+  background: var(--nav-active-bg);
+  color: var(--ink);
+  font-weight: 700;
+}
+.modal .opt .rc {
+  color: var(--brand-ink);
+}
+.modal .opt .rd {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.modal .opt:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.modal .opt:disabled:hover {
+  background: transparent;
+  color: var(--ink-3);
+}
+.modal .opt:disabled .rc {
+  color: var(--ink-3);
 }
 
 @media (max-width: 900px) {
@@ -333,6 +770,16 @@ body {
     width: auto;
     padding: 9px 11px;
     gap: 11px;
+  }
+  .doors {
+    grid-template-columns: 1fr;
+  }
+  .rrow {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .statusbar .seg.grow {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
