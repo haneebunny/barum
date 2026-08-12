@@ -23,6 +23,7 @@ export default function InspectPage() {
     { id: "p-file-1", name: "성분표_전성분", ext: ".xlsx" }
   ]);
   
+  const [isDragging, setIsDragging] = useState(false);
   const [inspectStatus, setInspectStatus] = useState<"running" | "done" | null>(null);
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
 
@@ -52,8 +53,7 @@ export default function InspectPage() {
     setIngText(e.target.value);
   };
 
-  const handleFileAdd = (e: ChangeEvent<HTMLInputElement>, isProductInfo: boolean) => {
-    const files = e.target.files;
+  const addFilesToList = (files: FileList | null, isProductInfo: boolean) => {
     if (!files) return;
     const newItems: FileItem[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -76,7 +76,29 @@ export default function InspectPage() {
     } else {
       setAdFiles(prev => [...prev, ...newItems]);
     }
+  };
+
+  const handleFileAdd = (e: ChangeEvent<HTMLInputElement>, isProductInfo: boolean) => {
+    addFilesToList(e.target.files, isProductInfo);
     e.target.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (status === "running") return;
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (status === "running") return;
+    addFilesToList(e.dataTransfer.files, false);
   };
 
   const removeAdFile = (id: string) => {
@@ -340,9 +362,16 @@ export default function InspectPage() {
               <span>또는 이미지 첨부</span>
             </div>
             <div
-              className={`drop compact${status === "running" ? " disabled" : ""}`}
+              className={`drop compact${status === "running" ? " disabled" : ""}${isDragging ? " dragging" : ""}`}
               onClick={status === "running" ? undefined : triggerAdFileSelect}
-              style={{ cursor: status === "running" ? "not-allowed" : "pointer" }}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              style={{
+                cursor: status === "running" ? "not-allowed" : "pointer",
+                borderColor: isDragging ? "var(--brand)" : undefined,
+                borderStyle: isDragging ? "solid" : undefined,
+              }}
               tabIndex={status === "running" ? -1 : 0}
               role="button"
               aria-label="광고 이미지/파일 첨부 영역"
