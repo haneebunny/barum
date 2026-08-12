@@ -293,7 +293,7 @@
           "검토필요"
         ],
         "title": "JudgmentFlag",
-        "description": "판정 확정도. v1.8: 위험도(고/중/저) 등급 폐지 → 위반/검토필요 이진화.\n\n'근거 있으면 위반, 근거 없으면 검토필요'(FR-5). RagJudge 이전엔 대부분\n유형에 규칙집 대조 수단이 없어 잠정적으로 위반으로 둔다(recall 우선).\n2호(기능성오인)만 예외 — 성분 정합이 실제 근거 대조라 그 결과를 쓴다."
+        "description": "판정 확정도. v1.8: 위험도(고/중/저) 등급 폐지 → 위반/검토필요 이진화.\n\n'근거 있으면 위반, 근거 없으면 검토필요'(FR-5). RagJudge 이전엔 대부분\n유형에 규칙집 대조 수단이 없어 잠정적으로 위반으로 둔다(recall 우선).\n2호(기능성오인)만 예외다. 성분 정합이 실제 근거 대조라 그 결과를 쓴다."
       },
       "Location": {
         "properties": {
@@ -448,7 +448,7 @@
           "n_findings"
         ],
         "title": "Summary",
-        "description": "리포트 상단 요약. 정책상 점수가 아니라 근거 개수로 표현한다.\n\nn_findings = n_violation + n_needs_review(합법·대상외 제외). n_unjudged는\n별개 개념(판정 자체를 못함, VLM 호출 실패) — 검토필요(판정은 했으나 근거\n약함)와 혼동하지 않는다."
+        "description": "리포트 상단 요약. 정책상 점수가 아니라 근거 개수로 표현한다.\n\nn_findings = n_violation + n_needs_review(합법·대상외 제외). n_unjudged는\n별개 개념이다(판정 자체를 못함, VLM 호출 실패). 검토필요(판정은 했으나 근거\n약함)와 혼동하지 않는다."
       },
       "UnjudgedSentence": {
         "properties": {

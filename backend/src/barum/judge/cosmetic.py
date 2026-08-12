@@ -179,16 +179,16 @@ def _functional_evidence(
       알 수 없다(우리 입력엔 등록 여부가 없다) → 단정 못 하고 검토필요.
     """
     if not ingredients:
-        return "(전성분 미입력 — 성분 정합 확인 못 함)", JudgmentFlag.needs_review
+        return "(전성분 미입력, 성분 정합 확인 못 함)", JudgmentFlag.needs_review
     category = infer_category(sentence)
     if category is None:
-        return None, JudgmentFlag.needs_review  # 카테고리도 못 정함 — 안내는 생략
+        return None, JudgmentFlag.needs_review  # 카테고리도 못 정함, 안내는 생략
     row = match_ingredient(category, ingredients)
     if row is None:
-        note = f"(전성분 대조: {category} 고시원료가 전성분에 없음 — 위반 소지 큼)"
+        note = f"(전성분 대조: {category} 고시원료가 전성분에 없음, 위반 소지 큼)"
         return note, JudgmentFlag.violation
     함량 = row.get("기준 함량") or row.get("최대 함량", "")
-    note = f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량} — 등록 여부 불명, 단정 못 함)"
+    note = f"(전성분 대조: {row['성분명']} 확인됨, 기준 {함량}, 등록 여부 불명이라 단정 못 함)"
     return note, JudgmentFlag.needs_review
 
 
@@ -237,7 +237,7 @@ class PromptJudge:
             try:
                 res = self.vlm.generate_json(self._build_prompt(numbered), [])
                 # res가 dict가 아니면(가끔 모델이 {"results":[...]} 대신 통짜 리스트를
-                # 뱉는다) .get()이 AttributeError를 던진다 — 이것도 예상된 실패로 본다.
+                # 뱉는다) .get()이 AttributeError를 던진다. 이것도 예상된 실패로 본다.
                 raw_results = res.get("results", [])
             except Exception as e:
                 # 예상된 실패(429·타임아웃·빈 응답·형식불일치). 재시도 없이 배치 전체 미판정.
@@ -362,7 +362,7 @@ class RagJudge:
                 remaining.append(s)
                 continue
             if match.outcome == RuleOutcome.legal_allow:
-                # 합법 확정 — finding도 없고 VLM에도 안 넘긴다(과잉판정 차단).
+                # 합법 확정. finding도 없고 VLM에도 안 넘긴다(과잉판정 차단).
                 continue
             result.findings.append(
                 Finding(
