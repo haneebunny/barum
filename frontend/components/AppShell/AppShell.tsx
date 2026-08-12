@@ -100,6 +100,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </svg>
                 <span className="lbl">검사 이력</span>
               </span>
+              <Link href="/mypage" className={pathname === "/mypage" ? "sitem on" : "sitem"} title="마이페이지">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+                  <circle cx="12" cy="8" r="3.5" />
+                  <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
+                </svg>
+                <span className="lbl">마이페이지</span>
+              </Link>
               <span className="sitem disabled" title="설정 (준비 중)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
                   <circle cx="12" cy="12" r="3" />
