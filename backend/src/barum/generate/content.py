@@ -139,7 +139,7 @@ def build_approved_claim_sections(req: GenerateRequest) -> tuple[list[Section], 
             skipped.append(
                 SkippedClaim(
                     category=category,
-                    reason="인증서 매칭 실패 또는 인정문구 레퍼런스가 아직 원문 대조 전(draft)이라 사용 보류",
+                    reason="인증서 매칭 실패 또는 해당 카테고리 인정문구가 아직 원문 대조 미완료(status != confirmed)",
                 )
             )
             continue

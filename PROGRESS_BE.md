@@ -16,22 +16,23 @@ PM4 지시(순서: FR-14 티어게이팅 → create 모드). FR-14는 하니 결
 
 ### 발견한 갭 (진행 중 하니 재점검으로 정정 2건 포함)
 - barum 레퍼런스에 "인정문구"(기능성 카테고리별로 실제 써도 되는 정형 문구) 데이터가 없었음. `functional_ingredients.json`은 성분명-카테고리 정합만 있고 문구 데이터는 없음. → **데이터 적재는 비비(DB담당)에게 이관, 나는 소비 로직만 먼저 구현**(PM 승인). 소비 로직 짜는 도중 비비가 실제로 `data/approved_efficacy_statements.json`(PR #54)을 merge — 스키마가 처음 설계한 스텁(`certification`별 문구)과 달리 **카테고리별 문구 목록**이라 소비 로직을 실데이터 스키마에 맞춰 다시 씀(아래 구현 참조).
-- **비비 데이터는 `status: "draft"`** — easylaw.go.kr + 해설서 교차검증만 했고 「기능성화장품 심사에 관한 규정」 별표4 고시 원문 대조는 아직(법제처 원문이 JS 렌더링이라 이 세션 도구로는 못 읽음). 비비 노트에 "원문 대조 전까지 실제 광고 문구 생성에 쓰지 말 것"이 명시돼 있어, `match_approved_claim`에 **draft 게이트를 넣어 status가 draft인 동안은 인증서가 맞아도 항상 None**(문구 안 냄). 원문 대조 끝나 status가 바뀌면 코드 변경 없이 자동으로 살아남.
+- **비비 데이터는 처음엔 `status: "draft"`(최상위)** — easylaw.go.kr + 해설서 교차검증만 했고 「기능성화장품 심사에 관한 규정」 별표4 고시 원문 대조는 아직이라, `match_approved_claim`에 최상위 draft 게이트를 먼저 넣었음. **이후 하니가 원문을 확보해 비비가 대조 완료, 스키마가 카테고리별 status로 바뀜**(`categories[카테고리]["status"]` = `confirmed`/`needs_confirmation`, `feature/be-approved-efficacy-phrases` 06d6c0f). 최상위 status 필드 자체가 없어져 원래 게이트가 무력화됨(우연히 안전했던 건 자외선차단이 `candidate_statement` 키를 써서 빈 statements로 처리됐기 때문 — 스키마 조금만 바뀌면 위험했음, 비비가 발견·PM4가 지시). **카테고리 단위 게이트로 수정**: `categories[category]["status"] == "confirmed"`만 통과, `candidate_statement`는 아예 안 읽음. 미백·주름개선(confirmed)은 살아나고 자외선차단(needs_confirmation, 하니 확인 대기)은 계속 막힘 — 카테고리마다 대조 완료 시점이 달라도 안전.
 - 함량 기준 대조 로직에 두 가지 정정 반영(하니 지적): ① IU/g 단위(레티놀·레티닐팔미테이트)도 지원 ② 범위 기준함량(예 알부틴 2~5%)은 하한만 볼 게 아니라 **범위 안에 있어야 통과**(상한 초과=정식 심사 대상, create 모드는 스킵).
 
 ### 구현
 - `models.py`: `GenerateRequest.mode`(improve|create, 기본 improve) 추가, `content`는 improve만 필수(model_validator). `IngredientAmount{name, amount}`(create 전용, 함량 원문 표기 그대로 — "2%"·"2,500 IU/g"). `GenerateResponse.skipped_claims[]`(조건 미충족으로 안 만든 카테고리+사유, 조용히 안 빠지게).
 - `reference/ingredients.py`: `parse_amount`(%·IU/g 파싱, 주석 섞인 값은 의도적으로 파싱 실패 처리) · `check_amount_threshold`(범위는 구간 내, 단일값은 이상/이하) · `match_ingredient_strict`(이름+함량+기준 셋 다 통과해야 매칭 — improve의 `match_ingredient`는 이름만 보므로 안 건드림).
-- `reference/approved_claims.py`: 비비의 `data/approved_efficacy_statements.json`을 읽어 `match_approved_claim(category, certifications)` — 인증서 문자열이 카테고리를 가리키고(예: "미백 기능성 인증") **동시에 status가 draft가 아니어야** 문구 반환.
+- `reference/approved_claims.py`: 비비의 `data/approved_efficacy_statements.json`을 읽어 `match_approved_claim(category, certifications)` — 인증서 문자열이 카테고리를 가리키고(예: "미백 기능성 인증") **동시에 그 카테고리의 `status`가 `confirmed`여야** 문구 반환(카테고리별 게이트, 최상위 status 아님).
 - `generate/content.py`: `build_approved_claim_sections`(카테고리별 ①인증서매칭 ②성분명 ③함량명시 ④기준충족 4개 다 통과해야 생성, 실패 시 `skipped_claims`에 사유), `_generate_create_content`(원본검사 없음, `replacements` 항상 빈배열, 나머지는 improve와 공유 로직 재사용), 기존 로직은 `_generate_improve_content`로 이름만 바꾸고 무변경, `generate_content`가 `mode`로 분기(엔드포인트 시그니처 불변).
 
 ### 테스트·검증
-- 신규 유닛 19개(파싱·함량비교·strict매칭·approved_claims매칭(draft게이트 포함)·모델검증·오케스트레이션) + 기존 회귀 — **174 통과**(기존 155 + 신규 19).
+- 신규 유닛 19개(파싱·함량비교·strict매칭·approved_claims 카테고리별 게이트(confirmed/needs_confirmation 혼재 케이스 포함)·모델검증·오케스트레이션) + 기존 회귀 — **174 통과**(기존 155 + 신규 19).
 - 알부틴 10%(범위 2~5% 상한 초과) → 스킵 케이스 테스트로 확인(하니 정정사항 커버).
-- API 수동 스모크(`JUDGE_KIND=stub`, 가짜 VLM): `mode=create` 요청 200, 실제 인정문구 데이터가 draft라 3개 카테고리 전부 `skipped_claims`로 명시 노출(조용히 안 사라짐) 확인.
+- 카테고리 독립성 테스트 추가: 미백이 confirmed라고 자외선차단(needs_confirmation)까지 같이 안 풀리는지 확인(비비 발견 버그 재발 방지).
+- API 수동 스모크는 비비의 `feature/be-approved-efficacy-phrases`(카테고리별 status 스키마)가 main에 merge된 뒤 다시 돌릴 예정 — 지금 이 브랜치의 데이터 파일은 아직 구 스키마(최상위 status)라 실제론 안전(모든 카테고리 status 키 없음 → confirmed 아님 → 스킵) 확인만 함.
 
 ### 다음
-- **하니가 별표4 원문 확보 → 비비가 대조 → `approved_efficacy_statements.json`의 `status`를 draft에서 바꾸면**, `match_approved_claim`이 코드 변경 없이 자동으로 인정문구를 낸다. 그 전까지 create 모드는 항상 `skipped_claims`만 노출(안전).
+- 비비의 카테고리별 status 스키마 PR이 main에 merge되면, 미백·주름개선(confirmed)은 코드 변경 없이 바로 문구가 나온다. 자외선차단은 하니가 `candidate_statement`를 정형 문구로 써도 되는지 확인해서 status를 confirmed로 바꾸기 전까진 계속 막힘(의도된 동작).
 - `Section.source="approved_claim"` 프론트 라벨 추가는 디디에게 전달 예정(create 모드 화면 자체가 아직 없어 급하지 않음).
 - IU/g 외 단위(예: 다른 표기법)는 create 모드에서 여전히 비지원(안전하게 스킵) — 필요해지면 확장.
 

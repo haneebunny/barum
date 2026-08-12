@@ -4,9 +4,11 @@
 approved_efficacy_statements.md`가 근거)에서 카테고리별 인정문구를 읽어, 사용자가
 입력한 certifications가 해당 카테고리를 가리키면 문구를 낸다.
 
-데이터가 `status: "draft"`인 동안은 별표4 고시 원문 대조가 안 끝난 상태라(비비
-노트: "원문 대조 전까지 실제 광고 문구 생성에 쓰지 말 것") 절대 문구를 내지 않는다.
-대조가 끝나 status가 바뀌면 코드 변경 없이 자동으로 살아난다.
+**게이트는 카테고리 단위**(`categories[카테고리]["status"]`)다. 원문 대조가 안 끝난
+카테고리(status != "confirmed", 예: 자외선차단의 "needs_confirmation")는 그
+카테고리만 막힌다 — 최상위 status를 보면 안 된다(카테고리마다 대조 완료 시점이
+다르므로 하나가 confirmed돼도 다른 카테고리가 그걸 같이 풀어버리면 위험).
+`candidate_statement`(미확정 후보문구)는 절대 안 읽는다, `statements`만 읽는다.
 """
 
 import json
@@ -27,14 +29,15 @@ def _certification_claims_category(category: str, certifications: list[str]) -> 
 
 
 def match_approved_claim(category: str, certifications: list[str]) -> str | None:
-    """인증서가 카테고리를 가리키고, 데이터가 원문 대조 완료(status != draft) 상태면 인정문구를 낸다.
+    """인증서가 카테고리를 가리키고, 그 카테고리가 원문 대조 완료(status=confirmed)면 인정문구를 낸다.
 
-    원문 대조 전(status=draft)이거나 인증서 매칭이 없으면 None(문구를 지어내지 않음).
+    카테고리별 status가 confirmed가 아니거나(미대조·미확정) 인증서 매칭이 없으면
+    None(문구를 지어내지 않음).
     """
-    data = _load()
-    if data.get("status") == "draft":
-        return None
     if not _certification_claims_category(category, certifications):
         return None
-    statements = data["categories"].get(category, {}).get("statements") or []
+    entry = _load()["categories"].get(category, {})
+    if entry.get("status") != "confirmed":
+        return None
+    statements = entry.get("statements") or []
     return statements[0] if statements else None
