@@ -25,6 +25,24 @@ def _split_ingredients(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"[,\n]+", text) if s.strip()]
 
 
+def _parse_ingredient_amounts(text: str) -> list[tuple[str, str]]:
+    """"성분:함량" 콤마 구분 문자열을 (성분명, 함량) 목록으로 쪼갠다.
+
+    예: "나이아신아마이드:3%,알부틴:10%". ":" 없는 항목(함량 미표기)은 그냥 건너뛴다
+    — 함량 대조는 명시된 성분에만 붙는다(안 준 건 기존처럼 검토필요로 남는다).
+    """
+    out: list[tuple[str, str]] = []
+    for part in re.split(r"[,\n]+", text):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        name, amount = part.split(":", 1)
+        name, amount = name.strip(), amount.strip()
+        if name and amount:
+            out.append((name, amount))
+    return out
+
+
 def _split_text_to_sentences(ad_text: str, source: str | None = None) -> list[dict]:
     """글 입력을 문장 dict 리스트로 쪼갠다. 이미지가 없으니 tile은 None."""
     out: list[dict] = []
@@ -93,6 +111,7 @@ def run_check(
     vlm: VLM,
     judge: CosmeticJudge,
     ingredients: str | None = None,
+    ingredient_amounts: str | None = None,
     product_name: str | None = None,
     verbose: bool = False,
 ) -> CheckReport:
@@ -103,6 +122,8 @@ def run_check(
     product_name: 상품명/광고 제목. 있으면 판정 대상 문장에 포함된다.
     ingredients: 선택적 전성분 문자열(콤마 구분). 있으면 2호(기능성오인) 판정에
     성분 정합 대조가 붙는다(judge가 지원하는 경우).
+    ingredient_amounts: 선택적 "성분:함량" 콤마구분 문자열(예: "나이아신아마이드:3%").
+    명시된 성분만 함량기준 대조까지 더해진다. 안 주면 기존처럼 이름만 대조한다.
     """
     sentences: list[dict] = []
 
@@ -125,7 +146,8 @@ def run_check(
             sentences.append({**s, "order": base + s["order"]})
 
     ingredient_list = _split_ingredients(ingredients) if ingredients else None
-    result = judge.judge(sentences, region, ingredients=ingredient_list)
+    amount_list = _parse_ingredient_amounts(ingredient_amounts) if ingredient_amounts else None
+    result = judge.judge(sentences, region, ingredients=ingredient_list, ingredient_amounts=amount_list)
     findings = result.findings
 
     counts: dict[str, int] = {}

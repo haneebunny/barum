@@ -233,3 +233,47 @@ def test_ingredient_match_skipped_for_non_functional_violation():
     f = res.findings[0]
     assert f.flag == JudgmentFlag.violation
     assert f.explanation == "재생 효과"  # 안내 안 붙음
+
+
+def test_ingredient_amount_meets_threshold_stays_needs_review_with_registration_note():
+    """이름+함량 다 맞아도 등록 여부는 확인 못 해 검토필요 유지, 안내문에 등록 필요성 명시."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "나이아신아마이드"],
+        ingredient_amounts=[("나이아신아마이드", "3%")],
+    )
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.needs_review
+    assert "고시 기준" in f.explanation and "충족" in f.explanation
+    assert "등록" in f.explanation and "확인 불가" in f.explanation
+
+
+def test_ingredient_amount_below_threshold_is_violation():
+    """이름은 있는데 함량이 고시 기준 미달이면 위반 확정(정식 심사 대상인데 안 밟은 근거)."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "알부틴"],
+        ingredient_amounts=[("알부틴", "10%")],  # 기준함량 2~5% 범위 초과
+    )
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.violation
+    assert "함량" in f.explanation and "미달" in f.explanation
+
+
+def test_ingredient_amount_not_given_keeps_existing_needs_review_message():
+    """함량 정보 자체를 안 주면 기존 동작(이름만 대조) 그대로, 회귀 없음."""
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["멜라닌 억제해 미백에 도움"]),
+        "KR",
+        ingredients=["정제수", "나이아신아마이드"],
+        # ingredient_amounts 생략
+    )
+    f = res.findings[0]
+    assert f.flag == JudgmentFlag.needs_review
+    assert "나이아신아마이드 확인됨" in f.explanation
+    assert "등록 여부도 불명" in f.explanation
