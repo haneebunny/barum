@@ -138,3 +138,21 @@ class StoredCheck(BaseModel):
     region: Region
     image_available: bool
     report: CheckReport
+
+
+class RemediationRequest(BaseModel):
+    """수정 권고안 생성 요청."""
+
+    sentence: str = Field(..., description="탐지된 위반 문구 전체")
+    violation_type: ViolationType = Field(..., description="위반유형 라벨")
+    span: str | None = Field(None, description="위반으로 지목된 세부 표현 (생략 시 sentence 전체)")
+
+
+class RemediationResponse(BaseModel):
+    """수정 권고안 생성 응답."""
+
+    sentence: str
+    violation_type: ViolationType
+    span: str
+    suggestions: list[str] = Field(..., description="대체 표현 후보들")
+    disclaimer: str = Field(..., description="권고 사항 고지 안내 문구")

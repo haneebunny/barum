@@ -10,7 +10,14 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
-from barum.models import CheckReport, Region, StoredCheck
+from barum.models import (
+    CheckReport,
+    Region,
+    RemediationRequest,
+    RemediationResponse,
+    StoredCheck,
+)
+from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check
 from barum.storage.checks_store import (
     build_check_row,
@@ -188,3 +195,21 @@ async def check(
         report, region.value, image_bytes, image.content_type if image else None
     )
     return report
+
+
+@app.post("/remediate", response_model=RemediationResponse)
+def remediate(req: RemediationRequest) -> RemediationResponse:
+    """위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다."""
+    span = req.span if req.span is not None else req.sentence
+    suggestions, disclaimer = get_remediation(
+        sentence=req.sentence,
+        violation_type=req.violation_type,
+        span=req.span,
+    )
+    return RemediationResponse(
+        sentence=req.sentence,
+        violation_type=req.violation_type,
+        span=span,
+        suggestions=suggestions,
+        disclaimer=disclaimer,
+    )
