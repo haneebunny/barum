@@ -1,10 +1,7 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder/PagePlaceholder";
-
-export default function QueuePage() {
+export default function HomePage() {
   return (
-    <PagePlaceholder
-      title="검토 큐"
-      subtitle="작업 홈 · 신고/탐색/진행 중/추적"
-    />
+    <p className="mono" style={{ padding: "24px" }}>
+      홈 — 다음 턴에 barum.html 기준으로 채움
+    </p>
   );
 }

@@ -109,7 +109,7 @@ def test_maps_labels_to_findings():
     assert f.legal_basis.startswith("화장품법 제13조")
     assert f.span == "멜라닌 막아 미백"  # 문장 단위 = span은 문장 전체
     # ingredients 미입력이면 원 근거 뒤에 '성분 정합 확인 못 함' 안내가 붙는다.
-    assert f.explanation == "미백 주장 (전성분 미입력 — 성분 정합 확인 못 함)"
+    assert f.explanation == "미백 주장 (전성분 미입력, 성분 정합 확인 못 함)"
 
 
 def test_result_matched_by_position_when_n_is_offset():
