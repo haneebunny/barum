@@ -21,7 +21,8 @@ create table if not exists checks (
   region       text not null,
   report       jsonb not null,         -- CheckReport 통째
   image_sha256 text,                   -- 이미지 입력 시 원본 sha256(증거 보존, FR-1)
-  image_path   text                    -- Storage 버킷 내 경로(있으면)
+  image_path   text,                   -- Storage 버킷 내 경로(있으면)
+  product_name text                    -- 상품명/광고 제목(선택, 판정 대상에 포함)
 );
 
 -- ─────────────────────────────────────────────────────────────
