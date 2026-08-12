@@ -9,12 +9,12 @@
 - 화면 5개(v1.9에서 마이페이지=FR-15 신규): 홈 · 새 검사 · 결과 리포트 · 콘텐츠 생성 · 마이페이지.
 - 참조: `ROADMAP.md`(v1.9로 갱신 완료), `PROJECT.md`, `CLAUDE.md`(작업규칙), `AGENTS.md`(git 규칙), `PROGRESS_BE.md`, `docs/handoffs/`, `docs/api/README.md`.
 
-## 팀 · 코드네임 (⚠ 오늘 한 번 틀렸다가 정정함, 아래 확정본만 믿을 것)
-- **팀원A = 대수(백엔드).** **정빈(프론트/디자인)의 코드네임은 미확정. 하니에게 재확인 필요, 절대 "팀원A"라고 쓰지 말 것.** 공식 산출물(파일명·커밋·문서)엔 실명 대신 코드네임만. 채팅에서 하니와 대화할 땐 실명 써도 됨.
+## 팀 · 코드네임 (⚠ 8/12 하루에만 두 번 뒤집혔다가 하니가 최종 확정, 아래만 믿을 것)
+- **팀원A = 정빈(프론트/디자인), 팀원B = 대수(백엔드).** 공식 산출물(파일명·커밋·문서)엔 실명 대신 코드네임만. 채팅에서 하니와 대화할 땐 실명 써도 됨.
 - **대수는 이 CCD 세션 인프라 밖(다른 컴퓨터)에서 작업한다.** `send_message`로 안 닿는다. 전달할 건 `docs/handoffs/2026-08-12-daesu-backend-guidebook.html`을 갱신해서 push하는 방식으로만 가능. 대수가 git pull로 받아간다.
-- 나머지는 세션 이름 자체가 코드네임(이 규칙 대상 아님): **냐냐**(프론트엔드 세션, CCD로 relay 가능) · **디자이너 2 (현)**(정빈 담당 세션, CCD로 relay 가능) · **2대 비비**(DB담당) · **시시**(총괄책임자, 하니와 PM 사이 조율 레이어).
-- **relay는 `mcp__ccd_session_mgmt__send_message`, session_id는 매번 `list_sessions`로 재확인.** 이름 뒤 "(현)"·"2대" 등 세대 표시가 자주 바뀐다. 오늘 기준 최신 session_id:
-  - 디자이너: `local_c7660caa-016f-4357-bdfd-b4c66925e669` ("디자이너 2 (현)")
+- 나머지는 세션 이름 자체가 코드네임(이 규칙 대상 아님): **냐냐**(프론트엔드 세션, CCD로 relay 가능) · **디디**(정빈 담당 세션, CCD로 relay 가능, 2026-08-12 "디자이너 2"에서 인수) · **2대 비비**(DB담당) · **시시**(총괄책임자, 하니와 PM 사이 조율 레이어).
+- **relay는 `mcp__ccd_session_mgmt__send_message`, session_id는 매번 `list_sessions`로 재확인.** 이름 뒤 "(현)"·"2대" 등 세대 표시가 자주 바뀐다. 8/12 밤 기준 최신 session_id:
+  - 디자이너(디디): `local_b84492b8-f436-4ced-babf-5ced4a745f35`. `local_c7660caa...`("디자이너 2")는 구버전
   - DB담당: `local_4f6337e1-88e0-4de0-849d-b134c3b3f1d0` ("DB담당 2대 비비"). `local_831c089e...`("DB담당 비비")는 구버전, 쓰지 말 것
   - 백엔드(로컬 대기 세션, 대수 아님): `local_06a56c50-584f-4cdf-a41e-1e54fa0b005b` ("백엔드 2 (현)")
   - 프론트: `local_048bd2f3-fe77-4132-ba2e-ebaba9a97bde` ("프론트엔드 1 냐냐")
@@ -28,9 +28,9 @@
    - https://github.com/haneebunny/barum/pull/new/feature/be-cases-expansion (cases.md 52건 + prohibited_expressions 판정기준 4건)
    - https://github.com/haneebunny/barum/pull/new/docs/be-ontology-opencrab-pointer (온톨로지 포인터 문서)
 4. ~~PR #30(`feature/be-score-eval-recheck`)~~ **처리됨**(원격 브랜치 삭제 확인, close된 것으로 보임). 더 볼 것 없음.
-5. **디자이너 마이페이지 목업 완성, PM 검토·승인함. 커밋은 하니 확인 대기 중(디자이너가 명시적 위임 없다고 스스로 판단해 보류, 옳은 판단이었음).** Q6·tsx vs HTML 질문 2건은 하니가 직접 답변해서 해결됨(Q6: 실기능 없이 프론트 참고용 수준으로, 로컬 상태 전환은 이미 리포트 화면에 구현됨 / tsx vs HTML: HTML 목업 계속, tsx 포팅은 냐냐 몫). 파일은 `.claude/worktrees/fe-mypage/design/mockups/barum-mypage.html`(격리 worktree, 브랜치 `feature/fe-mypage-mockup`, 아직 커밋 전, 유실 위험 없음). **하니가 결과물 보고 "커밋해"라고만 하면 디자이너가 바로 진행.**
+5. ~~디자이너 마이페이지 목업~~ **완료됨.** Q6·tsx vs HTML 질문 2건 하니가 답변(Q6: 프론트 참고용 수준·로컬 상태 전환은 리포트 화면에 이미 구현됨 / tsx vs HTML: HTML 목업 계속, tsx 포팅은 냐냐 몫). 디디가 하니 확인받고 커밋+push 완료(`feature/fe-mypage-mockup`, `barum-mypage.html`). 머지만 하면 됨: https://github.com/haneebunny/barum/pull/new/feature/fe-mypage-mockup
 
-**오늘 열어뒀던 액션 항목은 이제 전부 해결됨.** 남은 건 위 새 PR들 머지와, 다음 우선순위 결정(아래 "열린 결정" 참조)뿐.
+**오늘 열어뒀던 액션 항목은 이제 전부 해결됨.** 남은 건 위 새 PR들(#3, #5) 머지와, 다음 우선순위 결정(아래 "열린 결정" 참조)뿐.
 
 ## 진행 중 스레드
 
@@ -48,9 +48,8 @@
 - 마이페이지(FR-15) 티어 게이팅(수정권고안 Basic부터): 지금은 게이팅 없이 항상 노출, 인증 생기기 전까진 보류로 확정.
 
 ### 디자인/프론트
-- 홈·검사·리포트 화면 완성·머지 완료. **마이페이지(FR-15) 목업 진행 중**(디자이너, 격리 worktree).
-- **열린 질문 2건 여전히 미해결**: Q6(지적카드 액션 인터랙션 수준), tsx vs HTML 목업 진행방식. 하니 확인 필요.
-- 프론트(냐냐): UI 전면 재구축 중(목업 기준 새 IA, 기존 dashboard/inspection 등 폐기). 공통 셸·리포트 화면 연동까지 진행됐고 마이페이지는 목업 나오는 대로.
+- 홈·검사·리포트·**마이페이지(FR-15)** 목업 전부 완성(위 #5 참조, 머지 대기).
+- 프론트(냐냐): UI 전면 재구축 중(목업 기준 새 IA, 기존 dashboard/inspection 등 폐기). 공통 셸·리포트 화면 연동까지 진행됐고 마이페이지는 목업 머지되는 대로 이어서 연동.
 
 ### 판정 규칙 신규 확정 (하니, 오늘)
 - **모공수축/모공축소**: T5(거짓·과장) 준용, 실증자료 없으면 검토필요·있으면 예외. 반영 완료.
@@ -71,7 +70,7 @@
 - 키는 `backend/.env`(gitignore): `GOOGLE_API_KEY`·`OPENAI_API_KEY`·`SUPABASE_URL`·`SUPABASE_KEY` 전부 설정 완료.
 
 ## 열린 결정 (다음 PM이 하니에게 물어야 함)
-- 정빈 코드네임 확정.
-- 다음 백엔드 우선순위(작업D 끝난 뒤: FR-11/13 콘텐츠생성? 미국?).
-- 디자이너 열린 질문 2건.
+- 다음 백엔드 우선순위(작업D 끝난 뒤: FR-11/13 콘텐츠생성? 미국?). ← 유일하게 남은 열린 결정.
 - 온톨로지 티어 한도(OpenCrab pro 티어에서 `opencrab_pack_update` 막혀 팩이 계속 늘어나는 구조. 지금은 문제없음, 나중에 티어 얘기 나오면 고려).
+
+**해결됨(더 이상 열린 결정 아님):** 정빈 코드네임(팀원A로 확정) · 디자이너 열린 질문 2건(Q6, tsx vs HTML) · 마이페이지 커밋 승인.
