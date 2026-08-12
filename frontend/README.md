@@ -31,7 +31,7 @@ npm run dev      # http://localhost:3000
 
 ## 디자인 규칙 (구속력, 어기면 반려)
 
-`design/mockups/HANDOFF.md` §3·§4를 따른다. 요지:
+`design/mockups/DESIGN.md`를 따른다. 요지:
 
 1. 색은 '주목'에만. 빨강만 경보, 나머지는 회색.
 2. border-left 굵게 강조 금지. 사방 균일 테두리.
