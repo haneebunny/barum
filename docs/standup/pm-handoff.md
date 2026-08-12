@@ -28,7 +28,7 @@
    - https://github.com/haneebunny/barum/pull/new/feature/be-cases-expansion (cases.md 52건 + prohibited_expressions 판정기준 4건)
    - https://github.com/haneebunny/barum/pull/new/docs/be-ontology-opencrab-pointer (온톨로지 포인터 문서)
 4. ~~PR #30(`feature/be-score-eval-recheck`)~~ **처리됨**(원격 브랜치 삭제 확인, close된 것으로 보임). 더 볼 것 없음.
-5. ~~디자이너 마이페이지 목업~~ **완료·PM 검토·승인함.** Q6·tsx vs HTML 질문 2건도 하니가 직접 답변해서 해결됨(Q6: 실기능 없이 프론트 참고용 수준으로, 로컬 상태 전환은 이미 리포트 화면에 구현됨 / tsx vs HTML: HTML 목업 계속, tsx 포팅은 냐냐 몫). `barum-mypage.html`, 브랜치 `feature/fe-mypage-mockup`, PR은 디자이너가 push 후 만들 예정.
+5. **디자이너 마이페이지 목업 완성, PM 검토·승인함. 커밋은 하니 확인 대기 중(디자이너가 명시적 위임 없다고 스스로 판단해 보류, 옳은 판단이었음).** Q6·tsx vs HTML 질문 2건은 하니가 직접 답변해서 해결됨(Q6: 실기능 없이 프론트 참고용 수준으로, 로컬 상태 전환은 이미 리포트 화면에 구현됨 / tsx vs HTML: HTML 목업 계속, tsx 포팅은 냐냐 몫). 파일은 `.claude/worktrees/fe-mypage/design/mockups/barum-mypage.html`(격리 worktree, 브랜치 `feature/fe-mypage-mockup`, 아직 커밋 전, 유실 위험 없음). **하니가 결과물 보고 "커밋해"라고만 하면 디자이너가 바로 진행.**
 
 **오늘 열어뒀던 액션 항목은 이제 전부 해결됨.** 남은 건 위 새 PR들 머지와, 다음 우선순위 결정(아래 "열린 결정" 참조)뿐.
 
