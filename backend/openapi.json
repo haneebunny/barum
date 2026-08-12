@@ -107,7 +107,7 @@
     "/check": {
       "post": {
         "summary": "Check",
-        "description": "광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.\n\n이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, product_name은 선택.",
+        "description": "광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.\n\n이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, ingredient_amounts,\nproduct_name은 선택.",
         "operationId": "check_check_post",
         "requestBody": {
           "content": {
@@ -263,6 +263,18 @@
             ],
             "title": "Ingredients",
             "description": "전성분(콤마 구분). 있으면 2호 판정에 성분 정합 대조가 붙는다."
+          },
+          "ingredient_amounts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredient Amounts",
+            "description": "\"성분:함량\" 콤마구분(예: \"나이아신아마이드:3%,알부틴:10%\"). 명시된 성분만 함량기준 대조까지 더해져 2호 판정이 더 정확해진다."
           },
           "product_name": {
             "anyOf": [
