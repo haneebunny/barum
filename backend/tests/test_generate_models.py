@@ -3,11 +3,15 @@
     ./venv/bin/python -m pytest tests/test_generate_models.py -q
 """
 
+import pytest
+from pydantic import ValidationError
+
 from barum.models import (
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
     ImagePlan,
+    IngredientAmount,
     RecheckSummary,
     Replacement,
     RiskConfirmation,
@@ -22,6 +26,24 @@ def test_generate_request_requires_content_only():
     assert req.content == "아토피 완화에 좋은 크림"
     assert req.result_id is None
     assert req.certifications == []
+
+
+def test_generate_request_improve_mode_rejects_missing_content():
+    """mode='improve'(기본값)인데 content가 없으면 검증 에러."""
+    with pytest.raises(ValidationError):
+        GenerateRequest(product_name="테스트크림")
+
+
+def test_generate_request_create_mode_allows_missing_content():
+    """create 모드는 원본 없이 제품정보만으로 성립한다."""
+    req = GenerateRequest(
+        mode="create",
+        product_name="테스트크림",
+        certifications=["미백 기능성 인증"],
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    assert req.content is None
+    assert req.ingredient_amounts[0].amount == "3%"
 
 
 def test_generate_response_serializes_full_shape():
