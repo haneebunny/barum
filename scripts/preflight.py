@@ -420,7 +420,7 @@ def print_git_instructions(root: Path) -> None:
     print('  git commit -m "타입: 한 줄 설명"')
     print(f"  {push_cmd}")
     print()
-    print(dim("커밋 규칙: 한국어로, 접두어 feat/fix/docs/chore/refactor 중 하나, em-dash(—) 쓰지 않기."))
+    print(dim("커밋 규칙: 한국어로, 접두어 feat/fix/docs/chore/refactor 중 하나, em-dash(대시) 쓰지 않기."))
     print(dim('예:  git commit -m "feat: 푸시 전 검사 스크립트 추가"'))
 
 
