@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
@@ -33,6 +33,13 @@ export default function InspectPage() {
     },
   ]);
   const [resultId, setResultId] = useState<string | null>(null);
+  const consoleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const adFileInputRef = useRef<HTMLInputElement>(null);
   const pFileInputRef = useRef<HTMLInputElement>(null);
@@ -516,9 +523,9 @@ export default function InspectPage() {
               <span className="rule"></span>
               <span className="hint">실시간</span>
             </div>
-            <div className="console" id="log">
+            <div className="console" id="log" ref={consoleRef}>
               {logs.map((log, index) => (
-                <div key={index} className="logline" style={{ opacity: 1, transform: "none" }}>
+                <div key={index} className="logline">
                   <span className="ts">{log.ts}</span>
                   <span className="msg">{log.msg}</span>
                 </div>
