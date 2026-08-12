@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Warning, MagnifyingGlass, Check, X, Clock } from "@phosphor-icons/react";
 import type { ReportEnvelope } from "@/lib/api/schema";
 import { getReport } from "@/lib/api/client";
 
@@ -10,6 +11,12 @@ const TYPE_LABEL = {
   "2호_기능성오인": "2호 · 기능성 오인",
   "5호_거짓과장기만": "5호 · 거짓·과장·기만",
 };
+
+const ALT_POOL = [
+  "성분·효과 근거를 확인한 뒤, 개인차가 있을 수 있다는 표현으로 순화하는 안을 검토해보세요.",
+  "단정적 효능 표현 대신 “도움을 줄 수 있어요”처럼 가능성을 시사하는 톤으로 조정해보세요.",
+  "비교·수치 표현은 근거 자료(시험성적서 등)를 확보했을 때만 남기는 걸 권장해요."
+];
 
 interface ReportClientProps {
   envelope: ReportEnvelope;
@@ -42,6 +49,18 @@ export function ReportClient({ envelope }: ReportClientProps) {
   });
   const [loading, setLoading] = useState(false);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | "hold" | null>>({});
+
+  const handleAction = (idx: number, act: "accept" | "exclude" | "hold") => {
+    setActions((prev) => {
+      const next = { ...prev };
+      if (next[idx] === act) {
+        next[idx] = null;
+      } else {
+        next[idx] = act;
+      }
+      return next;
+    });
+  };
 
   const handleFixtureChange = async (key: "image" | "text" | "unjudged") => {
     setLoading(true);
@@ -331,16 +350,75 @@ export function ReportClient({ envelope }: ReportClientProps) {
             <span className="hint">{d.findings.length}건</span>
           </div>
           <div className="findlist">
-            <p
-              className="devnote"
-              style={{
-                padding: "12px",
-                border: "1px dashed var(--line-2)",
-                background: "var(--surface-sub)",
-              }}
-            >
-              지적 카드 목록 (Micro-step 10에서 구현 예정)
-            </p>
+            {findByOrder.map((o) => {
+              const f = o.f;
+              const i = o.idx;
+              const cls = f.flag === "위반" ? "violation" : "review";
+              const act = actions[i];
+              const stCls = act ? ` st-${act}` : "";
+
+              return (
+                <div className={`fcard ${cls}${stCls}`} key={i} data-i={i}>
+                  <div className="fhead">
+                    <span className="fbadge">{o.num}</span>
+                    <span className="ftype">
+                      {TYPE_LABEL[f.violation_type as keyof typeof TYPE_LABEL] || f.violation_type}
+                    </span>
+                    <span className="fflag">
+                      {cls === "violation" ? (
+                        <Warning size={14} weight="bold" />
+                      ) : (
+                        <MagnifyingGlass size={14} weight="bold" />
+                      )}
+                      {f.flag}
+                    </span>
+                  </div>
+                  <div className="fbody">
+                    <p
+                      className="fsent"
+                      dangerouslySetInnerHTML={{
+                        __html: escapeHtml(f.sentence).replace(
+                          escapeHtml(f.span),
+                          `<span class="fspan">${escapeHtml(f.span)}</span>`
+                        ),
+                      }}
+                    />
+                    <p className="fbasis">{f.legal_basis}</p>
+                    <p className="fexpl">{f.explanation}</p>
+                    <div className="falt">
+                      <div className="faltlabel">
+                        <b>대체 표현 제안</b>
+                        <span className="faltflag">권고안 · 확정 아님</span>
+                      </div>
+                      <div className="falttext">{ALT_POOL[i % ALT_POOL.length]}</div>
+                    </div>
+                    <div className="factions">
+                      <button
+                        className={`fabtn accept${act === "accept" ? " on" : ""}`}
+                        onClick={() => handleAction(i, "accept")}
+                      >
+                        <Check size={13} weight="bold" />
+                        수용
+                      </button>
+                      <button
+                        className={`fabtn exclude${act === "exclude" ? " on" : ""}`}
+                        onClick={() => handleAction(i, "exclude")}
+                      >
+                        <X size={13} weight="bold" />
+                        제외
+                      </button>
+                      <button
+                        className={`fabtn hold${act === "hold" ? " on" : ""}`}
+                        onClick={() => handleAction(i, "hold")}
+                      >
+                        <Clock size={13} weight="bold" />
+                        보류
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           {d.unjudged.length > 0 && (
             <div className="ujwrap">
@@ -351,16 +429,15 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 <span className="hint">판정 실패 · 미판정</span>
               </div>
               <div className="ujlist">
-                <p
-                  className="devnote"
-                  style={{
-                    padding: "12px",
-                    border: "1px dashed var(--line-2)",
-                    background: "var(--surface-sub)",
-                  }}
-                >
-                  재검사 필요 목록 (Micro-step 10에서 구현 예정)
-                </p>
+                {ujByOrder.map((u, i) => (
+                  <div className="ujrow" key={i}>
+                    <span className="ujbadge">{String.fromCharCode(65 + i)}</span>
+                    <span className="ujsent">{u.sentence}</span>
+                    <span className="ujloc">
+                      {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
