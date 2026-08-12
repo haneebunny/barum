@@ -1,0 +1,39 @@
+# PROGRESS_FE: 바름 프론트엔드 진행상황
+
+> 성격: 프론트엔드 세션 진행 기록(가변). 확정 결정은 `PROJECT.md`, 전체 로드맵은 `ROADMAP.md`, 작업 규칙은 `CLAUDE.md`.
+> 갱신일: 2026-08-12. 담당: 프론트엔드 세션(안티그래비티).
+
+---
+
+## 2026-08-12 · 안티그래비티 연동 세팅 + 진행기록 분리
+
+### 무엇
+프론트엔드 개발을 안티그래비티(Antigravity)에서 진행하기로 하면서, 이 파일(`PROGRESS_FE.md`)을 새로 만들어
+프론트 세션 기록을 백엔드(`PROGRESS_BE.md`)와 분리했다. `ROADMAP.md`는 하니 소관 팀 공용 문서라 이 세션에서
+건드리지 않는다.
+
+### 문제: 안티그래비티가 작업 규칙을 자동으로 못 읽음
+안티그래비티는 프로젝트 루트의 `AGENTS.md`를 자동으로 읽는다(Claude Code의 `CLAUDE.md`와 같은 위치의
+자동로드 파일, `@파일명` import 문법 지원). 그런데:
+- 이 프로젝트의 실제 작업 규칙(착수 시 인터뷰 우선·코드 취향·디자인 안티슬롭 규칙)은 `CLAUDE.md`에 있고,
+  `CLAUDE.md`는 Claude Code 전용 자동로드 파일명이라 안티그래비티는 그 존재를 모른다.
+- `.claude/`(`launch.json`, `commands/interview.md`)는 Claude Code 전용 설정이라 안티그래비티가 못 읽는다.
+  다만 `commands/interview.md`(인터뷰 우선 슬래시커맨드)는 내용이 `CLAUDE.md` §A와 중복이고,
+  `launch.json`은 Claude Code 프리뷰 전용 dev서버 설정이라 안티그래비티엔 해당 없음(자체 실행 방식 사용).
+  → 둘 다 별도 이관 불필요.
+
+**조치**: 루트 `AGENTS.md`에 `@CLAUDE.md` import 한 줄을 추가해, `AGENTS.md`만 자동으로 읽는 툴(안티그래비티)도
+`CLAUDE.md`의 작업 규칙을 같이 로드하게 함. `AGENTS.md`의 Git 협업 규칙 스코프 자체는 안 건드리고,
+import 옆에 목적을 명시하는 인용구만 추가함.
+
+### 확인 안 된 것 (다음 세션이 검증)
+- 안티그래비티가 실제로 `AGENTS.md`의 `@CLAUDE.md`를 로드해서 규칙을 지키는지 아직 실기 검증 안 함
+  (문서상 지원 확인만 함). 첫 안티그래비티 세션에서 "CLAUDE.md 규칙 알고 있어?" 등으로 로드 여부부터 확인할 것.
+- `design/mockups/barum-report.html`, `barum-mypage.html`이 이미 존재하는데(오늘 반영), `ROADMAP.md`는 아직
+  "리포트 화면 파일 자체가 없음"으로 돼 있어 최신 상태와 어긋남. 이 세션은 `ROADMAP.md`를 안 건드리므로
+  갱신은 하니 확인 후 별도 처리.
+
+### 다음
+- 안티그래비티에서 실제 프론트 작업 착수 전, `CLAUDE.md` §A(착수 규칙)대로 인터뷰부터 한다.
+- 디자인 작업 착수 시 `design/mockups/DESIGN.md`(규칙 마스터)·`design/mockups/HANDOFF.md` §3(안티슬롭 5규칙)·
+  §4(색각이상 검증 절차) 먼저 확인한다(CLAUDE.md §F).
