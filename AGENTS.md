@@ -2,6 +2,10 @@
 
 > 작업 규칙(코드 취향·인터뷰·디자인)은 [CLAUDE.md](CLAUDE.md), 진행상황은 [ROADMAP.md](ROADMAP.md), 프로젝트 정의는 [PROJECT.md](PROJECT.md). 이 문서는 **Git 협업 규칙**을 담는다.
 
+@CLAUDE.md
+
+> ⚠ 위 `@CLAUDE.md`는 이 문서의 스코프(Git 협업 규칙)를 넓히려는 게 아니다. `AGENTS.md`만 자동으로 읽는 에이전트 툴(예: 안티그래비티)도 `CLAUDE.md`의 작업 규칙(인터뷰 우선·코드 취향·디자인 규칙)을 같이 로드하게 하기 위한 import다. Claude Code는 `CLAUDE.md`를 별도로 직접 읽으므로 중복 로드된다.
+
 ## 🌿 협업 / Git 규칙 (항상 지킬 것)
 
 > 이 규칙은 **코드를 커밋·푸시할 때마다 항상 적용**됩니다. 기능 종류와 상관없이 예외 없이 따릅니다.
@@ -14,7 +18,7 @@
 - 새 작업 시작 전 항상 최신 `main`을 받은 상태에서 브랜치를 팝니다.
   ```bash
   git checkout main
-  git pull origin main
+  git pull origin main 
   git checkout -b feature/fe-review-queue   # 새 브랜치 만들고 이동
   ```
 
