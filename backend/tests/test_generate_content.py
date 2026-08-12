@@ -5,13 +5,15 @@ LLM은 가짜 주입, 판정은 StubJudge(오프라인 결정론). 실 LLM·재�
     ./venv/bin/python -m pytest tests/test_generate_content.py -q
 """
 
+from barum.generate import content as content_module
 from barum.generate.content import (
+    build_approved_claim_sections,
     build_image_plan,
     generate_content,
     generate_sections,
 )
 from barum.judge.cosmetic import StubJudge
-from barum.models import GenerateRequest, ImageGenRequest
+from barum.models import GenerateRequest, ImageGenRequest, IngredientAmount
 
 
 class FakeVLM:
@@ -74,3 +76,55 @@ def test_generate_content_end_to_end_offline():
     # 재검증 요약 존재
     assert resp.recheck is not None
     assert resp.disclaimer
+
+
+def _stub_approved_claim(category, certifications):
+    if category == "미백" and "미백 기능성 인증" in certifications:
+        return "피부 미백에 도움을 줍니다."
+    return None
+
+
+def test_build_approved_claim_sections_generates_when_all_conditions_met(monkeypatch):
+    monkeypatch.setattr(content_module, "match_approved_claim", _stub_approved_claim)
+    req = GenerateRequest(
+        mode="create",
+        certifications=["미백 기능성 인증"],
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    sections, skipped = build_approved_claim_sections(req)
+    assert sections and sections[0].source == "approved_claim"
+    assert sections[0].text == "피부 미백에 도움을 줍니다."
+    # 미백은 성공, 나머지 카테고리는 인증서 자체가 없어 스킵
+    assert {s.category for s in skipped} == {"주름개선", "자외선차단"}
+
+
+def test_build_approved_claim_sections_skips_when_ingredient_threshold_fails(monkeypatch):
+    """인증서는 매칭돼도 함량 기준(알부틴 범위 상한 초과)을 못 채우면 문구를 안 만든다."""
+    monkeypatch.setattr(content_module, "match_approved_claim", _stub_approved_claim)
+    req = GenerateRequest(
+        mode="create",
+        certifications=["미백 기능성 인증"],
+        ingredient_amounts=[IngredientAmount(name="알부틴", amount="10%")],
+    )
+    sections, skipped = build_approved_claim_sections(req)
+    assert not sections
+    reasons = {s.category: s.reason for s in skipped}
+    assert "미백" in reasons and "함량" in reasons["미백"]
+
+
+def test_generate_create_content_no_original_check_and_empty_replacements(monkeypatch):
+    """create 모드는 원본 검사가 없어 replacements가 항상 빈 배열이다."""
+    monkeypatch.setattr(content_module, "match_approved_claim", _stub_approved_claim)
+    req = GenerateRequest(
+        mode="create",
+        product_name="테스트크림",
+        certifications=["미백 기능성 인증"],
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    vlm = FakeVLM({"제품개요": "담백한 크림", "사용법": "펴 바르세요", "주의사항": "이상 시 중단"})
+    resp = generate_content(req, judge=StubJudge(), vlm=vlm)
+
+    assert resp.replacements == []
+    assert any(s.source == "approved_claim" for s in resp.sections)
+    assert any(s.category == "주름개선" for s in resp.skipped_claims)
+    assert resp.recheck is not None
