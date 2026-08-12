@@ -25,13 +25,13 @@ def _split_ingredients(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"[,\n]+", text) if s.strip()]
 
 
-def _split_text_to_sentences(ad_text: str) -> list[dict]:
+def _split_text_to_sentences(ad_text: str, source: str | None = None) -> list[dict]:
     """글 입력을 문장 dict 리스트로 쪼갠다. 이미지가 없으니 tile은 None."""
     out: list[dict] = []
     for part in _SENT_SPLIT.split(ad_text):
         part = part.strip()
         if part:
-            out.append({"order": len(out), "tile": None, "text": part})
+            out.append({"order": len(out), "tile": None, "text": part, "source": source})
     return out
 
 
@@ -93,23 +93,35 @@ def run_check(
     vlm: VLM,
     judge: CosmeticJudge,
     ingredients: str | None = None,
+    product_name: str | None = None,
     verbose: bool = False,
 ) -> CheckReport:
     """한 번의 검사 요청을 처리해 CheckReport를 만든다.
 
     이미지·글 둘 다 오면 이미지 문장 뒤에 글 문장을 이어 붙인다. 둘 다 없으면
     빈 리포트(호출 전 API가 422로 막는다).
+    product_name: 상품명/광고 제목. 있으면 판정 대상 문장에 포함된다.
     ingredients: 선택적 전성분 문자열(콤마 구분). 있으면 2호(기능성오인) 판정에
     성분 정합 대조가 붙는다(judge가 지원하는 경우).
     """
     sentences: list[dict] = []
 
+    if product_name and product_name.strip():
+        sentences.append({
+            "order": 0,
+            "tile": None,
+            "text": product_name.strip(),
+            "source": "product_name",
+        })
+
     if image_bytes:
-        sentences.extend(_ocr_image(image_bytes, image_filename, vlm, verbose=verbose))
+        base = len(sentences)
+        for s in _ocr_image(image_bytes, image_filename, vlm, verbose=verbose):
+            sentences.append({**s, "order": base + s.get("order", 0)})
 
     if ad_text:
         base = len(sentences)
-        for s in _split_text_to_sentences(ad_text):
+        for s in _split_text_to_sentences(ad_text, source="ad_text"):
             sentences.append({**s, "order": base + s["order"]})
 
     ingredient_list = _split_ingredients(ingredients) if ingredients else None

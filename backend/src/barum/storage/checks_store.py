@@ -29,15 +29,19 @@ def build_check_row(
     report: dict,
     image_sha256: str | None = None,
     image_path: str | None = None,
+    product_name: str | None = None,
 ) -> dict:
     """checks 테이블 insert 로우를 만든다. report는 CheckReport를 dict로 덤프한 것."""
-    return {
+    row = {
         "id": result_id,
         "region": region,
         "report": report,
         "image_sha256": image_sha256,
         "image_path": image_path,
     }
+    if product_name:
+        row["product_name"] = product_name
+    return row
 
 
 def save_check(client, row: dict) -> None:

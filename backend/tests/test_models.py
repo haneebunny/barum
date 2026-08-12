@@ -79,6 +79,7 @@ def test_finding_json_serializes_korean():
         "y_end": None,
         "source_h": None,
         "source_w": None,
+        "source": None,
     }
 
 

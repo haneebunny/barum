@@ -18,6 +18,7 @@ from pathlib import Path
 from barum.models import JudgmentFlag, ViolationType
 
 _DATA_PATH = Path(__file__).resolve().parent / "data" / "judge_rules.json"
+_SYNONYMS_PATH = Path(__file__).resolve().parent / "data" / "synonyms.json"
 
 
 class RuleOutcome(Enum):
@@ -52,12 +53,46 @@ def _load() -> dict:
     return json.loads(_DATA_PATH.read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def _load_reverse_synonyms() -> dict[str, str]:
+    """동의어 사전을 역인덱스로 만든다: 정규화된 변형 → 대표어."""
+    data = json.loads(_SYNONYMS_PATH.read_text(encoding="utf-8"))
+    reverse: dict[str, str] = {}
+    for canonical, variants in data["synonyms"].items():
+        for v in variants:
+            reverse[_normalize(v)] = canonical
+    return reverse
+
+
+def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
+    """동의어 역인덱스로 변형 표현을 검사한다. 변형이 걸리면 대표어의 규칙을 적용."""
+    reverse = _load_reverse_synonyms()
+    for variant_norm, canonical in reverse.items():
+        if variant_norm not in norm:
+            continue
+        # 대표어가 어느 갈래(violation/needs_review)에 속하는지 찾는다.
+        for type_label, keywords in rules["violation"].items():
+            if canonical in keywords:
+                vtype = ViolationType(type_label)
+                return RuleMatch(RuleOutcome.violation, canonical, vtype, JudgmentFlag.violation)
+        for type_label, keywords in rules["needs_review"].items():
+            if canonical in keywords:
+                vtype = ViolationType(type_label)
+                return RuleMatch(
+                    RuleOutcome.needs_review, canonical, vtype, JudgmentFlag.needs_review
+                )
+        if canonical in rules["legal_allow"]:
+            return RuleMatch(RuleOutcome.legal_allow, canonical, None, None)
+    return None
+
+
 def match_rule(sentence: str) -> RuleMatch | None:
     """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
 
     우선순위대로 스캔한다: violation > needs_review > legal_allow. 앞 갈래에서
     먼저 걸리면 뒤는 안 본다. 이 순서가 경계표현 조합을 자연히 처리한다
     (예: '시술'이 violation에 있어 '시술 후 진정'은 진정보다 시술이 먼저 hit).
+    대표어로 안 걸리면 동의어 사전(synonyms.json)의 변형 표현도 검사한다.
     """
     norm = _normalize(sentence)
     rules = _load()
@@ -80,4 +115,5 @@ def match_rule(sentence: str) -> RuleMatch | None:
         if _normalize(kw) in norm:
             return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
 
-    return None
+    # 대표어로 안 걸렸으면 동의어 변형으로 재시도
+    return _match_synonyms(norm, rules)

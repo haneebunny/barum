@@ -74,3 +74,64 @@ def test_normalization_matches_across_spaces():
     assert m is not None
     assert m.span == "다크서클"
     assert m.outcome == RuleOutcome.needs_review
+
+
+# ── 동의어 매칭 테스트 ──────────────────────────────────────────────────
+
+
+def test_synonym_detox_maps_to_haedok():
+    """'디톡스'는 대표어 '해독'의 동의어 — violation hit."""
+    m = match_rule("피부 디톡스로 깨끗하게")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "해독"
+    assert m.violation_type == ViolationType.type_1_drug_misperception
+
+
+def test_synonym_trouble_maps_to_acne():
+    """'트러블'은 대표어 '여드름'의 동의어 — violation hit."""
+    m = match_rule("트러블 피부를 위한 솔루션")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "여드름"
+
+
+def test_synonym_healing_maps_to_treatment():
+    """'힐링'은 대표어 '치료'의 동의어 — violation hit."""
+    m = match_rule("힐링 케어로 피부를 관리")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "치료"
+
+
+def test_synonym_antiaging_english_maps_to_needs_review():
+    """'anti-aging'(영문)은 대표어 '안티에이징'의 동의어 — needs_review."""
+    m = match_rule("anti-aging 크림으로 관리하세요")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.span == "안티에이징"
+
+
+def test_synonym_sebum_control_maps_to_piji():
+    """'피지 조절'은 대표어 '피지분비조절'의 동의어 — needs_review."""
+    m = match_rule("피지 조절에 효과적인 성분")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.span == "피지분비조절"
+
+
+def test_synonym_stemcell_maps_to_violation():
+    """'stem cell'(영문)은 대표어 '줄기세포'의 동의어 — 5호 violation."""
+    m = match_rule("stem cell 기술을 적용한 크림")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "줄기세포"
+    assert m.violation_type == ViolationType.type_5_deception
+
+
+def test_synonym_does_not_override_direct_keyword():
+    """대표어가 직접 걸리면 동의어까지 안 간다(우선순위 보존)."""
+    m = match_rule("해독 성분이 풍부한 팩")
+    assert m is not None
+    assert m.span == "해독"
+    assert m.outcome == RuleOutcome.violation

@@ -45,6 +45,6 @@ def test_extract_functional_ingredients_counts():
 
 def test_extract_prohibited_expressions_rows():
     data = ext.extract_prohibited_expressions()
-    assert len(data["rows"]) == 15
+    assert len(data["rows"]) == 17
     types = {r["위반유형"] for r in data["rows"]}
     assert types == {"T1", "T2", "T5"}  # T3(삭제)·T4(가드레일)·T6은 이 표에 없음

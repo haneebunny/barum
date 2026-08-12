@@ -75,6 +75,7 @@ def _loc(s: dict) -> Location:
         y_end=s.get("y_end"),
         source_h=s.get("source_h"),
         source_w=s.get("source_w"),
+        source=s.get("source"),
     )
 
 
