@@ -222,9 +222,9 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
     setTimeout(() => {
       let report: CheckReport | undefined;
 
-      if (resultId === "demo-image-id" || resultId === "image") {
+      if (resultId === "demo-image-id" || resultId === "image" || resultId === "demo-id-1") {
         report = MOCK_REPORTS.image;
-      } else if (resultId === "demo-text-id" || resultId === "text") {
+      } else if (resultId === "demo-text-id" || resultId === "text" || resultId === "demo-id-2") {
         report = MOCK_REPORTS.text;
       } else if (resultId === "demo-unjudged-id" || resultId === "unjudged" || resultId === "a3Fk9mdemo") {
         report = MOCK_REPORTS.unjudged;
@@ -238,8 +238,13 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
       resolve({
         result_id: resultId,
         created_at: new Date().toISOString(),
-        region: report.summary.region,
-        image_available: resultId.includes("image") || resultId.includes("unjudged") || resultId === "a3Fk9mdemo" || resultId === "image",
+        region: resultId === "demo-id-1" ? "US" : report.summary.region,
+        image_available:
+          resultId.includes("image") ||
+          resultId.includes("unjudged") ||
+          resultId === "a3Fk9mdemo" ||
+          resultId === "image" ||
+          resultId === "demo-id-1",
         report,
       });
     }, 800);

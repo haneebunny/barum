@@ -26,15 +26,21 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
 }
 
-function markSentence(sentence: string, hlItems: Array<{ span: string; cls: string; badge: number }>) {
+function markSentence(
+  sentence: string,
+  hlItems: Array<{ span: string; cls: string; badge: number; idx: number }>,
+  actions: Record<number, "accept" | "exclude" | "hold" | null>
+) {
   let out = escapeHtml(sentence);
   const items = [...hlItems].sort((a, b) => b.span.length - a.span.length);
   items.forEach((it) => {
     const needle = escapeHtml(it.span);
     if (out.indexOf(needle) === -1) return;
+    const isExcluded = actions[it.idx] === "exclude";
+    const stCls = isExcluded ? " st-exclude" : "";
     out = out.replace(
       needle,
-      `<span class="hlspan ${it.cls}"><span class="tag">${it.badge}</span>${needle}</span>`
+      `<span class="hlspan ${it.cls}${stCls}"><span class="tag">${it.badge}</span>${needle}</span>`
     );
   });
   return out;
@@ -43,7 +49,7 @@ function markSentence(sentence: string, hlItems: Array<{ span: string; cls: stri
 export function ReportClient({ envelope }: ReportClientProps) {
   const [activeEnvelope, setActiveEnvelope] = useState<ReportEnvelope>(envelope);
   const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
-    if (envelope.result_id === "demo-text-id" || envelope.result_id === "text") return "text";
+    if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
     if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
     return "image";
   });
@@ -118,7 +124,15 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <Link href="/" className="home">
             홈
           </Link>{" "}
-          <span className="sep">›</span> 국내 광고 검증 <span className="sep">›</span> 리포트
+          <span className="sep">›</span>{" "}
+          {activeEnvelope.region === "US" ? (
+            <>
+              해외 수출 검증 <span className="sep">›</span> 미국{" "}
+            </>
+          ) : (
+            <>국내 광고 검증</>
+          )}
+          <span className="sep">›</span> 리포트
         </span>
         <div className="modeswitch">
           <span className="msl devnote">목업 전용 · 실제 화면엔 없음:</span>
@@ -151,11 +165,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 요약 상단바 */}
       <div className="statbar">
         <p className="headline">
-          <span className="nviol">위반 {nViol}건</span>
+          <span className="nviol">위반 <span className="num">{nViol}</span>건</span>
           <span className="sep2">·</span>
-          검토필요 {nReview}건
+          검토필요 <span className="num">{nReview}</span>건
           <span className="sep2">·</span>
-          미판정 {d.unjudged.length}건
+          미판정 <span className="num">{d.unjudged.length}</span>건
         </p>
         <div className="typechips">
           {Object.entries(typeCounts).map(([type, count]) => {
@@ -163,7 +177,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
             const label = TYPE_LABEL[type as keyof typeof TYPE_LABEL] || type;
             return (
               <span key={type} className="typechip">
-                {label} <span className="cnt">{count}</span>
+                {label} <span className="cnt num">{count}</span>
               </span>
             );
           })}
@@ -194,7 +208,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 const byTile: Record<
                   string,
                   Array<
-                    | { type: "find"; num: number; item: typeof d.findings[number] }
+                    | { type: "find"; num: number; idx: number; item: typeof d.findings[number] }
                     | { type: "uj"; letter: string; item: typeof d.unjudged[number] }
                   >
                 > = {};
@@ -203,7 +217,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   const t = o.f.location.tile;
                   if (t) {
                     if (!byTile[t]) byTile[t] = [];
-                    byTile[t].push({ type: "find", num: o.num, item: o.f });
+                    byTile[t].push({ type: "find", num: o.num, idx: o.idx, item: o.f });
                   }
                 });
 
@@ -229,9 +243,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
                           <div className="tilebg">
                             {rows.map((r, ri) => {
                               if (r.type === "find") {
+                                const isExcluded = actions[r.idx] === "exclude";
+                                const stCls = isExcluded ? " st-exclude" : "";
                                 const cls = r.item.flag === "위반" ? "violation" : "review";
                                 return (
-                                  <div className={`hlband ${cls}`} key={ri}>
+                                  <div className={`hlband ${cls}${stCls}`} key={ri}>
                                     <span className="hlbadge">{r.num}</span>
                                     <span className="hltxt">{r.item.span}</span>
                                   </div>
@@ -259,7 +275,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
               (() => {
                 // 텍스트 모드: findings 및 unjudged 문장들을 통합하여 order 순으로 렌더링
                 // 1. findings 문장 분류
-                const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number }>> = {};
+                const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
                 const sentenceOrders: Record<string, number> = {};
 
                 findByOrder.forEach((o) => {
@@ -272,6 +288,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                     span: o.f.span,
                     cls: o.f.flag === "위반" ? "violation" : "review",
                     badge: o.num,
+                    idx: o.idx,
                   });
                 });
 
@@ -291,7 +308,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   sentence: string;
                   order: number;
                   // find type extra
-                  hlItems?: Array<{ span: string; cls: string; badge: number }>;
+                  hlItems?: Array<{ span: string; cls: string; badge: number; idx: number }>;
                   // uj type extra
                   letter?: string;
                 }
@@ -322,7 +339,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 const htmlContent = allSentences
                   .map((node) => {
                     if (node.type === "find" && node.hlItems) {
-                      return markSentence(node.sentence, node.hlItems);
+                      return markSentence(node.sentence, node.hlItems, actions);
                     } else if (node.type === "uj" && node.letter) {
                       return `<span class="hlspan unjudged"><span class="tag">${node.letter}</span>${escapeHtml(
                         node.sentence
@@ -347,7 +364,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
             <span className="n">02</span>
             <h2>지적 카드</h2>
             <span className="rule" />
-            <span className="hint">{d.findings.length}건</span>
+            <span className="hint"><span className="num">{d.findings.length}</span>건</span>
           </div>
           <div className="findlist">
             {findByOrder.map((o) => {
@@ -447,7 +464,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 하단 브릿지 */}
       <div className="bridge">
         <p>지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        <Link href="/" className="btn primary">
+        <Link href="/content" className="btn primary">
           이 수정안대로 상세페이지 만들기 <span className="mono">→</span>
         </Link>
       </div>
@@ -493,6 +510,46 @@ const styles = `
   }
   .metastrip .sep {
     color: var(--ink-3);
+  }
+
+  .modeswitch {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .modeswitch .msl {
+    color: var(--ink-3);
+  }
+  .modeswitch .msbtns {
+    display: flex;
+    border: 1px solid var(--line-2);
+  }
+  .modeswitch button {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 4px 9px;
+    border: 0;
+    border-right: 1px solid var(--line-2);
+    background: transparent;
+    color: var(--ink-3);
+    cursor: pointer;
+  }
+  .modeswitch button:last-child {
+    border-right: 0;
+  }
+  .modeswitch button:hover {
+    color: var(--ink);
+    background: var(--nav-hover);
+  }
+  .modeswitch button.on {
+    background: var(--brand-deep);
+    color: var(--on-brand);
+    font-weight: 700;
+  }
+  .devnote {
+    color: var(--ink-3);
+    font-size: 10px;
   }
 
   .statbar {
@@ -1022,5 +1079,23 @@ const styles = `
     .statusbar .seg.grow {
       display: none;
     }
+    .modeswitch {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+
+  .hlband.st-exclude {
+    opacity: 0.5;
+  }
+  .hlspan.st-exclude {
+    opacity: 0.5;
+    text-decoration: line-through;
   }
 `;
