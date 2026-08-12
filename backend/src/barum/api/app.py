@@ -97,6 +97,7 @@ def _persist_check(
     region: str,
     image_bytes: bytes | None,
     content_type: str | None,
+    product_name: str | None = None,
 ) -> str | None:
     """검사 결과·증거를 저장하고 result_id를 낸다. 저장 못 하면 None(응답은 계속).
 
@@ -117,7 +118,8 @@ def _persist_check(
             image_path = f"{result_id}{ext}"
             upload_image(client, image_path, image_bytes, content_type or "application/octet-stream")
         row = build_check_row(
-            result_id, region, report.model_dump(mode="json"), image_sha256, image_path
+            result_id, region, report.model_dump(mode="json"), image_sha256, image_path,
+            product_name=product_name,
         )
         save_check(client, row)
         return result_id
@@ -143,6 +145,7 @@ def get_report(result_id: str) -> StoredCheck:
         created_at=str(row["created_at"]),
         region=Region(row["region"]),
         image_available=bool(row.get("image_path")),
+        product_name=row.get("product_name"),
         report=CheckReport(**row["report"]),
     )
 
@@ -167,10 +170,13 @@ async def check(
     ingredients: str | None = Form(
         None, description="전성분(콤마 구분). 있으면 2호 판정에 성분 정합 대조가 붙는다."
     ),
+    product_name: str | None = Form(
+        None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
+    ),
 ) -> CheckReport:
     """광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.
 
-    이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients는 선택.
+    이미지·글 중 최소 하나는 있어야 한다. 없으면 422. ingredients, product_name은 선택.
     """
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
@@ -189,10 +195,12 @@ async def check(
         vlm=ocr_vlm,
         judge=_build_judge(),
         ingredients=ingredients,
+        product_name=product_name,
     )
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.
     report.result_id = _persist_check(
-        report, region.value, image_bytes, image.content_type if image else None
+        report, region.value, image_bytes, image.content_type if image else None,
+        product_name=product_name,
     )
     return report
 

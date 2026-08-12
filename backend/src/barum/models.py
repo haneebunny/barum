@@ -69,6 +69,7 @@ class Location(BaseModel):
     y_end: int | None = None  # 타일 밴드 하단(원본 이미지 y좌표)
     source_h: int | None = None  # 원본 이미지 높이(px)
     source_w: int | None = None  # 원본 이미지 너비(px)
+    source: str | None = None  # 입력 출처("product_name" | "ad_text" | None=이미지OCR)
 
 
 class Finding(BaseModel):
@@ -137,6 +138,7 @@ class StoredCheck(BaseModel):
     created_at: str
     region: Region
     image_available: bool
+    product_name: str | None = None
     report: CheckReport
 
 
