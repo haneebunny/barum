@@ -24,11 +24,13 @@
 
 1. ~~PR `docs/fix-codename-swap` 머지~~ **완료됨**(하니가 이 문서 작성 중에 이미 머지함). main에 팀원A=대수로 정정된 상태 확인함.
 2. ~~`docs/be-fr14-tier-gating` 잔여 커밋 새 PR~~ **완료됨**(PR #34로 머지 확인). 대수용 "작업D"(제목명 판단대상 코드확인·함량기준·피지감소 동의어 코드·모공수축) 지시가 이제 가이드북 HTML에 정상 반영돼 있음.
-3. **비비의 온톨로지·실사례 커밋이 아직 push 안 됨.** `worktree-db-cases-ingest`(cases.md 등, 3커밋), `worktree-db-ontology-pack`(온톨로지 확장, 2커밋) 둘 다 로컬에만 있음. 비비에게 push 요청 필요.
+3. ~~비비의 온톨로지·실사례 커밋 push~~ **완료됨.** 새 PR 2개, 머지만 하면 됨:
+   - https://github.com/haneebunny/barum/pull/new/feature/be-cases-expansion (cases.md 52건 + prohibited_expressions 판정기준 4건)
+   - https://github.com/haneebunny/barum/pull/new/docs/be-ontology-opencrab-pointer (온톨로지 포인터 문서)
 4. ~~PR #30(`feature/be-score-eval-recheck`)~~ **처리됨**(원격 브랜치 삭제 확인, close된 것으로 보임). 더 볼 것 없음.
-5. **디자이너 마이페이지 목업 진행 중, 상태 확인 중(응답 대기).** Q6(지적카드 액션 인터랙션)·tsx vs HTML 질문 2건도 아직 답 못 받음. 재확인 필요.
+5. **디자이너 마이페이지 목업 완성, PM 검토·승인함. 커밋은 하니 확인 대기 중(디자이너가 명시적 위임 없다고 스스로 판단해 보류, 옳은 판단이었음).** Q6·tsx vs HTML 질문 2건은 하니가 직접 답변해서 해결됨(Q6: 실기능 없이 프론트 참고용 수준으로, 로컬 상태 전환은 이미 리포트 화면에 구현됨 / tsx vs HTML: HTML 목업 계속, tsx 포팅은 냐냐 몫). 파일은 `.claude/worktrees/fe-mypage/design/mockups/barum-mypage.html`(격리 worktree, 브랜치 `feature/fe-mypage-mockup`, 아직 커밋 전, 유실 위험 없음). **하니가 결과물 보고 "커밋해"라고만 하면 디자이너가 바로 진행.**
 
-**즉 실질적으로 남은 건 #3(비비 push 요청)과 #5(디자이너 확인)뿐.**
+**오늘 열어뒀던 액션 항목은 이제 전부 해결됨.** 남은 건 위 새 PR들 머지와, 다음 우선순위 결정(아래 "열린 결정" 참조)뿐.
 
 ## 진행 중 스레드
 
@@ -37,7 +39,7 @@
 - **FR-14 수정 권고안 생성 완료·머지됨**(PR #31, `feature/be-remediation-suggestion`). `Finding.suggestion` 필드, 조건표 기반(자유생성 아님). PM이 확정 스펙(5개 violation_type×flag 조합 템플릿)을 지시서에 박아뒀고, 대수가 구현 시 `remediation.py`를 `reference/` 밑에 두고 `.md` 조건표 문서도 추가로 저작한 것으로 보임(PM 원안보다 확장됐을 수 있음, 코드리뷰 권장).
 - **RagJudge 실제 배포 파이프라인 재평가**: base 제로샷 60.0%(24/40)·미탐1 → RagJudge 65.0%(26/40)·**미탐0**. 발표 스토리로 좋음. `scripts/eval_ragjudge.py`.
 - **레퍼런스팩 실사례 대량 보강**(비비, 정부 PDF 8개 기반): cases.md 52건(기존9+신규43), Supabase `reference_cases`에 임베딩 재적재 완료. `prohibited_expressions.md`에 신규 4건(특허표현 우회암시·광고제목명 판단대상·추출물함량기준·모공수축).
-- **온톨로지(OpenCrab) 구축**: 팩 5개(위반유형체계·금지표현판정·기능성고시원료·적발사례·확장). 위 "지금 처리할 것 #3" 참조, push 안 됨.
+- **온톨로지(OpenCrab) 구축**: 팩 5개(위반유형체계·금지표현판정·기능성고시원료·적발사례·확장). 포인터 문서 push 완료, 위 "지금 처리할 것 #3" PR 링크 참조.
 - em-dash·팀원 실명 표기 전역 정리(진행 중, 완벽하지 않음. repo 전체엔 아직 잔여분 있음, 급하지 않음).
 
 **남은 것 (위 "지금 처리할 것 #2" 참조):**
