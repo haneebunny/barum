@@ -151,7 +151,7 @@ def main():
 
     # 모델별 요약을 한 파일에 누적 → 비교표(Gemini vs OpenAI 나란히)
     new_file = not COMPARE.exists()
-    with open(COMPARE, "a", newline="") as f:
+    with open(COMPARE, "a", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         if new_file:
             w.writerow(["시각", "provider", "모델", "채점수", "일치율%", "미탐", "오탐", "토큰"])
