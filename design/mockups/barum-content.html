@@ -279,7 +279,7 @@
                 <div class="detailpage" id="detailPage">
                   <div class="dp-hero"><span class="dp-htxt">글로우 세럼</span></div>
                   <div id="secList"></div>
-                  <div class="dp-close">본 상세페이지는 바름의 수정 권고안을 반영한 초안입니다. 게시 전 사업자 확인이 필요합니다.</div>
+                  <div class="dp-close" id="dpDisclaimer"></div>
                 </div>
               </div>
             </div>
@@ -357,36 +357,51 @@
     var ICON_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>';
     var SRC_LABEL = { remediation:'조건표 치환', llm:'LLM 생성', template:'표준 문구' };
 
-    /* 생성 문구(더미): 리포트에서 수용한 권고안을 조건표 톤으로 재배열. 새 효능 창작 없음. */
+    /* 생성 문구(더미): 리포트에서 수용한 권고안을 조건표 톤으로 재배열. 새 효능 창작 없음.
+       GenerateResponse 계약(backend/src/barum/models.py)과 1:1로 맞춘 shape.
+       sections[]와 image_plan.placed[]는 실제 응답처럼 분리하고, LAYOUT이 둘을
+       조합하는 프론트 전용 배치 순서다(백엔드3 지적 반영: 이미지가 섹션 배열에
+       안 섞이게). */
     var SECTIONS = [
-      { kind:'광고문구', source:'remediation', text:'건조하고 예민해지기 쉬운 피부에 수분과 보습감을 더해줍니다. 매일 사용해 은은한 광채와 촉촉함을 유지해보세요.', img:null },
-      { kind:null, source:null, text:null, img:'detail_000_t01.png' },
-      { kind:'사용법', source:'llm', text:'세안 후 토너 다음 단계에서 적당량을 덜어 얼굴 전체에 고르게 펴 발라주세요. 아침·저녁 데일리 케어로 사용하기 좋습니다.', img:null },
-      { kind:null, source:null, text:null, img:'detail_000_t02.png' },
-      { kind:'주의사항', source:'template', text:'화장품 사용 시 이상이 있는 경우 사용을 중지하고 피부과 전문의와 상담하세요. 직사광선을 피해 서늘한 곳에 보관하세요.', img:null }
+      { kind:'광고문구', source:'remediation', text:'건조하고 예민해지기 쉬운 피부에 수분과 보습감을 더해줍니다. 매일 사용해 은은한 광채와 촉촉함을 유지해보세요.' },
+      { kind:'사용법', source:'llm', text:'세안 후 토너 다음 단계에서 적당량을 덜어 얼굴 전체에 고르게 펴 발라주세요. 아침·저녁 데일리 케어로 사용하기 좋습니다.' },
+      { kind:'주의사항', source:'template', text:'화장품 사용 시 이상이 있는 경우 사용을 중지하고 피부과 전문의와 상담하세요. 직사광선을 피해 서늘한 곳에 보관하세요.' }
     ];
-    var RECHECK = { safe:true, n_findings:0, n_needs_review:0 };
+    var IMAGE_PLACED = [
+      { slot:'body_1', image_url:'detail_000_t01.png' },
+      { slot:'body_2', image_url:'detail_000_t02.png' }
+    ];
+    var LAYOUT = [
+      { type:'section', i:0 }, { type:'image', i:0 },
+      { type:'section', i:1 }, { type:'image', i:1 },
+      { type:'section', i:2 }
+    ];
+    var RECHECK = { safe:true, n_findings:0, n_violation:0, n_needs_review:0 };
+    var DISCLAIMER = '본 상세페이지는 바름의 수정 권고안을 반영한 초안입니다. 게시 전 사업자 확인이 필요합니다.';
 
     function esc(s){ return String(s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
 
     function renderSections(){
       var list = document.getElementById('secList');
-      list.innerHTML = SECTIONS.map(function(s){
-        if(s.img){
-          return '<div class="dp-block img"><div class="dp-img"><span class="dp-imglabel">'+esc(s.img)+'</span></div></div>';
+      list.innerHTML = LAYOUT.map(function(row){
+        if(row.type==='image'){
+          var img = IMAGE_PLACED[row.i];
+          return '<div class="dp-block img"><div class="dp-img"><span class="dp-imglabel">'+esc(img.image_url)+'</span></div></div>';
         }
+        var s = SECTIONS[row.i];
         return '<div class="dp-block"><div class="dp-kind"><b>'+esc(s.kind)+'</b><span class="dp-src">'+esc(SRC_LABEL[s.source]||s.source)+'</span></div><p>'+esc(s.text)+'</p></div>';
       }).join('');
+      document.getElementById('dpDisclaimer').textContent = DISCLAIMER;
     }
 
     function renderRecheck(){
       var el = document.getElementById('recheckBadge');
       if(RECHECK.safe){
         el.className = 'recheck';
-        el.innerHTML = ICON_CHECK + '재검증 통과 · 위반 '+RECHECK.n_findings+'건 · 검토필요 '+RECHECK.n_needs_review+'건';
+        el.innerHTML = ICON_CHECK + '재검증 통과 · 위반 '+RECHECK.n_violation+'건 · 검토필요 '+RECHECK.n_needs_review+'건';
       } else {
         el.className = 'recheck warn';
-        el.innerHTML = ICON_WARN + '재검증 필요 · 위반 '+RECHECK.n_findings+'건';
+        el.innerHTML = ICON_WARN + '재검증 필요 · 위반 '+RECHECK.n_violation+'건';
       }
     }
 
