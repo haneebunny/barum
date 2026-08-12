@@ -1059,6 +1059,18 @@ body {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+  .planrow,
+  .dash .stattiles {
+    grid-template-columns: 1fr;
+  }
+  .hrow {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .tierswitch {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1066,4 +1078,379 @@ body {
     opacity: 1 !important;
     transform: none !important;
   }
+}
+
+/* =========================================================================
+   마이페이지 요금제 및 사용량 대시보드
+   ========================================================================= */
+.planrow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.card {
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  padding: 15px 16px;
+}
+.card .ctitle {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+  letter-spacing: 0.3px;
+}
+.planname {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+.planname .pn {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.4px;
+}
+.planname .pp {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.planname .pp .per {
+  color: var(--ink-3);
+}
+.planfeat {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.planfeat li {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.planfeat li svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--brand-ink);
+  margin-top: 2px;
+}
+.planfeat li.off {
+  color: var(--ink-3);
+}
+.planfeat li.off svg {
+  color: var(--ink-3);
+}
+
+.usagehead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.usagehead .ul {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.usagehead .uv {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ink);
+}
+.usagehead .uv b {
+  font-size: 16px;
+  font-weight: 700;
+}
+.usagebar {
+  height: 8px;
+  background: var(--line-2);
+  border: 1px solid var(--line-2);
+  overflow: hidden;
+}
+.usagebar .fill {
+  height: 100%;
+  background: var(--ink-3);
+}
+.usagemeta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 8px;
+}
+.unlimited {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--brand-ink);
+  border: 1px solid var(--line-2);
+  background: var(--surface-sub);
+  padding: 4px 9px;
+}
+
+/* 업그레이드 배너 */
+.upbanner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 13px 15px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-sub);
+}
+.upbanner .ubtx {
+  flex: 1;
+  min-width: 0;
+}
+.upbanner .ubtx b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.upbanner .ubtx p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* Pro 전용 대시보드 */
+.dash .stattiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.stattile {
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  padding: 14px 15px;
+}
+.stattile .stlabel {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+}
+.stattile .stval {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+.stattile .stval.crit {
+  color: var(--crit);
+}
+.stattile .stdelta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 5px;
+}
+.stattile .spark {
+  margin-top: 11px;
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+.dashnote {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+/* 검사 이력 */
+.histlist {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.hrow {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.hrow:hover {
+  border-color: var(--brand);
+}
+.hname {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.htag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  border: 1px solid var(--line-2);
+  padding: 2px 7px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.hstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border: 1px solid var(--line-2);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.hstat svg {
+  width: 13px;
+  height: 13px;
+}
+.hstat.need {
+  color: var(--crit);
+  border-color: var(--crit-bd);
+  background: var(--crit-bg);
+  font-weight: 600;
+}
+.hstat.done {
+  color: var(--ink-2);
+  border-color: var(--line-2);
+}
+.haction {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.hupd {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* 요금제 비교 모달 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 11, 8, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  font-family: var(--mono);
+  box-shadow: 0 14px 44px rgba(7, 11, 8, 0.28);
+  animation: modalin 0.16s ease;
+}
+@keyframes modalin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-2);
+  background: var(--surface-sub);
+  font-size: 12px;
+  color: var(--brand-ink);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.modal-x {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 5px;
+}
+.modal-x:hover {
+  color: var(--ink);
+}
+.modal-body {
+  padding: 8px;
+}
+.prow {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.prow:last-child {
+  border-bottom: 0;
+}
+.prow.on {
+  background: var(--nav-active-bg);
+}
+.prow .pk {
+  color: var(--brand-ink);
+}
+.prow .pnm {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 56px;
+}
+.prow .ppr {
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.prow .pdesc {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  grid-column: 1 / -1;
+  margin: 2px 0 0 22px;
+}
+.prow .cur {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  margin-left: 6px;
+}
+.addon {
+  padding: 10px;
+  border-top: 1px dashed var(--line-2);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.addon b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.addon .ap {
+  color: var(--brand-ink);
 }
