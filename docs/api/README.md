@@ -1,6 +1,6 @@
 # 판정 백엔드 API (프론트 연동용)
 
-> 대상: 프론트(정빈)·디자이너. 계약면 한 장 요약 + 샘플.
+> 대상: 프론트·디자이너. 계약면 한 장 요약 + 샘플.
 > 원본 스키마: `backend/openapi.json` (서버 뜨면 `/openapi.json`·`/docs`로도 제공).
 > 이 문서는 가변. 계약이 바뀌면 `scripts/dump_openapi.py`·`scripts/make_fixtures.py`를 다시 돌려 갱신한다.
 
