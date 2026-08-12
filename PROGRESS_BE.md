@@ -1,12 +1,34 @@
 # PROGRESS_BE: 바름 백엔드 진행상황
 
 > 성격: 백엔드 세션 진행 기록(가변). 확정 결정은 `PROJECT.md`, 전체 로드맵은 `ROADMAP.md`, 작업 규칙은 `CLAUDE.md`.
-> 갱신일: 2026-08-11. 담당: 백엔드 세션(대수) / 검수: 하니.
+> 갱신일: 2026-08-12. 담당: 백엔드 세션(대수) / 검수: 하니.
 
 > ⚠ **PM 정정 (2026-08-11, 하니 확인)**: 기획서 v1.7 확인 결과 거짓·과장·기만이 개정법(2026.11.27 시행)에서
 > **4호 → 5호**로 밀림(AI 전문가보증 조항이 신설 4호). `models.py`·`judge/cosmetic.py`·픽스처·reference를
 > `type_5_deception`/`5호_거짓과장기만`으로 이미 정정·검증(pytest 35 passed) 완료. 아래 로그의 "4호" 언급은
 > 그 시점 기준 원기록이라 남겨두되, 현재 코드 기준은 5호다. 상세: `reference/cosmetic_kr/statute/law_article_13.md`.
+
+---
+
+## 2026-08-12 · score_eval.py 43문장 재검증 (5호 리네임 및 규칙집 반영 후)
+
+브랜치: `feature/be-score-eval-recheck` (origin/main 기준). 2026-08-12 세션 작업 A 완료.
+
+### 무엇을 했나
+- `5호_거짓과장기만` 리네임 및 5호 라벨 체계 개편 후, 43문장 평가셋을 `openai` (GPT-5-mini) 및 `gemini` (Gemini 3.5 Flash Lite) 프로바이더로 각각 재검증을 수행했습니다.
+- 결과를 `data/eval_compare.csv`에 누적하고, 각각 `data/eval_result_openai_gpt-5-mini.xlsx`, `data/eval_result_gemini_gemini-3.5-flash-lite.xlsx` 결과 파일을 갱신하였습니다.
+
+### 결과 요약
+| Provider | 모델 | 채점수 | 일치율% | 미탐 (1급) | 오탐 | 토큰 수 |
+|---|---|---|---|---|---|---|
+| OpenAI | gpt-5-mini | 37 | 54.1% | 1건 | 12건 | 8,921 |
+| Gemini | gemini-3.5-flash-lite | 37 | 56.8% | 1건 | 9건 | 3,995 |
+
+- **미탐(1급 지표):** 양 모델 모두 1건으로 낮은 미탐율을 유지했습니다.
+  - OpenAI (#33): 사람=1호_의약품오인 / AI=합법 | "약국 입점 화장품"
+  - Gemini (#40): 사람=2호_기능성오인 / AI=합법 | "미백• 주름개선 이중기능성 화장품"
+- **오탐:** OpenAI 12건, Gemini 9건으로 나타났습니다.
+- **특이사항:** OpenAI의 경우 43번 문장에서 규격 외 라벨을 뱉어 1건 제외 처리되었습니다.
 
 ---
 
