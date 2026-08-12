@@ -206,10 +206,10 @@
 <h3>B-3. 착수 전 하니에게 확인할 4가지 (CLAUDE.md A·B규칙)</h3>
 <p>코드 쓰기 전에 하니에게 물어보고 답을 받습니다. 짐작으로 채우지 않습니다.</p>
 <ol>
-  <li><b>조건표를 어디서 가져오나</b> — 대수가 새로 만드나(위반유형별 안전 대체 표현 세트), 하니가 가진 자료가 있나. (온톨로지팩을 비비가 구축 중이니 그것과 연결할지도 확인)</li>
-  <li><b>응답을 어디에 담나</b> — 기존 <code>Finding</code>에 <code>suggestion</code> 필드를 추가할지, 별도 엔드포인트(<code>POST /remediate</code>)로 뺄지. "리포트의 마지막 단계"라는 문구는 전자에 가깝지만 확정은 하니가.</li>
-  <li><b>원료 매칭 재사용 범위</b> — 2호 판정에 이미 쓰는 <code>reference/ingredients.py</code>(성분 정합)를 그대로 재사용할지. 1호·5호는 재사용할 조건표가 없어 새로 설계 필요.</li>
-  <li><b>"권고임을 명시"</b> — API 응답에 고정 disclaimer 문구가 필요한지. (프론트 목업엔 이미 "확정 아닌 권고" 톤이 들어가 있음)</li>
+  <li><b>조건표를 어디서 가져오나</b>: 대수가 새로 만드나(위반유형별 안전 대체 표현 세트), 하니가 가진 자료가 있나. (온톨로지팩을 비비가 구축 중이니 그것과 연결할지도 확인)</li>
+  <li><b>응답을 어디에 담나</b>: 기존 <code>Finding</code>에 <code>suggestion</code> 필드를 추가할지, 별도 엔드포인트(<code>POST /remediate</code>)로 뺄지. "리포트의 마지막 단계"라는 문구는 전자에 가깝지만 확정은 하니가.</li>
+  <li><b>원료 매칭 재사용 범위</b>: 2호 판정에 이미 쓰는 <code>reference/ingredients.py</code>(성분 정합)를 그대로 재사용할지. 1호·5호는 재사용할 조건표가 없어 새로 설계 필요.</li>
+  <li><b>"권고임을 명시"</b>: API 응답에 고정 disclaimer 문구가 필요한지. (프론트 목업엔 이미 "확정 아닌 권고" 톤이 들어가 있음)</li>
 </ol>
 
 <h3>B-4. 계획 먼저 보여주기</h3>
@@ -219,9 +219,9 @@
 
 <h3>B-5. 참고할 기존 코드</h3>
 <ul>
-  <li><code>backend/src/barum/models.py</code> — Finding, CheckReport 스키마 (새 필드 추가 위치)</li>
-  <li><code>backend/src/barum/judge/cosmetic.py</code> — RagJudge가 이미 근거·플래그 채우는 흐름 (같은 자리에서 suggestion도?)</li>
-  <li><code>backend/src/barum/reference/mapping.py</code>, <code>reference/ingredients.py</code> — 위반유형·근거조항·성분 정합 기존 로직</li>
+  <li><code>backend/src/barum/models.py</code>: Finding, CheckReport 스키마 (새 필드 추가 위치)</li>
+  <li><code>backend/src/barum/judge/cosmetic.py</code>: RagJudge가 이미 근거·플래그 채우는 흐름 (같은 자리에서 suggestion도?)</li>
+  <li><code>backend/src/barum/reference/mapping.py</code>, <code>reference/ingredients.py</code>: 위반유형·근거조항·성분 정합 기존 로직</li>
 </ul>
 
 <h3>B-6. 검증</h3>
