@@ -1083,6 +1083,74 @@ body {
 /* =========================================================================
    마이페이지 요금제 및 사용량 대시보드
    ========================================================================= */
+.metastrip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-sub);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  flex-wrap: wrap;
+}
+.metastrip .crumb {
+  color: var(--ink-2);
+}
+.metastrip .crumb .home {
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.metastrip .crumb .home:hover {
+  color: var(--ink);
+}
+.metastrip .sep {
+  color: var(--ink-3);
+}
+.tierswitch {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tierswitch .tsl {
+  color: var(--ink-3);
+}
+.tierswitch .tsbtns {
+  display: flex;
+  border: 1px solid var(--line-2);
+}
+.tierswitch button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 4px 10px;
+  border: 0;
+  border-right: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.tierswitch button:last-child {
+  border-right: 0;
+}
+.tierswitch button:hover {
+  color: var(--ink);
+  background: var(--nav-hover);
+}
+.tierswitch button.on {
+  background: var(--brand-deep);
+  color: var(--on-brand);
+  font-weight: 700;
+}
+.devnote {
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.sec {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
 .planrow {
   display: grid;
   grid-template-columns: 1fr 1fr;

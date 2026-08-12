@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
 interface FeatItem {
@@ -75,6 +75,20 @@ export default function MyPage() {
   const [tier, set_tier] = useState<"Free" | "Basic" | "Pro">("Basic");
   const [is_compare_modal_open, set_is_compare_modal_open] = useState(false);
 
+  const compare_btn_ref = useRef<HTMLButtonElement>(null);
+  const modal_close_btn_ref = useRef<HTMLButtonElement>(null);
+  const was_open = useRef(false);
+
+  useEffect(() => {
+    if (is_compare_modal_open) {
+      modal_close_btn_ref.current?.focus();
+      was_open.current = true;
+    } else if (was_open.current) {
+      compare_btn_ref.current?.focus();
+      was_open.current = false;
+    }
+  }, [is_compare_modal_open]);
+
   // Esc 키 입력 시 모달 닫기
   useEffect(() => {
     const handle_keydown = (e: KeyboardEvent) => {
@@ -104,7 +118,7 @@ export default function MyPage() {
         </span>
         <div className="tierswitch">
           <span className="tsl devnote">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="tsbtns" role="group" aria-label="요금제 전환">
+          <div className="tsbtns" id="tierSwitch" role="group" aria-label="요금제 전환">
             {(["Free", "Basic", "Pro"] as const).map((t) => (
               <button
                 key={t}
@@ -215,12 +229,17 @@ export default function MyPage() {
             )}
           </div>
         </div>
-        <div className="upbanner">
+        <div className="upbanner" id="upBanner">
           <div className="ubtx">
             <b>{active_tier.up.title}</b>
             <p>{active_tier.up.desc}</p>
           </div>
-          <button className="btn primary" onClick={() => set_is_compare_modal_open(true)}>
+          <button 
+            id="openCompare"
+            ref={compare_btn_ref}
+            className="btn primary" 
+            onClick={() => set_is_compare_modal_open(true)}
+          >
             요금제 비교 <span className="mono">→</span>
           </button>
         </div>
@@ -240,8 +259,8 @@ export default function MyPage() {
               <p className="stlabel">이번 분기 위반</p>
               <div className="stval crit">42</div>
               <div className="stdelta">지난 분기 대비 8건 감소</div>
-              <svg className="spark" viewBox="0 0 240 34" overflow="hidden" aria-hidden="true">
-                {[8, 5, 7, 4, 3, 5, 2, 8].map((val, i) => {
+              <svg className="spark" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
+                {[5, 7, 4, 6, 8, 5, 3, 4].map((val, i) => {
                   const max_val = 8;
                   const height_factor = 24 / max_val;
                   const h = val * height_factor;
@@ -258,7 +277,7 @@ export default function MyPage() {
                       rx={4}
                       fill={fill}
                     >
-                      <title>{i + 1}주차: {val}건</title>
+                      <title>{8 - i}주 전 기준 {val}건</title>
                     </rect>
                   );
                 })}
@@ -268,14 +287,14 @@ export default function MyPage() {
               <p className="stlabel">이번 분기 검토필요</p>
               <div className="stval">21</div>
               <div className="stdelta">지난 분기 대비 3건 증가</div>
-              <svg className="spark" viewBox="0 0 240 34" overflow="hidden" aria-hidden="true">
-                {[4, 2, 3, 1, 2, 4, 1, 4].map((val, i) => {
+              <svg className="spark" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
+                {[2, 3, 2, 4, 3, 2, 3, 2].map((val, i) => {
                   const max_val = 4;
                   const height_factor = 24 / max_val;
                   const h = val * height_factor;
                   const y = 34 - h;
                   const x = 1 + i * 30;
-                  const fill = i === 7 ? "var(--crit)" : "var(--ink-3)";
+                  const fill = i === 7 ? "var(--ink-2)" : "var(--ink-3)";
                   return (
                     <rect
                       key={i}
@@ -286,7 +305,7 @@ export default function MyPage() {
                       rx={4}
                       fill={fill}
                     >
-                      <title>{i + 1}주차: {val}건</title>
+                      <title>{8 - i}주 전 기준 {val}건</title>
                     </rect>
                   );
                 })}
@@ -300,10 +319,10 @@ export default function MyPage() {
       {/* 검사 이력 */}
       <div className="sec" style={{ borderBottom: 0 }}>
         <div className="seclabel">
-          <span className="n">{tier === "Pro" ? "03" : "02"}</span>
+          <span className="n" id="histNo">{tier === "Pro" ? "03" : "02"}</span>
           <h2>검사 이력</h2>
           <span className="rule"></span>
-          <span className="hint">최근 5건</span>
+          <span className="hint" id="histHint">최근 5건</span>
         </div>
         <div className="histlist">
           <Link href="/report/demo-id-1" className="hrow">
@@ -441,6 +460,8 @@ export default function MyPage() {
             <div className="modal-head">
               <span id="cmTitle">[ 요금제 비교 ]</span>
               <button 
+                id="cmClose"
+                ref={modal_close_btn_ref}
                 className="modal-x" 
                 onClick={() => set_is_compare_modal_open(false)}
                 aria-label="닫기"
