@@ -624,6 +624,7 @@ function ContentGeneratorContent() {
       <Modal
         isOpen={isModalOpen}
         title="생성 전 확인"
+        size="md"
         onClose={() => setIsModalOpen(false)}
         ref={closeBtnRef}
         footer={
@@ -660,21 +661,25 @@ function ContentGeneratorContent() {
             className="checkrow"
             onClick={() => setChecks((prev) => ({ ...prev, ck1: !prev.ck1 }))}
           >
-            <span className="cli-tag warn">[warn]</span>
+            <div className="checkrow-content">
+              <span className="cli-tag warn">[warn]</span>
+              <span>효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.</span>
+            </div>
             <span className={`cli-checkbox ${checks.ck1 ? "checked" : ""}`}>
-              [{checks.ck1 ? "x" : " "}]
+              ✓
             </span>
-            <span>효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.</span>
           </li>
           <li
             className="checkrow"
             onClick={() => setChecks((prev) => ({ ...prev, ck2: !prev.ck2 }))}
           >
-            <span className="cli-tag warn">[warn]</span>
+            <div className="checkrow-content">
+              <span className="cli-tag warn">[warn]</span>
+              <span>생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.</span>
+            </div>
             <span className={`cli-checkbox ${checks.ck2 ? "checked" : ""}`}>
-              [{checks.ck2 ? "x" : " "}]
+              ✓
             </span>
-            <span>생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.</span>
           </li>
         </ul>
       </Modal>
