@@ -499,7 +499,7 @@ function ContentGeneratorContent() {
         {isGenerated && genResult && (
           <div id="resultWrap">
             <div className={`recheck${!genResult.recheck.safe ? " warn" : ""}`} id="recheckBadge" style={{
-              backgroundColor: genResult.recheck.safe ? undefined : "var(--crit-surface)",
+              backgroundColor: genResult.recheck.safe ? undefined : "var(--crit-bg)",
               borderColor: genResult.recheck.safe ? undefined : "var(--crit)",
               color: genResult.recheck.safe ? undefined : "var(--crit)"
             }}>
