@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
+import { UploadSimple, Check, X } from "@phosphor-icons/react";
 
 interface FileItem {
   id: string;
@@ -11,21 +12,42 @@ interface FileItem {
   ext: string;
 }
 
-export default function InspectPage() {
+function InspectContent() {
   const router = useRouter();
-  const [adText, setAdText] = useState("");
-  const [ingText, setIngText] = useState("");
-  const [adFiles, setAdFiles] = useState<FileItem[]>([
-    { id: "ad-file-1", name: "신제품_광고안", ext: ".jpg" },
-    { id: "ad-file-2", name: "상세페이지_v2", ext: ".pdf" }
-  ]);
-  const [pFiles, setPFiles] = useState<FileItem[]>([
-    { id: "p-file-1", name: "성분표_전성분", ext: ".xlsx" }
-  ]);
-  
-  const [isDragging, setIsDragging] = useState(false);
+  const searchParams = useSearchParams();
+  const regionParam = searchParams.get("region")?.toUpperCase() === "US" ? "US" : "KR";
+  const idParam = searchParams.get("id") || "";
+
+  const isSunscreenDraft = idParam === "demo-id-3";
+
+  const [adText, setAdText] = useState(
+    isSunscreenDraft
+      ? "자외선 차단 100%! 피부 재생 및 기미·주근깨 완벽 치료하는 선크림 SPF50"
+      : ""
+  );
+  const [ingText, setIngText] = useState(
+    isSunscreenDraft
+      ? "정제수, 티타늄디옥사이드, 아연옥사이드, 부틸렌글라이콜, 글리세린"
+      : ""
+  );
+  const [adFiles, setAdFiles] = useState<FileItem[]>(
+    isSunscreenDraft
+      ? [{ id: "ad-file-draft", name: "선크림_기획안", ext: ".pdf" }]
+      : [
+          { id: "ad-file-1", name: "신제품_광고안", ext: ".jpg" },
+          { id: "ad-file-2", name: "상세페이지_v2", ext: ".pdf" },
+        ]
+  );
+  const [pFiles, setPFiles] = useState<FileItem[]>(
+    isSunscreenDraft
+      ? []
+      : [{ id: "p-file-1", name: "성분표_전성분", ext: ".xlsx" }]
+  );
+
   const [inspectStatus, setInspectStatus] = useState<"running" | "done" | null>(null);
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
+
+  const [isDragging, setIsDragging] = useState(false);
 
   const [logs, setLogs] = useState<Array<{ ts: string; msg: React.ReactNode }>>([
     {
@@ -68,13 +90,13 @@ export default function InspectPage() {
       newItems.push({
         id: `${isProductInfo ? "p" : "ad"}-file-${Date.now()}-${i}-${Math.random()}`,
         name,
-        ext
+        ext,
       });
     }
     if (isProductInfo) {
-      setPFiles(prev => [...prev, ...newItems]);
+      setPFiles((prev) => [...prev, ...newItems]);
     } else {
-      setAdFiles(prev => [...prev, ...newItems]);
+      setAdFiles((prev) => [...prev, ...newItems]);
     }
   };
 
@@ -102,11 +124,11 @@ export default function InspectPage() {
   };
 
   const removeAdFile = (id: string) => {
-    setAdFiles(prev => prev.filter(f => f.id !== id));
+    setAdFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const removePFile = (id: string) => {
-    setPFiles(prev => prev.filter(f => f.id !== id));
+    setPFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const handleReset = () => {
@@ -130,6 +152,44 @@ export default function InspectPage() {
     return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   };
 
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (status === "running") return;
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (status === "running") return;
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (!files) return;
+
+    const newItems: FileItem[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const lastDot = file.name.lastIndexOf(".");
+      let name = file.name;
+      let ext = "";
+      if (lastDot !== -1) {
+        name = file.name.substring(0, lastDot);
+        ext = file.name.substring(lastDot);
+      }
+      newItems.push({
+        id: `ad-file-${Date.now()}-${i}-${Math.random()}`,
+        name,
+        ext,
+      });
+    }
+    setAdFiles((prev) => [...prev, ...newItems]);
+  };
+
   const handleRun = async () => {
     if (status === "running" || (!adText.trim() && adFiles.length === 0)) return;
 
@@ -140,14 +200,14 @@ export default function InspectPage() {
 
     // API 호출용 파라미터 조립
     const mockImage = adFiles.length > 0 ? new File([], `${adFiles[0].name}${adFiles[0].ext}`) : undefined;
-    const ingredients = ingText || pFiles.map(f => `${f.name}${f.ext}`).join(", ");
+    const ingredients = ingText || pFiles.map((f) => `${f.name}${f.ext}`).join(", ");
 
     // 1단계: API 호출 시작
     const apiPromise = checkAd({
-      region: "KR",
+      region: regionParam,
       adText: adText || undefined,
       image: mockImage,
-      ingredients: ingredients || undefined
+      ingredients: ingredients || undefined,
     });
 
     const isImage = adFiles.length > 0;
@@ -205,7 +265,7 @@ export default function InspectPage() {
         setResultId(report.result_id);
 
         const currentLogs: Array<{ ts: string; msg: React.ReactNode }> = [];
-        
+
         // 1번 로그
         currentLogs.push({ ts: getTimestamp(), msg: getLog1Msg() });
         // 2번 로그
@@ -214,18 +274,18 @@ export default function InspectPage() {
         currentLogs.push({ ts: getTimestamp(), msg: getLog3Msg(report.findings.length) });
         // 4번 로그
         currentLogs.push({ ts: getTimestamp(), msg: getLog4Msg() });
-        
+
         // 5번 로그 (이미지가 있고 이미지 위반 건수가 있는 경우)
-        const imageFindings = report.findings.filter(f => f.location?.tile);
+        const imageFindings = report.findings.filter((f) => f.location?.tile);
         if (isImage && imageFindings.length > 0) {
           const firstImageFinding = imageFindings[0];
           const fileName = firstImageFinding.location?.tile || "상세페이지";
           currentLogs.push({
             ts: getTimestamp(),
-            msg: getLog5Msg(imageFindings.length, fileName)
+            msg: getLog5Msg(imageFindings.length, fileName),
           });
         }
-        
+
         // 6번 로그
         currentLogs.push({ ts: getTimestamp(), msg: getLog6Msg() });
 
@@ -236,8 +296,8 @@ export default function InspectPage() {
         setLogs([
           {
             ts: getTimestamp(),
-            msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>
-          }
+            msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
+          },
         ]);
         setInspectStatus(null);
       }
@@ -247,7 +307,7 @@ export default function InspectPage() {
     // 모션 감축이 꺼진 경우: 애니메이션 & API 대기 동기화
     setLogs([]); // 기존 로그 비우기
 
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
       // 1번 로그 추가 (즉시)
@@ -255,18 +315,18 @@ export default function InspectPage() {
       await delay(430);
 
       // 2번 로그 추가
-      setLogs(prev => [...prev, { ts: getTimestamp(), msg: getLog2Msg() }]);
+      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog2Msg() }]);
       await delay(430);
 
       // 3번 로그 대기 상태로 추가
-      setLogs(prev => [...prev, { ts: getTimestamp(), msg: getLog3Msg() }]);
+      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog3Msg() }]);
 
       // API 완료 대기
       const report = await apiPromise;
       setResultId(report.result_id);
 
       // API 완료 후 3번 로그 갱신 (결과 바인딩)
-      setLogs(prev => {
+      setLogs((prev) => {
         const nextLogs = [...prev];
         nextLogs[2] = { ts: nextLogs[2].ts, msg: getLog3Msg(report.findings.length) };
         return nextLogs;
@@ -274,32 +334,32 @@ export default function InspectPage() {
       await delay(430);
 
       // 4번 로그 추가
-      setLogs(prev => [...prev, { ts: getTimestamp(), msg: getLog4Msg() }]);
+      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog4Msg() }]);
       await delay(430);
 
       // 5번 로그 추가 (이미지가 있고 이미지 위반 건수가 있는 경우)
-      const imageFindings = report.findings.filter(f => f.location?.tile);
+      const imageFindings = report.findings.filter((f) => f.location?.tile);
       if (isImage && imageFindings.length > 0) {
         const firstImageFinding = imageFindings[0];
         const fileName = firstImageFinding.location?.tile || "상세페이지";
         const msgNode = getLog5Msg(imageFindings.length, fileName);
         if (msgNode) {
-          setLogs(prev => [...prev, { ts: getTimestamp(), msg: msgNode }]);
+          setLogs((prev) => [...prev, { ts: getTimestamp(), msg: msgNode }]);
           await delay(430);
         }
       }
 
       // 6번 로그 추가
-      setLogs(prev => [...prev, { ts: getTimestamp(), msg: getLog6Msg() }]);
+      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog6Msg() }]);
       setInspectStatus("done");
     } catch (err) {
       console.error(err);
-      setLogs(prev => [
+      setLogs((prev) => [
         ...prev,
         {
           ts: getTimestamp(),
-          msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>
-        }
+          msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
+        },
       ]);
       setInspectStatus(null);
     }
@@ -324,7 +384,17 @@ export default function InspectPage() {
     <>
       <div className="metastrip">
         <span className="crumb">
-          <Link href="/" className="home">홈</Link> <span className="sep">›</span> 국내 광고 검증
+          <Link href="/" className="home">
+            홈
+          </Link>{" "}
+          <span className="sep">›</span>{" "}
+          {regionParam === "US" ? (
+            <>
+              해외 수출 검증 <span className="sep">›</span> 미국
+            </>
+          ) : (
+            <>국내 광고 검증</>
+          )}
         </span>
         <span className="mstat">
           <span className="dot"></span>
@@ -371,6 +441,7 @@ export default function InspectPage() {
                 cursor: status === "running" ? "not-allowed" : "pointer",
                 borderColor: isDragging ? "var(--brand)" : undefined,
                 borderStyle: isDragging ? "solid" : undefined,
+                backgroundColor: isDragging ? "var(--surface)" : undefined,
               }}
               tabIndex={status === "running" ? -1 : 0}
               role="button"
@@ -381,16 +452,7 @@ export default function InspectPage() {
               }}
             >
               <div className="ico">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="square"
-                >
-                  <path d="M12 16V4M7 9l5-5 5 5" />
-                  <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
-                </svg>
+                <UploadSimple size={24} weight="regular" />
               </div>
               <h3>상세페이지 · 광고 이미지 던져넣기</h3>
               <span className="cmd">
@@ -407,9 +469,10 @@ export default function InspectPage() {
             <div className="files" id="files">
               {adFiles.map((file) => (
                 <div className="frow" key={file.id}>
-                  <span className="ok">✓</span>
+                  <Check size={14} weight="bold" className="ok" />
                   <span className="nm">
-                    {file.name}<span className="ext">{file.ext}</span>
+                    {file.name}
+                    <span className="ext">{file.ext}</span>
                   </span>
                   <span className="st">첨부됨</span>
                   <span
@@ -429,7 +492,7 @@ export default function InspectPage() {
                       }
                     }}
                   >
-                    ✕
+                    <X size={14} weight="bold" />
                   </span>
                 </div>
               ))}
@@ -480,9 +543,10 @@ export default function InspectPage() {
             <div className="files" id="pfiles">
               {pFiles.map((file) => (
                 <div className="frow" key={file.id}>
-                  <span className="ok">✓</span>
+                  <Check size={14} weight="bold" className="ok" />
                   <span className="nm">
-                    {file.name}<span className="ext">{file.ext}</span>
+                    {file.name}
+                    <span className="ext">{file.ext}</span>
                   </span>
                   <span className="st">첨부됨</span>
                   <span
@@ -502,7 +566,7 @@ export default function InspectPage() {
                       }
                     }}
                   >
-                    ✕
+                    <X size={14} weight="bold" />
                   </span>
                 </div>
               ))}
@@ -585,7 +649,8 @@ export default function InspectPage() {
         <span className="seg inv">바름</span>
         <span className="seg">glowskin</span>
         <span className="seg grow">
-          국내 광고 검증 · <span id="fileSeg">파일 {adFiles.length + pFiles.length}</span>
+          {regionParam === "US" ? "해외 광고 검증 (미국)" : "국내 광고 검증"} ·{" "}
+          <span id="fileSeg">파일 {adFiles.length + pFiles.length}</span>
         </span>
         <span className="seg">^R 다시 실행</span>
       </div>
@@ -593,3 +658,17 @@ export default function InspectPage() {
   );
 }
 
+function InspectPageWrapper() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") || "";
+  const region = searchParams.get("region") || "";
+  return <InspectContent key={`${id}-${region}`} />;
+}
+
+export default function InspectPage() {
+  return (
+    <Suspense fallback={<div className="devnote" style={{ padding: "20px" }}>로딩 중...</div>}>
+      <InspectPageWrapper />
+    </Suspense>
+  );
+}
