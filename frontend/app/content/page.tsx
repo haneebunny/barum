@@ -405,46 +405,46 @@ function ContentGeneratorContent() {
 
   return (
     <>
-      <div className="metastrip">
-        <span className="crumb">
-          <Link href="/" className="home">
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
+        <span className="text-[var(--ink-2)]">
+          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
             홈
           </Link>{" "}
-          <span className="sep">›</span>{" "}
+          <span className="text-[var(--ink-3)]">›</span>{" "}
           <span
             onClick={() => router.push(id ? `/report/${id}` : "/")}
             style={{ cursor: "pointer" }}
-            className="home"
+            className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]"
           >
             리포트
           </span>{" "}
-          <span className="sep">›</span> 콘텐츠 생성
+          <span className="text-[var(--ink-3)]">›</span> 콘텐츠 생성
         </span>
-        <span className="devnote">
+        <span className="text-[var(--ink-3)] text-[10px]">
           {id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
         </span>
       </div>
 
       {/* 입력 요약 */}
-      <div className="sec">
-        <div className="seclabel">
-          <span className="n">01</span>
-          <h2>입력 요약</h2>
-          <span className="rule"></span>
-          <span className="hint">리포트에서 수용 처리된 항목</span>
+      <div className="p-[18px_20px] border-b border-[var(--line)]">
+        <div className="flex items-center gap-[11px] m-[0_0_13px]">
+          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">입력 요약</h2>
+          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">리포트에서 수용 처리된 항목</span>
         </div>
-        <div className="srcgrid">
-          <div className="srccard">
-            <p className="sctitle">수용된 수정 권고안 · {acceptedFindings.length}건</p>
-            <ul className="srclist">
+        <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
+          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1.25">
               {acceptedFindings.map((f, i) => (
-                <li key={i}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
+                  <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
                     <path d="M4 12l5 5L20 6" />
                   </svg>
                   <span>
-                    <span className="strike">{f.span}</span>
-                    <span className="arrow">→</span>
+                    <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
+                    <span className="text-[var(--ink-3)] mx-0.5">→</span>
                     {getRemediationProposal(f.violation_type || "", f.span || "")}
                   </span>
                 </li>
@@ -454,16 +454,16 @@ function ContentGeneratorContent() {
               )}
             </ul>
           </div>
-          <div className="srccard">
-            <p className="sctitle">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
-            <div className="imgchips">
+          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
+            <div className="flex flex-wrap gap-1.75">
               {uploadedImages.map((img, i) => (
-                <span key={i} className="imgchip">
+                <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[4px_9px]">
                   {img}
                 </span>
               ))}
               {uploadedImages.length === 0 && (
-                <span className="devnote" style={{ color: "var(--ink-3)" }}>
+                <span className="text-[var(--ink-3)] text-[10px]">
                   첨부된 이미지가 없습니다.
                 </span>
               )}
@@ -476,22 +476,27 @@ function ContentGeneratorContent() {
       </div>
 
       {/* 생성 결과 */}
-      <div className="sec" style={{ borderBottom: 0 }}>
-        <div className="seclabel">
-          <span className="n">02</span>
-          <h2>생성된 상세페이지 초안</h2>
-          <span className="rule"></span>
-          <span className="hint" id="secHint">
+      <div className="p-[18px_20px] border-b-0">
+        <div className="flex items-center gap-[11px] m-[0_0_13px]">
+          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">생성된 상세페이지 초안</h2>
+          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+          <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="secHint">
             {isGenerated ? "원샷 생성 · 편집 불가 · 재검증 통과" : "원샷 생성 · 편집 불가"}
           </span>
         </div>
 
         {/* 생성 전 게이트 */}
         {!isGenerated && (
-          <div className="gate" id="gateCard">
-            <p>입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요.</p>
-            <button className="btn primary" id="startGen" ref={startGenRef} onClick={() => setIsModalOpen(true)}>
-              확인 후 생성하기 <span className="mono">→</span>
+          <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
+            <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요.</p>
+            <button
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              id="startGen"
+              ref={startGenRef}
+              onClick={() => setIsModalOpen(true)}
+            >
+              확인 후 생성하기 <span className="font-mono">→</span>
             </button>
           </div>
         )}
@@ -499,92 +504,107 @@ function ContentGeneratorContent() {
         {/* 생성 결과 (게이트 통과 후 표시) */}
         {isGenerated && genResult && (
           <div id="resultWrap">
-            <div className={`recheck${!genResult.recheck.safe ? " warn" : ""}`} id="recheckBadge" style={{
-              backgroundColor: genResult.recheck.safe ? undefined : "var(--crit-bg)",
-              borderColor: genResult.recheck.safe ? undefined : "var(--crit)",
-              color: genResult.recheck.safe ? undefined : "var(--crit)"
-            }}>
+            <div
+              className={`inline-flex items-center gap-1.75 font-mono text-[11.5px] p-[5px_10px] border mb-3.5 ${
+                genResult.recheck.safe
+                  ? "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                  : "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+              }`}
+              id="recheckBadge"
+            >
               {genResult.recheck.safe ? (
                 <>
-                  <Check size={14} weight="bold" style={{ color: "var(--brand-ink)", marginRight: "4px" }} />
+                  <Check size={14} weight="bold" className="text-[var(--brand-ink)] mr-1" />
                   재검증 통과 · 위반 0건 · 검토필요 0건
                 </>
               ) : (
                 <>
-                  <X size={14} weight="bold" style={{ color: "var(--crit)", marginRight: "4px" }} />
+                  <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
                   재검증 실패 · 위반 {genResult.recheck.n_violation}건 · 검토필요 {genResult.recheck.n_needs_review}건
                 </>
               )}
             </div>
-            <div className="genframe">
-              <div className="genhead">
-                <span className="dot"></span>
-                <span className="fname">detail_draft.html</span>
+            <div className="border border-[var(--line-2)] bg-[var(--surface-sub)]">
+              <div className="flex items-center gap-2 p-[8px_12px] border-b border-[var(--line-2)] font-mono text-[11px] text-[var(--ink-3)]">
+                <span className="w-1.75 h-1.75 rounded-full bg-[var(--line-2)] shrink-0"></span>
+                <span className="text-[var(--ink-2)]">detail_draft.html</span>
               </div>
-              <div className="genbody">
-                <div className="detailpage" id="detailPage">
-                  <div className="dp-hero">
-                    <span className="dp-htxt">{report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림"}</span>
+              <div className="p-[22px] flex justify-center">
+                <div className="w-full max-w-[520px] bg-[var(--surface)] border border-[var(--line-2)]" id="detailPage">
+                  <div className="aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4">
+                    <span className="text-[var(--ink)] text-[19px] font-extrabold tracking-[-0.3px] bg-[var(--surface)] p-[6px_10px] border border-[var(--line-2)]">
+                      {report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림"}
+                    </span>
                   </div>
                   <div id="secList">
                     {genResult.sections.map((s, idx) => (
-                      <div className="dp-block" key={idx}>
-                        <div className="dp-kind">
-                          <b>{s.kind}</b>
-                          <span className="dp-src">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                      <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
+                        <div className="flex items-center gap-2 m-[0_0_7px]">
+                          <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
+                          <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
                         </div>
-                        <p>{s.text}</p>
+                        <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
                       </div>
                     ))}
                     {genResult.image_plan.placed.map((img, idx) => (
-                      <div className="dp-block img" key={`img-${idx}`}>
-                        <div className="dp-img">
-                          <span className="dp-imglabel">{img.image_url}</span>
+                      <div className="p-0 border-t border-[var(--line)] relative" key={`img-${idx}`}>
+                        <div className="aspect-[16/10] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] border-t border-[var(--line)] flex items-center justify-center">
+                          <span className="font-mono text-[10px] text-[var(--ink-3)]">{img.image_url}</span>
                         </div>
                       </div>
                     ))}
                   </div>
-                  <div className="dp-close" id="dpDisclaimer">
+                  <div className="p-[14px_18px] border-t border-dashed border-[var(--line-2)] text-[11px] text-[var(--ink-3)] leading-1.6" id="dpDisclaimer">
                     {genResult.disclaimer}
                   </div>
                 </div>
               </div>
             </div>
             {genResult.risk_confirmations.length > 0 && (
-              <div className="srccard" style={{ margin: "14px 0", width: "100%", border: "1px solid var(--crit)" }}>
-                <p className="sctitle" style={{ color: "var(--crit)", fontWeight: "bold" }}>⚠️ 자동 수정 불가 잔존 위험 · {genResult.risk_confirmations.length}건 (확인 필요)</p>
-                <ul className="srclist" style={{ padding: "8px 12px" }}>
+              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mt-3.5 w-full border-[var(--crit)]" style={{ border: "1px solid var(--crit)" }}>
+                <p className="font-mono text-[10.5px] text-[var(--crit)] m-[0_0_10px] tracking-[0.3px] font-bold">⚠️ 자동 수정 불가 잔존 위험 · {genResult.risk_confirmations.length}건 (확인 필요)</p>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1.25 p-[8px_12px]">
                   {genResult.risk_confirmations.map((rc) => (
-                    <li key={rc.id} style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "8px" }}>
+                    <li key={rc.id} className="flex gap-2 items-start mb-2">
                       <input
                         type="checkbox"
                         id={rc.id}
                         checked={!!confirmedRisks[rc.id]}
                         onChange={(e) => setConfirmedRisks(prev => ({ ...prev, [rc.id]: e.target.checked }))}
-                        style={{ marginTop: "3px" }}
+                        className="mt-0.75"
                       />
-                      <label htmlFor={rc.id} style={{ cursor: "pointer" }}>
-                        <span style={{ fontWeight: "bold", fontSize: "13px" }}>{rc.text}</span>
-                        <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>{rc.reason}</p>
+                      <label className="cursor-pointer" htmlFor={rc.id}>
+                        <span className="font-bold text-[13px]">{rc.text}</span>
+                        <p className="m-[2px_0_0] text-[11.5px] text-[var(--ink-3)]">{rc.reason}</p>
                       </label>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            <div className="genactions">
-              <p>
+            <div className="flex items-center justify-between gap-3.5 p-[13px_20px] flex-wrap">
+              <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[44ch]">
                 생성된 문구는 리포트에서 수용한 권고안을 조건표 안에서 재배열한 것으로, 원문에 없던 효능을 새로 만들지
                 않았습니다.
                 {genResult.risk_confirmations.length > 0 && " (잔존 위험 항목 확인 후 사용을 권장합니다.)"}
               </p>
-              <div className="btnrow">
-                <button className={`btn ghost ${copied ? "copied" : ""}`} id="copyBtn" onClick={handleCopy}>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+                    copied
+                      ? "text-[var(--brand-ink)] border-[var(--brand)] bg-[var(--surface-sub)]"
+                      : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+                  }`}
+                  id="copyBtn"
+                  onClick={handleCopy}
+                >
                   {copied ? "복사됨" : "텍스트 복사"}
                 </button>
-                <div className={`expdd ${dropdownOpen ? "open" : ""}`} id="expDd">
+                <div className="relative" id="expDd">
                   <button
-                    className="btn primary"
+                    className={`font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      exportingType ? "" : "cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+                    }`}
                     id="expTrigger"
                     ref={dropdownTriggerRef}
                     aria-haspopup="true"
@@ -593,20 +613,35 @@ function ContentGeneratorContent() {
                     disabled={exportingType !== null}
                   >
                     {exportingType ? "내보내는 중…" : "내보내기"}{" "}
-                    <CaretDown className="chev" size={13} weight="bold" />
+                    <CaretDown className={`w-3.25 h-3.25 transition-transform duration-150 ${dropdownOpen ? "rotate-180" : ""}`} size={13} weight="bold" />
                   </button>
                   {dropdownOpen && (
-                    <div className="ddmenu" id="expMenu">
-                      <button id="expHtml" onClick={() => handleExport("html")} disabled={exportingType !== null}>
-                        <FileCode size={14} weight="regular" />
+                    <div className="absolute right-0 bottom-[calc(100%+6px)] min-w-[190px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_26px_rgba(20,35,27,0.14)] z-10" id="expMenu">
+                      <button
+                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                        id="expHtml"
+                        onClick={() => handleExport("html")}
+                        disabled={exportingType !== null}
+                      >
+                        <FileCode className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
                         HTML로 내보내기
                       </button>
-                      <button id="expPng" onClick={() => handleExport("png")} disabled={exportingType !== null}>
-                        <FileImage size={14} weight="regular" />
+                      <button
+                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                        id="expPng"
+                        onClick={() => handleExport("png")}
+                        disabled={exportingType !== null}
+                      >
+                        <FileImage className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
                         PNG로 내보내기
                       </button>
-                      <button id="expPdf" onClick={() => handleExport("pdf")} disabled={exportingType !== null}>
-                        <FilePdf size={14} weight="regular" />
+                      <button
+                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                        id="expPdf"
+                        onClick={() => handleExport("pdf")}
+                        disabled={exportingType !== null}
+                      >
+                        <FilePdf className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
                         PDF로 내보내기
                       </button>
                     </div>
@@ -629,11 +664,19 @@ function ContentGeneratorContent() {
         ref={closeBtnRef}
         footer={
           <>
-            <button className="btn ghost" id="cmCancel" onClick={() => setIsModalOpen(false)}>
+            <button
+              className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+              id="cmCancel"
+              onClick={() => setIsModalOpen(false)}
+            >
               취소
             </button>
             <button
-              className="btn primary"
+              className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+                !checks.ck1 || !checks.ck2
+                  ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
+                  : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+              }`}
               id="cmConfirm"
               disabled={!checks.ck1 || !checks.ck2}
               onClick={handleConfirm}
@@ -643,43 +686,61 @@ function ContentGeneratorContent() {
           </>
         }
       >
-        <p className="modal-sub">[ 제거된 개인정보 · 2건 ]</p>
-        <ul className="piilist">
-          <li>
-            <span className="cli-tag system">[system]</span>
+        <p className="mt-5 mb-3 text-[14.5px] text-[var(--ink)] font-mono font-bold tracking-[0.2px] first:mt-1">
+          [ 제거된 개인정보 · 2건 ]
+        </p>
+        <ul className="list-none m-0 mb-4 p-0 flex flex-col gap-2">
+          <li className="flex items-center gap-2 p-1.5 px-2.5 text-[13.5px] text-[var(--ink-2)]">
+            <span className="font-mono text-[12px] font-bold text-[var(--ink-3)] shrink-0 mt-0.5 leading-none">[system]</span>
             <span>이미지 배경 속 매장 명판 텍스트를 자동으로 지웠어요.</span>
           </li>
-          <li>
-            <span className="cli-tag system">[system]</span>
+          <li className="flex items-center gap-2 p-1.5 px-2.5 text-[13.5px] text-[var(--ink-2)]">
+            <span className="font-mono text-[12px] font-bold text-[var(--ink-3)] shrink-0 mt-0.5 leading-none">[system]</span>
             <span>고객 후기 캡처에 있던 개인 아이디를 자동으로 지웠어요.</span>
           </li>
         </ul>
-        <div className="modal-divider" />
-        <p className="modal-sub">[ 생성 전 확인 필요 · 2건 ]</p>
-        <ul className="checklist" id="checkList">
+        <div className="h-0 border-t border-dashed border-[var(--line-2)] my-4" />
+        <p className="mt-5 mb-3 text-[14.5px] text-[var(--ink)] font-mono font-bold tracking-[0.2px] first:mt-1">
+          [ 생성 전 확인 필요 · 2건 ]
+        </p>
+        <ul className="list-none m-0 mb-1.5 p-0 flex flex-col gap-2">
           <li
-            className="checkrow"
+            className="flex items-center justify-between gap-4 p-3 px-2.5 border-b border-dashed border-[var(--line)] cursor-pointer transition-colors duration-[120ms] hover:bg-[var(--nav-hover)] last:border-b-0"
             onClick={() => setChecks((prev) => ({ ...prev, ck1: !prev.ck1 }))}
           >
-            <div className="checkrow-content">
-              <span className="cli-tag warn">[warn]</span>
-              <span>효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.</span>
+            <div className="flex items-center gap-2 grow">
+              <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
+              <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
+                효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.
+              </span>
             </div>
-            <span className={`cli-checkbox ${checks.ck1 ? "checked" : ""}`}>
-              ✓
-            </span>
+            <input
+              type="checkbox"
+              checked={checks.ck1}
+              onChange={(e) => setChecks((prev) => ({ ...prev, ck1: e.target.checked }))}
+              onClick={(e) => e.stopPropagation()}
+              className="appearance-none -webkit-appearance-none w-4 h-4 border border-[var(--line-2)] bg-[var(--surface-sub)] inline-flex items-center justify-center cursor-pointer outline-none shrink-0 relative transition-all duration-[120ms] m-0 checked:border-[var(--brand-ink)] checked:bg-[var(--nav-active-bg)] checked:after:content-['✓'] checked:after:font-mono checked:after:text-[11px] checked:after:font-bold checked:after:text-[var(--brand-ink)] checked:after:absolute checked:after:top-1/2 checked:after:left-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:leading-none hover:border-[var(--brand-ink)]"
+              tabIndex={-1}
+            />
           </li>
           <li
-            className="checkrow"
+            className="flex items-center justify-between gap-4 p-3 px-2.5 border-b border-dashed border-[var(--line)] cursor-pointer transition-colors duration-[120ms] hover:bg-[var(--nav-hover)] last:border-b-0"
             onClick={() => setChecks((prev) => ({ ...prev, ck2: !prev.ck2 }))}
           >
-            <div className="checkrow-content">
-              <span className="cli-tag warn">[warn]</span>
-              <span>생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.</span>
+            <div className="flex items-center gap-2 grow">
+              <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
+              <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
+                생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.
+              </span>
             </div>
-            <span className={`cli-checkbox ${checks.ck2 ? "checked" : ""}`}>
-              ✓
-            </span>
+            <input
+              type="checkbox"
+              checked={checks.ck2}
+              onChange={(e) => setChecks((prev) => ({ ...prev, ck2: e.target.checked }))}
+              onClick={(e) => e.stopPropagation()}
+              className="appearance-none -webkit-appearance-none w-4 h-4 border border-[var(--line-2)] bg-[var(--surface-sub)] inline-flex items-center justify-center cursor-pointer outline-none shrink-0 relative transition-all duration-[120ms] m-0 checked:border-[var(--brand-ink)] checked:bg-[var(--nav-active-bg)] checked:after:content-['✓'] checked:after:font-mono checked:after:text-[11px] checked:after:font-bold checked:after:text-[var(--brand-ink)] checked:after:absolute checked:after:top-1/2 checked:after:left-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:leading-none hover:border-[var(--brand-ink)]"
+              tabIndex={-1}
+            />
           </li>
         </ul>
       </Modal>

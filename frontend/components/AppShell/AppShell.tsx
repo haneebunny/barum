@@ -39,15 +39,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const collapsed = useSyncExternalStore(subscribeNav, getNavSnapshot, getNavServerSnapshot);
 
   return (
-    <div className="app">
-      <div className="topbar">
-        <svg className="mark" viewBox="0 0 170 170" fill="none" role="img" aria-label="바름">
+    <div className="w-full max-w-[1240px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]">
+      <div className="flex items-center gap-3 p-[11px_15px] border-b border-[var(--line-2)] bg-[var(--surface-sub)]">
+        <svg className="w-8 h-8 shrink-0 block" viewBox="0 0 170 170" fill="none" role="img" aria-label="바름">
           <circle cx="101.542" cy="97.5538" r="42.3692" fill="#95DDB7" />
           <circle cx="67.8038" cy="72.4461" r="42.3692" fill="#00813E" fillOpacity="0.5" />
         </svg>
-        <span className="brand" aria-label="바름">
+        <span className="text-[var(--ink)] inline-flex items-center" aria-label="바름">
           <svg
-            className="wordmark"
+            className="h-5 w-auto block"
             viewBox="2.6 -86.2 176.8 98.2"
             role="img"
             aria-label="바름"
@@ -62,55 +62,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             />
           </svg>
         </span>
-        <div className="right">
+        <div className="ml-auto flex items-center gap-2.5">
           <ThemeToggle />
-          <span className="who">
-            브랜드 <b>glowskin</b>
+          <span className="text-[var(--ink-3)] text-[12px]">
+            브랜드 <b className="text-[var(--ink-2)] font-semibold">glowskin</b>
           </span>
-          <span className="av">G</span>
+          <span className="w-6 h-6 border border-[var(--line-2)] text-[var(--brand-ink)] inline-flex items-center justify-center font-mono text-[11px] font-bold">G</span>
         </div>
       </div>
 
-      <div className={collapsed ? "shell nav-collapsed" : "shell"}>
-        <aside className="sidebar">
-          <div className="sidebar-in">
+      <div className={`grid transition-[grid-template-columns] duration-[220ms] ease-in-out ${collapsed ? "grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[216px_minmax(0,1fr)]"}`}>
+        <aside className="bg-[var(--surface-sub)] border-r border-[var(--line-2)] overflow-hidden">
+          <div className={`w-full h-full flex flex-col gap-2 ${collapsed ? "p-[13px_8px] items-center" : "p-[13px_11px]"}`}>
             <button
-              className="railtoggle"
+              className={`inline-flex items-center justify-center border-0 bg-transparent text-[var(--ink-3)] cursor-pointer p-[5px] transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] ${collapsed ? "self-center" : "self-end"}`}
               onClick={() => toggleNav(collapsed)}
               aria-label="사이드바 접기/펼치기"
               aria-expanded={!collapsed}
               title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+              <svg className={`w-4 h-4 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
                 <path d="M15 6l-6 6 6 6" />
               </svg>
             </button>
-            <nav className="snav">
-              <Link href="/" className={pathname === "/" ? "sitem on" : "sitem"} title="홈">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+            <nav className={`flex flex-col gap-[2px] mt-[2px] ${collapsed ? "items-center" : ""}`}>
+              <Link href="/" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
+                collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
+              } ${
+                pathname === "/"
+                  ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
+                  : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`} title="홈">
+                <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
                   <path d="M4 11 12 4l8 7" />
                   <path d="M6 10v9h12v-9" />
                 </svg>
-                <span className="lbl">홈</span>
+                <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""}`}>홈</span>
               </Link>
-              <span className="sitem disabled" title="검사 이력 (준비 중)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+              <span className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
+                collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
+              } cursor-default text-[var(--ink-3)] hover:bg-transparent hover:text-[var(--ink-3)]`} title="검사 이력 (준비 중)">
+                <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
                   <path d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
-                <span className="lbl">검사 이력</span>
+                <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""}`}>검사 이력</span>
               </span>
-              <Link href="/mypage" className={pathname === "/mypage" ? "sitem on" : "sitem"} title="마이페이지">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+              <Link href="/mypage" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
+                collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
+              } ${
+                pathname === "/mypage"
+                  ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
+                  : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`} title="마이페이지">
+                <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
                   <circle cx="12" cy="8" r="3.5" />
                   <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
                 </svg>
-                <span className="lbl">마이페이지</span>
+                <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""}`}>마이페이지</span>
               </Link>
             </nav>
           </div>
         </aside>
 
-        <main className="main">{children}</main>
+        <main className="min-w-0 flex flex-col">{children}</main>
       </div>
     </div>
   );

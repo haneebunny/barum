@@ -33,27 +33,35 @@ export function ThemeToggle() {
   const mode = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   return (
-    <div className="themetog" role="group" aria-label="테마 전환">
+    <div className="flex border border-[var(--line-2)]" role="group" aria-label="테마 전환">
       <button
         type="button"
-        className={mode === "light" ? "on" : undefined}
+        className={`flex items-center p-[5px_9px] border-0 cursor-pointer transition-all duration-[120ms] ${
+          mode === "light"
+            ? "bg-[var(--brand-deep)] text-[var(--on-brand)]"
+            : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink)]"
+        }`}
         aria-label="라이트 모드"
         title="라이트"
         onClick={() => setTheme("light")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
           <circle cx="12" cy="12" r="4" />
           <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
         </svg>
       </button>
       <button
         type="button"
-        className={mode === "dark" ? "on" : undefined}
+        className={`flex items-center p-[5px_9px] border-0 cursor-pointer transition-all duration-[120ms] ${
+          mode === "dark"
+            ? "bg-[var(--brand-deep)] text-[var(--on-brand)]"
+            : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink)]"
+        }`}
         aria-label="다크 모드"
         title="다크"
         onClick={() => setTheme("dark")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
           <path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5z" />
         </svg>
       </button>
