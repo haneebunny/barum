@@ -1108,6 +1108,55 @@ body {
 .metastrip .sep {
   color: var(--ink-3);
 }
+.metastrip .mstat {
+  margin-left: auto;
+  color: var(--brand-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.metastrip .mstat .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--brand);
+}
+
+.modeswitch {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.modeswitch .msl {
+  color: var(--ink-3);
+}
+.modeswitch .msbtns {
+  display: flex;
+  border: 1px solid var(--line-2);
+}
+.modeswitch button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border: 0;
+  border-right: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.modeswitch button:last-child {
+  border-right: 0;
+}
+.modeswitch button:hover {
+  color: var(--ink);
+  background: var(--nav-hover);
+}
+.modeswitch button.on {
+  background: var(--brand-deep);
+  color: var(--on-brand);
+  font-weight: 700;
+}
+
 .tierswitch {
   margin-left: auto;
   display: flex;

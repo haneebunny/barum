@@ -468,33 +468,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
 }
 
 const styles = `
-  .metastrip {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 9px 20px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-3);
-    flex-wrap: wrap;
-  }
-  .metastrip .crumb {
-    color: var(--ink-2);
-  }
-  .metastrip .crumb .home {
-    color: var(--ink-3);
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .metastrip .crumb .home:hover {
-    color: var(--ink);
-  }
-  .metastrip .sep {
-    color: var(--ink-3);
-  }
-
   .statbar {
     padding: 18px 20px;
     border-bottom: 1px solid var(--line);
