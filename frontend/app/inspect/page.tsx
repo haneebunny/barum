@@ -75,8 +75,7 @@ function InspectContent() {
     setIngText(e.target.value);
   };
 
-  const handleFileAdd = (e: ChangeEvent<HTMLInputElement>, isProductInfo: boolean) => {
-    const files = e.target.files;
+  const addFilesToList = (files: FileList | null, isProductInfo: boolean) => {
     if (!files) return;
     const newItems: FileItem[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -99,7 +98,29 @@ function InspectContent() {
     } else {
       setAdFiles((prev) => [...prev, ...newItems]);
     }
+  };
+
+  const handleFileAdd = (e: ChangeEvent<HTMLInputElement>, isProductInfo: boolean) => {
+    addFilesToList(e.target.files, isProductInfo);
     e.target.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (status === "running") return;
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (status === "running") return;
+    addFilesToList(e.dataTransfer.files, false);
   };
 
   const removeAdFile = (id: string) => {
@@ -131,43 +152,7 @@ function InspectContent() {
     return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (status === "running") return;
-    e.preventDefault();
-    setIsDragging(true);
-  };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    if (status === "running") return;
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (!files) return;
-
-    const newItems: FileItem[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const lastDot = file.name.lastIndexOf(".");
-      let name = file.name;
-      let ext = "";
-      if (lastDot !== -1) {
-        name = file.name.substring(0, lastDot);
-        ext = file.name.substring(lastDot);
-      }
-      newItems.push({
-        id: `ad-file-${Date.now()}-${i}-${Math.random()}`,
-        name,
-        ext,
-      });
-    }
-    setAdFiles((prev) => [...prev, ...newItems]);
-  };
 
   const handleRun = async () => {
     if (status === "running" || (!adText.trim() && adFiles.length === 0)) return;
@@ -419,6 +404,7 @@ function InspectContent() {
               style={{
                 cursor: status === "running" ? "not-allowed" : "pointer",
                 borderColor: isDragging ? "var(--brand)" : undefined,
+                borderStyle: isDragging ? "solid" : undefined,
                 backgroundColor: isDragging ? "var(--surface)" : undefined,
               }}
               tabIndex={status === "running" ? -1 : 0}
