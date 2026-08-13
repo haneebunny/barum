@@ -106,3 +106,8 @@ body {
     animation: none !important;
   }
 }
+
+.font-mono,
+[class*="font-mono"] {
+  font-weight: 600;
+}
