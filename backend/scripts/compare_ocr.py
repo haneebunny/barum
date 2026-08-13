@@ -35,8 +35,11 @@ from barum.vlm import get_vlm  # noqa: E402
 _READ_TEST = Path("11st_probe_cosmetic/read_test")
 _IMAGES_DIR = _READ_TEST / "images"
 _ANSWER_KEY = _READ_TEST / "_llm_answer_key.json"
-_LABEL_XLSX = _READ_TEST / "label_worksheet.xlsx"
+_LABEL_XLSX = _READ_TEST / "label_worksheet_reviewed.xlsx"  # 하니 검수 완료본(2026-08-13, §2 재측정)
 _OUT_XLSX = _READ_TEST / "ocr_comparison_result.xlsx"
+
+# "비비_최종판단"(L열) 값 형식: "검토필요 — 근거설명..." 처럼 대시 앞이 판정 라벨이다.
+_VTYPE_TOKENS = ("1호_의약품오인", "2호_기능성오인", "5호_거짓과장기만")
 
 # 위반 판정으로 취급하는 라벨 (정답셋 기준)
 _VIOLATION_LABELS = {"위반", "검토필요"}
@@ -85,7 +88,14 @@ def _build_oneshot_prompt(context: str) -> str:
 
 
 def load_answer_key() -> dict[str, list[dict]]:
-    """label_worksheet.xlsx에서 정답 라벨을 읽는다.
+    """label_worksheet_reviewed.xlsx에서 정답 라벨을 읽는다 (하니 검수 완료본).
+
+    L열("비비_최종판단")이 채워진 행(불일치 36건)은 그 값을 최종 정답으로 쓴다.
+    L열 형식은 "검토필요 — 근거설명..." 처럼 자유텍스트라, 첫 대시(—) 앞 토큰만
+    판정 라벨로 파싱한다. 위반유형은 L열 텍스트에 명시된 호수 토큰이 있으면 그걸
+    쓰고, 없으면 F열(원래 대수 1차 판정의 위반유형)로 대체한다(표시용, 채점에는
+    영향 없음. compare_with_answer_key는 judgment만 본다).
+    L열이 빈 행(나머지 204건)은 원래 E/F열(대수 1차 판정)이 그대로 정답이다.
 
     반환: {이미지번호: [{sentence, judgment, violation_type}, ...]}
     """
@@ -97,6 +107,12 @@ def load_answer_key() -> dict[str, list[dict]]:
         sentence = str(ws.cell(r, 4).value or "").strip()
         judgment = str(ws.cell(r, 5).value or "").strip()
         vtype = str(ws.cell(r, 6).value or "").strip()
+
+        final = str(ws.cell(r, 12).value or "").strip()  # L열: 비비_최종판단
+        if final:
+            judgment = final.split("—", 1)[0].strip()
+            vtype = next((t for t in _VTYPE_TOKENS if t in final), vtype)
+
         if not nn or not sentence:
             continue
         by_image.setdefault(nn, []).append({
