@@ -10,6 +10,7 @@ interface FileItem {
   id: string;
   name: string;
   ext: string;
+  file?: File;
 }
 
 function InspectContent() {
@@ -91,6 +92,7 @@ function InspectContent() {
         id: `${isProductInfo ? "p" : "ad"}-file-${Date.now()}-${i}-${Math.random()}`,
         name,
         ext,
+        file,
       });
     }
     if (isProductInfo) {
@@ -163,14 +165,14 @@ function InspectContent() {
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // API 호출용 파라미터 조립
-    const mockImage = adFiles.length > 0 ? new File([], `${adFiles[0].name}${adFiles[0].ext}`) : undefined;
+    const actualImage = adFiles.find((f) => f.file)?.file;
     const ingredients = ingText || pFiles.map((f) => `${f.name}${f.ext}`).join(", ");
 
     // 1단계: API 호출 시작
     const apiPromise = checkAd({
       region: regionParam,
       adText: adText || undefined,
-      image: mockImage,
+      image: actualImage,
       ingredients: ingredients || undefined,
     });
 
