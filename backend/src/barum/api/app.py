@@ -142,7 +142,7 @@ def get_report(result_id: str) -> StoredCheck:
     """저장된 검사를 다시 본다. 추측불가 result_id가 접근권이라 못 찾으면 404."""
     row = get_check(_checks_client(), result_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="해당 검사를 찾을 수 없다.")
+        raise HTTPException(status_code=404, detail="해당 검사 이력을 찾을 수 없습니다.")
     return StoredCheck(
         result_id=row["id"],
         created_at=str(row["created_at"]),
@@ -158,7 +158,7 @@ def get_report_image(result_id: str) -> Response:
     """저장된 원본 이미지를 백엔드가 그대로 스트리밍(버킷 private, 서명 URL 없음)."""
     row = get_check(_checks_client(), result_id)
     if row is None or not row.get("image_path"):
-        raise HTTPException(status_code=404, detail="이미지가 없다.")
+        raise HTTPException(status_code=404, detail="해당 검사에 첨부된 원본 이미지가 없습니다.")
     path = row["image_path"]
     data = download_image(_checks_client(), path)
     ext = path[path.rfind(".") :] if "." in path else ""
@@ -190,7 +190,8 @@ async def check(
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
         raise HTTPException(
-            status_code=422, detail="ad_text 또는 image 중 최소 하나는 필요하다."
+            status_code=422,
+            detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.

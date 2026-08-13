@@ -20,6 +20,11 @@ export type Flag = z.infer<typeof FlagSchema>;
 export const LocationSchema = z.object({
   tile: z.string().nullable(),
   order: z.number(),
+  y_start: z.number().nullable().optional(),
+  y_end: z.number().nullable().optional(),
+  source_h: z.number().nullable().optional(),
+  source_w: z.number().nullable().optional(),
+  source: z.string().nullable().optional(),
 });
 export type Location = z.infer<typeof LocationSchema>;
 
@@ -68,3 +73,118 @@ export const ReportEnvelopeSchema = z.object({
   report: CheckReportSchema,
 });
 export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;
+
+// POST /remediate 요청/응답
+export const RemediationRequestSchema = z.object({
+  sentence: z.string(),
+  violation_type: ViolationTypeSchema,
+  span: z.string().nullable().optional(),
+});
+export type RemediationRequest = z.infer<typeof RemediationRequestSchema>;
+
+export const RemediationResponseSchema = z.object({
+  sentence: z.string(),
+  violation_type: ViolationTypeSchema,
+  span: z.string(),
+  suggestions: z.array(z.string()),
+  disclaimer: z.string(),
+});
+export type RemediationResponse = z.infer<typeof RemediationResponseSchema>;
+
+// POST /generate 관련
+export const SectionSchema = z.object({
+  kind: z.string(),
+  text: z.string(),
+  source: z.string(),
+});
+export type Section = z.infer<typeof SectionSchema>;
+
+export const ReplacementSchema = z.object({
+  original: z.string(),
+  replaced: z.string(),
+  violation_type: ViolationTypeSchema,
+  basis: z.string(),
+});
+export type Replacement = z.infer<typeof ReplacementSchema>;
+
+export const PlacedImageSchema = z.object({
+  slot: z.string(),
+  image_url: z.string(),
+});
+export type PlacedImage = z.infer<typeof PlacedImageSchema>;
+
+export const ImageGenResultSchema = z.object({
+  requested: z.boolean().default(false),
+  allowed: z.boolean().nullable().optional(),
+  reason: z.string().nullable().optional(),
+  ai_labeled: z.boolean().default(false),
+});
+export type ImageGenResult = z.infer<typeof ImageGenResultSchema>;
+
+export const ImagePlanSchema = z.object({
+  placed: z.array(PlacedImageSchema).default([]),
+  generation: ImageGenResultSchema.default({
+    requested: false,
+    ai_labeled: false,
+  }),
+});
+export type ImagePlan = z.infer<typeof ImagePlanSchema>;
+
+export const RiskConfirmationSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  reason: z.string(),
+  requires_confirmation: z.boolean().default(true),
+});
+export type RiskConfirmation = z.infer<typeof RiskConfirmationSchema>;
+
+export const RecheckSummarySchema = z.object({
+  safe: z.boolean(),
+  n_findings: z.number(),
+  n_violation: z.number().default(0),
+  n_needs_review: z.number().default(0),
+});
+export type RecheckSummary = z.infer<typeof RecheckSummarySchema>;
+
+export const IngredientAmountSchema = z.object({
+  name: z.string(),
+  amount: z.string(),
+});
+export type IngredientAmount = z.infer<typeof IngredientAmountSchema>;
+
+export const ImageGenRequestSchema = z.object({
+  requested: z.boolean().default(false),
+  prompt: z.string().nullable().optional(),
+});
+export type ImageGenRequest = z.infer<typeof ImageGenRequestSchema>;
+
+export const GenerateRequestSchema = z.object({
+  mode: z.enum(["improve", "create"]).default("improve"),
+  content: z.string().nullable().optional(),
+  result_id: z.string().nullable().optional(),
+  product_name: z.string().nullable().optional(),
+  ingredients: z.string().nullable().optional(),
+  ingredient_amounts: z.array(IngredientAmountSchema).nullable().optional(),
+  certifications: z.array(z.string()).default([]),
+  notes: z.string().nullable().optional(),
+  image_generation: ImageGenRequestSchema.nullable().optional(),
+});
+export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+
+export const SkippedClaimSchema = z.object({
+  category: z.string(),
+  reason: z.string(),
+});
+export type SkippedClaim = z.infer<typeof SkippedClaimSchema>;
+
+export const GenerateResponseSchema = z.object({
+  sections: z.array(SectionSchema),
+  replacements: z.array(ReplacementSchema),
+  image_plan: ImagePlanSchema,
+  pii_removed: z.array(z.string()).default([]),
+  risk_confirmations: z.array(RiskConfirmationSchema).default([]),
+  skipped_claims: z.array(SkippedClaimSchema).default([]),
+  recheck: RecheckSummarySchema,
+  disclaimer: z.string(),
+});
+export type GenerateResponse = z.infer<typeof GenerateResponseSchema>;

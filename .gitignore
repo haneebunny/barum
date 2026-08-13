@@ -37,6 +37,7 @@ backend/**/tiles/
 .claude/settings.local.json
 .claude/skills/
 .claude/plugins/
+.claude/worktrees/
 
 # ── frontend (Next.js) ──
 frontend/node_modules/
