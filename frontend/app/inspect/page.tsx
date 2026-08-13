@@ -4,8 +4,9 @@ import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent, Suspense } fro
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
-import { UploadSimple, Check, X } from "@phosphor-icons/react";
+import { UploadSimple, Check, X, CircleNotch } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { Modal } from "@/components/Modal/Modal";
 
 interface FileItem {
   id: string;
@@ -50,6 +51,7 @@ function InspectContent() {
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
   const [logs, setLogs] = useState<Array<{ ts: string; msg: React.ReactNode }>>([
     {
@@ -64,7 +66,7 @@ function InspectContent() {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [logs, isLogModalOpen]);
 
   const adFileInputRef = useRef<HTMLInputElement>(null);
   const pFileInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +143,7 @@ function InspectContent() {
     setPFiles([]);
     setInspectStatus(null);
     setResultId(null);
+    setIsLogModalOpen(false);
     setLogs([
       {
         ts: "--:--:--",
@@ -162,6 +165,7 @@ function InspectContent() {
 
     setInspectStatus("running");
     setResultId(null);
+    setIsLogModalOpen(true);
 
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -364,7 +368,11 @@ function InspectContent() {
           )}
         </span>
         <span className="ml-auto text-[var(--brand-ink)] inline-flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-[var(--brand)]"></span>
+          {status === "running" ? (
+            <CircleNotch size={12} className="animate-spin text-[var(--brand)]" />
+          ) : (
+            <span className="w-1.5 h-1.5 bg-[var(--brand)]"></span>
+          )}
           <span id="mstatTxt">
             {status === "idle" && "입력 대기"}
             {status === "ready" && "입력 완료"}
@@ -374,7 +382,7 @@ function InspectContent() {
         </span>
       </div>
 
-      <div className="grid grid-cols-[1.02fr_0.98fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-2 max-[900px]:grid-cols-1 border-b border-[var(--line)]">
         {/* 좌: 자료 투입 */}
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="mb-5 last:mb-0">
@@ -481,7 +489,10 @@ function InspectContent() {
               </div>
             </div>
           </div>
+        </div>
 
+        {/* 우: 제품 정보 · 참고자료 */}
+        <div className="p-[18px_20px_22px]">
           <div className="mb-5 last:mb-0">
             <div className="flex items-center gap-[11px] m-[0_0_13px]">
               <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
@@ -557,75 +568,119 @@ function InspectContent() {
               </div>
             </div>
           </div>
-
-          <div className="mb-5 last:mb-0">
-            <div className="flex gap-2.5 mt-0.5">
-              <button
-                className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                  status === "running" || status === "idle"
-                    ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
-                    : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
-                }`}
-                id="runBtn"
-                disabled={status === "running" || status === "idle"}
-                onClick={handleRun}
-              >
-                검사 실행 <span className="font-mono">→</span>
-              </button>
-              <button
-                className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                  status === "running" ? "text-[var(--ink-3)] cursor-not-allowed" : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
-                }`}
-                disabled={status === "running"}
-                onClick={handleReset}
-              >
-                초기화
-              </button>
-            </div>
-          </div>
         </div>
+      </div>
 
-        {/* 우: 실시간 검토 로그 */}
-        <div className="p-[18px_20px_22px]">
-          <div className="block" style={{ marginBottom: "14px" }}>
-            <div className="flex items-center gap-[11px] m-[0_0_13px]">
-              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">03</span>
-              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">분석 로그</h2>
-              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-              <span className="text-[var(--ink-3)] font-mono text-[10.5px]">실시간</span>
-            </div>
-            <div className="bg-[var(--surface-sub)] border border-[var(--line-2)] p-[13px_14px] min-h-[250px] font-mono text-[12px] overflow-y-auto" id="log" ref={consoleRef}>
-              {logs.map((log, index) => (
-                <div key={index} className="flex gap-2.5 p-[2.5px_0] opacity-0 translate-y-[3px] animate-[rise_0.3s_forwards]">
-                  <span className="text-[var(--ink-3)] shrink-0 pt-0.25">{log.ts}</span>
-                  <span className="break-all">{log.msg}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* 하단 컨트롤 영역 */}
+      <div className="p-[16px_20px] bg-[var(--surface-sub)] flex items-center justify-between border-b border-[var(--line)] flex-wrap gap-3">
+        <div className="flex gap-2.5">
           <button
-            className={`font-sans text-[13px] font-bold p-[11px_16px] border w-full inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-              status !== "done"
+            className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+              status === "running" || status === "idle"
                 ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
                 : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
             }`}
-            id="toReport"
-            disabled={status !== "done"}
-            onClick={() => {
-              if (status === "done" && resultId) {
-                router.push(`/report/${resultId}`);
-              }
-            }}
+            id="runBtn"
+            disabled={status === "running" || status === "idle"}
+            onClick={handleRun}
           >
-            리포트 보기 <span className="font-mono">→</span>
+            검사 실행 <span className="font-mono">→</span>
+          </button>
+          <button
+            className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+              status === "running" ? "text-[var(--ink-3)] cursor-not-allowed" : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+            }`}
+            disabled={status === "running"}
+            onClick={handleReset}
+          >
+            초기화
           </button>
         </div>
+
+        <div className="flex gap-2.5 items-center">
+          {(status === "running" || status === "done") && (
+            <button
+              onClick={() => setIsLogModalOpen(true)}
+              className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+            >
+              분석 로그{" "}
+              {status === "running" ? (
+                <CircleNotch size={14} className="animate-spin text-[var(--brand)]" />
+              ) : (
+                <span className="w-1.5 h-1.5 bg-[var(--brand)] rounded-full"></span>
+              )}
+            </button>
+          )}
+
+          {status === "done" && (
+            <button
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              id="toReport"
+              onClick={() => {
+                if (resultId) {
+                  router.push(`/report/${resultId}`);
+                }
+              }}
+            >
+              리포트 보기 <span className="font-mono">→</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 분석 로그 모달 */}
+      <Modal
+        isOpen={isLogModalOpen}
+        title="분석 로그"
+        onClose={() => setIsLogModalOpen(false)}
+        size="md"
+        footer={
+          <div className="flex justify-between items-center w-full font-mono text-[12px]">
+            <span className="text-[var(--ink-3)]">
+              {status === "running" ? "분석이 진행 중입니다…" : "분석이 완료되었습니다."}
+            </span>
+            <div className="flex gap-2">
+              {status === "done" && (
+                <button
+                  className="font-sans text-[12px] font-bold p-[7px_14px] bg-[var(--brand)] text-white border border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] transition-colors"
+                  onClick={() => {
+                    if (resultId) {
+                      router.push(`/report/${resultId}`);
+                    }
+                  }}
+                >
+                  리포트 보기
+                </button>
+              )}
+              <button
+                className="font-sans text-[12px] font-semibold p-[7px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] transition-colors"
+                onClick={() => setIsLogModalOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div
+          className="bg-[var(--surface-sub)] border border-[var(--line-2)] p-[13px_14px] h-[300px] font-mono text-[12px] overflow-y-auto w-full"
+          id="log"
+          ref={consoleRef}
+        >
+          {logs.map((log, index) => (
+            <div key={index} className="flex gap-2.5 p-[2.5px_0] opacity-0 translate-y-[3px] animate-[rise_0.3s_forwards]">
+              <span className="text-[var(--ink-3)] shrink-0 pt-0.25">{log.ts}</span>
+              <span className="break-all">{log.msg}</span>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       <PageFooter />
     </>
   );
 }
+
 
 function InspectPageWrapper() {
   const searchParams = useSearchParams();
