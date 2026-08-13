@@ -34,20 +34,22 @@ export const Modal = React.forwardRef<HTMLButtonElement, ModalProps>(
 
     return (
       <div
-        className="modal-backdrop"
+        className="fixed inset-0 bg-[#070b08]/50 flex items-center justify-center p-5 z-50"
         onClick={handleBackdropClick}
       >
         <div
-          className={`modal ${size === "md" ? "modal-md" : "modal-sm"}`}
+          className={`w-full bg-[var(--surface)] border border-[var(--line-2)] font-mono shadow-[0_14px_44px_rgba(7,11,8,0.28)] animate-[modalin_0.16s_ease] ${
+            size === "md" ? "max-w-[560px]" : "max-w-[380px]"
+          }`}
           role="dialog"
           aria-modal="true"
           aria-label={title}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="modal-head">
+          <div className="flex items-center justify-between p-3 px-4 border-b border-[var(--line-2)] bg-[var(--surface-sub)] text-[15px] text-[var(--brand-ink)] font-bold tracking-[0.3px]">
             <span>[ {title} ]</span>
             <button
-              className="modal-x"
+              className="border-0 bg-transparent text-[var(--ink-3)] cursor-pointer font-mono text-[14px] leading-none p-0.5 px-1 hover:text-[var(--ink)]"
               ref={closeBtnRef}
               aria-label="닫기"
               onClick={onClose}
@@ -55,11 +57,11 @@ export const Modal = React.forwardRef<HTMLButtonElement, ModalProps>(
               ✕
             </button>
           </div>
-          <div className="modal-body">
+          <div className="p-4 px-5">
             {children}
           </div>
           {footer && (
-            <div className="modal-foot">
+            <div className="flex justify-end gap-2 p-3 px-5 pb-4 border-t border-dashed border-[var(--line-2)]">
               {footer}
             </div>
           )}

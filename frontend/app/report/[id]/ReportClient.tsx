@@ -50,16 +50,28 @@ function FindingCard({ finding, index, num, act, onAction }: FindingCardProps) {
   }, [finding]);
 
   const cls = finding.flag === "위반" ? "violation" : "review";
-  const stCls = act ? ` st-${act}` : "";
+  const isExcluded = act === "exclude";
+  const isHold = act === "hold";
+
+  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] ${
+    cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
+  } ${isExcluded ? "opacity-50" : ""} ${isHold ? "relative" : ""}`;
+
+  const spanStyle = cls === "violation" ? "font-bold text-[var(--crit)] border-b-2 border-[var(--crit)]" : "font-bold text-[var(--ink)] border-b-2 border-[var(--ink-3)]";
 
   return (
-    <div className={`fcard ${cls}${stCls}`} data-i={index}>
-      <div className="fhead">
-        <span className="fbadge">{num}</span>
-        <span className="ftype">
+    <div className={cardCls} data-i={index}>
+      {isHold && <span className="absolute top-[9px] right-[12px] font-mono text-[10px] text-[var(--ink-3)]">보류 중</span>}
+      <div className="flex items-center gap-2.25 p-[9px_12px] border-b border-[var(--line)] bg-[var(--surface-sub)]">
+        <span className={`shrink-0 w-5 h-5 inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${
+          cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--ink-3)]"
+        }`}>{num}</span>
+        <span className="font-mono text-[11px] text-[var(--ink-2)] font-semibold">
           {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
         </span>
-        <span className="fflag">
+        <span className={`ml-auto inline-flex items-center gap-1.25 text-[11.5px] font-bold ${
+          cls === "violation" ? "text-[var(--crit)]" : "text-[var(--ink-3)]"
+        }`}>
           {cls === "violation" ? (
             <Warning size={14} weight="bold" />
           ) : (
@@ -68,50 +80,62 @@ function FindingCard({ finding, index, num, act, onAction }: FindingCardProps) {
           {finding.flag}
         </span>
       </div>
-      <div className="fbody">
+      <div className="p-[13px_14px_14px]">
         <p
-          className="fsent"
+          className={`m-0 mb-2 text-[14px] text-[var(--ink)] leading-[1.65] ${isExcluded ? "line-through decoration-[var(--ink-3)]" : ""}`}
           dangerouslySetInnerHTML={{
             __html: escapeHtml(finding.sentence).replace(
               escapeHtml(finding.span),
-              `<span class="fspan">${escapeHtml(finding.span)}</span>`
+              `<span class="${spanStyle}">${escapeHtml(finding.span)}</span>`
             ),
           }}
         />
-        <p className="fbasis">{finding.legal_basis}</p>
-        <p className="fexpl">{finding.explanation}</p>
-        <div className="falt">
-          <div className="faltlabel">
-            <b>대체 표현 제안</b>
-            <span className="faltflag">권고안 · 확정 아님</span>
+        <p className="font-mono text-[11px] text-[var(--brand-ink)] m-[0_0_8px]">{finding.legal_basis}</p>
+        <p className="text-[12.5px] text-[var(--ink-3)] leading-1.6 m-[0_0_12px]">{finding.explanation}</p>
+        <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[10px_11px] m-[0_0_12px]">
+          <div className="flex items-center gap-1.75 mb-1.5">
+            <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
+            <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">권고안 · 확정 아님</span>
           </div>
-          <div className="falttext">
+          <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
             {loading ? (
-              <span className="dim">로딩 중...</span>
+              <span className="text-[var(--ink-3)]">로딩 중...</span>
             ) : suggestions.length > 0 ? (
               suggestions.join(", ")
             ) : (
-              <span className="dim">대체 표현 없음</span>
+              <span className="text-[var(--ink-3)]">대체 표현 없음</span>
             )}
           </div>
         </div>
-        <div className="factions">
+        <div className="flex gap-1.5">
           <button
-            className={`fabtn accept${act === "accept" ? " on" : ""}`}
+            className={`font-sans text-[11.5px] p-[6px_11px] border cursor-pointer inline-flex items-center gap-1.25 transition-all duration-[120ms] ${
+              act === "accept"
+                ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+            }`}
             onClick={() => onAction(index, "accept")}
           >
             <Check size={13} weight="bold" />
             수용
           </button>
           <button
-            className={`fabtn exclude${act === "exclude" ? " on" : ""}`}
+            className={`font-sans text-[11.5px] p-[6px_11px] border cursor-pointer inline-flex items-center gap-1.25 transition-all duration-[120ms] ${
+              act === "exclude"
+                ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+            }`}
             onClick={() => onAction(index, "exclude")}
           >
             <X size={13} weight="bold" />
             제외
           </button>
           <button
-            className={`fabtn hold${act === "hold" ? " on" : ""}`}
+            className={`font-sans text-[11.5px] p-[6px_11px] border cursor-pointer inline-flex items-center gap-1.25 transition-all duration-[120ms] ${
+              act === "hold"
+                ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+            }`}
             onClick={() => onAction(index, "hold")}
           >
             <Clock size={13} weight="bold" />
@@ -142,10 +166,21 @@ function markSentence(
     const needle = escapeHtml(it.span);
     if (out.indexOf(needle) === -1) return;
     const isExcluded = actions[it.idx] === "exclude";
-    const stCls = isExcluded ? " st-exclude" : "";
+    const isViolation = it.cls === "violation";
+    
+    let spanCls = "relative px-[1px] cursor-default ";
+    if (isExcluded) {
+      spanCls += "opacity-50 line-through ";
+    }
+    if (isViolation) {
+      spanCls += "border-b-2 border-[var(--crit)] text-[var(--crit)] font-semibold";
+    } else {
+      spanCls += "border-b-2 border-[var(--ink-3)]";
+    }
+    
     out = out.replace(
       needle,
-      `<span class="hlspan ${it.cls}${stCls}"><span class="tag">${it.badge}</span>${needle}</span>`
+      `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
     );
   });
   return out;
@@ -189,7 +224,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   const d = activeEnvelope.report;
 
-  // 10단계에서 제외(exclude) 처리 시 수치 실시간 계산을 위한 바인딩 연동
   let nViol = 0;
   let nReview = 0;
 
@@ -210,7 +244,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
-  // findings의 order 기준으로 순서(num: 1, 2, 3...) 매기기
   const findByOrder = d.findings
     .map((f, i) => ({ f, idx: i, num: 0 }))
     .sort((a, b) => a.f.location.order - b.f.location.order);
@@ -218,7 +251,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     item.num = index + 1;
   });
 
-  // unjudged의 order 기준으로 정렬
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
 
   const hasInteracted = Object.keys(actions).length > 0;
@@ -234,42 +266,47 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: styles }} />
-      <div className="metastrip">
-        <span className="crumb">
-          <Link href="/" className="home">
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
+        <span className="text-[var(--ink-2)]">
+          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
             홈
           </Link>{" "}
-          <span className="sep">›</span>{" "}
+          <span className="text-[var(--ink-3)]">›</span>{" "}
           {activeEnvelope.region === "US" ? (
             <>
-              해외 수출 검증 <span className="sep">›</span> 미국{" "}
+              해외 수출 검증 <span className="text-[var(--ink-3)]">›</span> 미국{" "}
             </>
           ) : (
             <>국내 광고 검증</>
           )}
-          <span className="sep">›</span> 리포트
+          <span className="text-[var(--ink-3)]">›</span> 리포트
         </span>
-        <div className="modeswitch">
-          <span className="msl devnote">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="msbtns" id="fixtureSwitch" role="group" aria-label="fixture 전환">
+        <div className="ml-auto flex items-center gap-1.75 max-[900px]:ml-0 max-[900px]:w-full">
+          <span className="text-[var(--ink-3)] text-[10px]">목업 전용 · 실제 화면엔 없음:</span>
+          <div className="flex border border-[var(--line-2)]" id="fixtureSwitch" role="group" aria-label="fixture 전환">
             <button
               onClick={() => handleFixtureChange("image")}
-              className={activeFixture === "image" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "image" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               이미지 예시
             </button>
             <button
               onClick={() => handleFixtureChange("text")}
-              className={activeFixture === "text" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "text" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               텍스트 예시
             </button>
             <button
               onClick={() => handleFixtureChange("unjudged")}
-              className={activeFixture === "unjudged" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "unjudged" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               미판정 포함
@@ -279,44 +316,44 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 요약 상단바 */}
-      <div className="statbar">
-        <p className="headline">
-          <span className="nviol">위반 <span className="num">{nViol}</span>건</span>
-          <span className="sep2">·</span>
-          검토필요 <span className="num">{nReview}</span>건
-          <span className="sep2">·</span>
-          미판정 <span className="num">{d.unjudged.length}</span>건
+      <div className="p-[18px_20px] border-b border-[var(--line)]">
+        <p className="m-[0_0_12px] text-[16px] font-bold text-[var(--ink)] tracking-[-0.2px]">
+          <span className="text-[var(--crit)]">위반 <span className="font-mono">{nViol}</span>건</span>
+          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
+          검토필요 <span className="font-mono">{nReview}</span>건
+          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
+          미판정 <span className="font-mono">{d.unjudged.length}</span>건
         </p>
-        <div className="typechips">
+        <div className="flex flex-wrap gap-1.5">
           {Object.entries(typeCounts).map(([type, count]) => {
             if (count === 0) return null;
             const label = TYPE_LABEL[type as keyof typeof TYPE_LABEL] || type;
             return (
-              <span key={type} className="typechip">
-                {label} <span className="cnt num">{count}</span>
+              <span key={type} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[3px_9px] inline-flex items-center gap-1.5">
+                {label} <span className="text-[var(--ink-3)] font-mono">{count}</span>
               </span>
             );
           })}
           {Object.keys(typeCounts).length === 0 && (
-            <span className="typechip devnote">제외 처리 후 남은 지적 없음</span>
+            <span className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[3px_9px] inline-flex items-center gap-1.5">제외 처리 후 남은 지적 없음</span>
           )}
         </div>
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="reportgrid">
-        <div className="repcol left">
-          <div className="seclabel">
-            <span className="n">01</span>
-            <h2>원문 하이라이트</h2>
-            <span className="rule" />
-            <span className="hint">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+        <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
               {isImageMode ? "이미지 모드 · 타일 오버레이" : "텍스트 모드 · 스팬 밑줄"}
             </span>
           </div>
           <div id="origPanel">
             {loading ? (
-              <p className="devnote" style={{ padding: "12px" }}>
+              <p className="text-[var(--ink-3)] p-3">
                 로딩 중...
               </p>
             ) : isImageMode ? (
@@ -354,25 +391,38 @@ export function ReportClient({ envelope }: ReportClientProps) {
                         (a, b) => a.item.location.order - b.item.location.order
                       );
                       return (
-                        <div className="tileblock" key={t}>
-                          <div className="tilehead">{t}</div>
-                          <div className="tilebg">
+                        <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
+                          <div className="font-mono text-[10.5px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
+                          <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
                             {rows.map((r, ri) => {
                               if (r.type === "find") {
                                 const isExcluded = actions[r.idx] === "exclude";
-                                const stCls = isExcluded ? " st-exclude" : "";
                                 const cls = r.item.flag === "위반" ? "violation" : "review";
                                 return (
-                                  <div className={`hlband ${cls}${stCls}`} key={ri}>
-                                    <span className="hlbadge">{r.num}</span>
-                                    <span className="hltxt">{r.item.span}</span>
+                                  <div className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
+                                    isExcluded
+                                      ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                                      : cls === "violation"
+                                        ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+                                        : "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)] border-solid"
+                                  }`} key={ri}>
+                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${
+                                      isExcluded
+                                        ? "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                        : cls === "violation"
+                                          ? "text-[var(--crit)] border-[var(--crit)]"
+                                          : "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                    }`}>{r.num}</span>
+                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${
+                                      cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
+                                    }`}>{r.item.span}</span>
                                   </div>
                                 );
                               } else {
                                 return (
-                                  <div className="hlband unjudged" key={ri}>
-                                    <span className="hlbadge">{r.letter}</span>
-                                    <span className="hltxt">{r.item.sentence}</span>
+                                  <div className="relative flex items-center gap-2 p-[7px_9px] text-[12px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
+                                    <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
+                                    <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
                                   </div>
                                 );
                               }
@@ -381,7 +431,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                         </div>
                       );
                     })}
-                    <p className="devnote" style={{ marginTop: "8px" }}>
+                    <p className="text-[var(--ink-3)] text-[10px] mt-2">
                       실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
                     </p>
                   </>
@@ -389,8 +439,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
               })()
             ) : (
               (() => {
-                // 텍스트 모드: findings 및 unjudged 문장들을 통합하여 order 순으로 렌더링
-                // 1. findings 문장 분류
                 const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
                 const sentenceOrders: Record<string, number> = {};
 
@@ -408,7 +456,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   });
                 });
 
-                // 2. unjudged 문장 분류
                 const unjudgedSentences: Array<{ sentence: string; letter: string; order: number }> = [];
                 ujByOrder.forEach((u, i) => {
                   unjudgedSentences.push({
@@ -418,14 +465,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   });
                 });
 
-                // 3. 모든 문장 목록 구성 및 order 순 정렬
                 interface TextSentenceNode {
                   type: "find" | "uj";
                   sentence: string;
                   order: number;
-                  // find type extra
                   hlItems?: Array<{ span: string; cls: string; badge: number; idx: number }>;
-                  // uj type extra
                   letter?: string;
                 }
 
@@ -451,13 +495,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 allSentences.sort((a, b) => a.order - b.order);
 
-                // 4. HTML 생성
                 const htmlContent = allSentences
                   .map((node) => {
                     if (node.type === "find" && node.hlItems) {
                       return markSentence(node.sentence, node.hlItems, actions);
                     } else if (node.type === "uj" && node.letter) {
-                      return `<span class="hlspan unjudged"><span class="tag">${node.letter}</span>${escapeHtml(
+                      return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
                         node.sentence
                       )}</span>`;
                     }
@@ -467,7 +510,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 return (
                   <div
-                    className="textpanel"
+                    className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[14px] text-[var(--ink)] leading-[2]"
                     dangerouslySetInnerHTML={{ __html: htmlContent }}
                   />
                 );
@@ -475,14 +518,14 @@ export function ReportClient({ envelope }: ReportClientProps) {
             )}
           </div>
         </div>
-        <div className="repcol right">
-          <div className="seclabel">
-            <span className="n">02</span>
-            <h2>지적 카드</h2>
-            <span className="rule" />
-            <span className="hint"><span className="num">{d.findings.length}</span>건</span>
+        <div className="p-[18px_20px_22px]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">지적 카드</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]"><span className="font-mono">{d.findings.length}</span>건</span>
           </div>
-          <div className="findlist">
+          <div className="flex flex-col gap-3">
             {findByOrder.map((o) => (
               <FindingCard
                 key={o.idx}
@@ -495,19 +538,19 @@ export function ReportClient({ envelope }: ReportClientProps) {
             ))}
           </div>
           {d.unjudged.length > 0 && (
-            <div className="ujwrap">
-              <div className="seclabel">
-                <span className="n">?</span>
-                <h2>재검사 필요</h2>
-                <span className="rule" />
-                <span className="hint">판정 실패 · 미판정</span>
+            <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
+              <div className="flex items-center gap-[11px] m-[0_0_13px]">
+                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">?</span>
+                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
+                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">판정 실패 · 미판정</span>
               </div>
-              <div className="ujlist">
+              <div className="flex flex-col gap-1.5">
                 {ujByOrder.map((u, i) => (
-                  <div className="ujrow" key={i}>
-                    <span className="ujbadge">{String.fromCharCode(65 + i)}</span>
-                    <span className="ujsent">{u.sentence}</span>
-                    <span className="ujloc">
+                  <div className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px]" key={i}>
+                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
+                    <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
                       {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
                     </span>
                   </div>
@@ -519,13 +562,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 하단 브릿지 */}
-      <div className="bridge">
-        <p>지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
+      <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
+        <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
         <Link
           href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-          className="btn primary"
+          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
         >
-          이 수정안대로 상세페이지 만들기 <span className="mono">→</span>
+          이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
         </Link>
       </div>
 
@@ -533,526 +576,3 @@ export function ReportClient({ envelope }: ReportClientProps) {
     </>
   );
 }
-
-const styles = `
-  .statbar {
-    padding: 18px 20px;
-    border-bottom: 1px solid var(--line);
-  }
-  .statbar .headline {
-    margin: 0 0 12px;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--ink);
-    letter-spacing: -0.2px;
-  }
-  .statbar .headline .nviol {
-    color: var(--crit);
-  }
-  .statbar .headline .sep2 {
-    color: var(--ink-3);
-    font-weight: 400;
-    margin: 0 3px;
-  }
-  .typechips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .typechip {
-    font-family: var(--mono);
-    font-size: 11px;
-    border: 1px solid var(--line-2);
-    background: var(--surface-sub);
-    color: var(--ink-2);
-    padding: 3px 9px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .typechip .cnt {
-    color: var(--ink-3);
-  }
-
-  .reportgrid {
-    display: grid;
-    grid-template-columns: 0.86fr 1.14fr;
-  }
-  .repcol {
-    padding: 18px 20px 22px;
-  }
-  .repcol.left {
-    border-right: 1px solid var(--line);
-  }
-  .seclabel {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    margin: 0 0 13px;
-  }
-  .seclabel .n {
-    color: var(--on-brand);
-    background: var(--brand-deep);
-    font-family: var(--mono);
-    font-weight: 700;
-    font-size: 11px;
-    padding: 2px 7px;
-  }
-  .seclabel h2 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink);
-    letter-spacing: -0.2px;
-  }
-  .seclabel .rule {
-    flex: 1;
-    height: 0;
-    border-top: 1px dashed var(--line-2);
-  }
-  .seclabel .hint {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10.5px;
-  }
-
-  .tileblock {
-    border: 1px solid var(--line-2);
-    margin-bottom: 14px;
-  }
-  .tileblock:last-child {
-    margin-bottom: 0;
-  }
-  .tilehead {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    color: var(--ink-3);
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-  }
-  .tilebg {
-    position: relative;
-    aspect-ratio: 4 / 5;
-    background: repeating-linear-gradient(135deg, var(--surface-sub) 0 10px, var(--surface) 10px 20px);
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .hlband {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 9px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    font-size: 12px;
-    color: var(--ink-2);
-  }
-  .hlband.violation {
-    border-color: var(--crit-bd);
-    background: var(--crit-bg);
-  }
-  .hlband.review {
-    border-style: solid;
-  }
-  .hlband.unjudged {
-    border-style: dashed;
-  }
-  .hlbadge {
-    flex: 0 0 auto;
-    width: 19px;
-    height: 19px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    font-weight: 700;
-    border-radius: 50%;
-    border: 1.5px solid currentColor;
-  }
-  .hlband.violation .hlbadge {
-    color: var(--crit);
-    border-color: var(--crit);
-  }
-  .hlband.review .hlbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-  }
-  .hlband.unjudged .hlbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-    border-style: dashed;
-  }
-  .hlband .hltxt {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .hlband.violation .hltxt {
-    color: var(--crit);
-  }
-
-  .textpanel {
-    border: 1px solid var(--line-2);
-    background: var(--surface-sub);
-    padding: 16px 15px;
-    font-size: 14px;
-    color: var(--ink);
-    line-height: 2;
-  }
-  .hlspan {
-    position: relative;
-    padding: 0 1px;
-    cursor: default;
-  }
-  .hlspan.violation {
-    border-bottom: 2px solid var(--crit);
-    color: var(--crit);
-    font-weight: 600;
-  }
-  .hlspan.review {
-    border-bottom: 2px solid var(--ink-3);
-  }
-  .hlspan.unjudged {
-    border-bottom: 2px dashed var(--ink-3);
-  }
-  .hlspan .tag {
-    position: absolute;
-    top: -9px;
-    left: -2px;
-    font-family: var(--mono);
-    font-size: 9px;
-    font-weight: 700;
-    color: inherit;
-  }
-
-  .findlist {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .fcard {
-    border: 1px solid var(--line-2);
-    background: var(--surface);
-  }
-  .fcard.violation {
-    border-left: 3px solid var(--crit);
-  }
-  .fcard.review {
-    border-left: 3px solid var(--ink-3);
-  }
-  .fhead {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 9px 12px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-  }
-  .fhead .fbadge {
-    flex: 0 0 auto;
-    width: 20px;
-    height: 20px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 50%;
-    border: 1.5px solid currentColor;
-  }
-  .fcard.violation .fbadge {
-    color: var(--crit);
-    border-color: var(--crit);
-  }
-  .fcard.review .fbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-  }
-  .fhead .ftype {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-2);
-    font-weight: 600;
-  }
-  .fhead .fflag {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11.5px;
-    font-weight: 700;
-  }
-  .fhead .fflag svg {
-    width: 14px;
-    height: 14px;
-  }
-  .fcard.violation .fflag {
-    color: var(--crit);
-  }
-  .fcard.review .fflag {
-    color: var(--ink-3);
-  }
-  .fbody {
-    padding: 13px 14px 14px;
-  }
-  .fsent {
-    margin: 0 0 8px;
-    font-size: 14px;
-    color: var(--ink);
-    line-height: 1.65;
-  }
-  .fsent .fspan {
-    font-weight: 700;
-  }
-  .fcard.violation .fsent .fspan {
-    color: var(--crit);
-    border-bottom: 2px solid var(--crit);
-  }
-  .fcard.review .fsent .fspan {
-    color: var(--ink);
-    border-bottom: 2px solid var(--ink-3);
-  }
-  .fbasis {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--brand-ink);
-    margin: 0 0 8px;
-  }
-  .fexpl {
-    font-size: 12.5px;
-    color: var(--ink-3);
-    line-height: 1.6;
-    margin: 0 0 12px;
-  }
-  .falt {
-    border: 1px dashed var(--line-2);
-    background: var(--surface-sub);
-    padding: 10px 11px;
-    margin: 0 0 12px;
-  }
-  .falt .faltlabel {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-bottom: 6px;
-  }
-  .falt .faltlabel b {
-    font-size: 11.5px;
-    color: var(--ink-2);
-    font-weight: 700;
-  }
-  .falt .faltlabel .faltflag {
-    font-family: var(--mono);
-    font-size: 9.5px;
-    color: var(--ink-3);
-    border: 1px solid var(--line-2);
-    padding: 1px 6px;
-  }
-  .falt .falttext {
-    font-size: 13px;
-    color: var(--ink-2);
-    line-height: 1.6;
-  }
-  .factions {
-    display: flex;
-    gap: 6px;
-  }
-  .fabtn {
-    font-family: var(--sans);
-    font-size: 11.5px;
-    font-weight: 600;
-    padding: 6px 11px;
-    border: 1px solid var(--line-2);
-    background: transparent;
-    color: var(--ink-3);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-  }
-  .fabtn svg {
-    width: 13px;
-    height: 13px;
-  }
-  .fabtn:hover {
-    color: var(--ink);
-    background: var(--nav-hover);
-  }
-  .fabtn.on {
-    color: var(--ink);
-    font-weight: 700;
-  }
-  .fabtn.accept.on {
-    border-color: var(--ink-2);
-    background: var(--nav-active-bg);
-  }
-  .fabtn.exclude.on {
-    border-color: var(--ink-3);
-    background: var(--surface-sub);
-  }
-  .fabtn.hold.on {
-    border-color: var(--ink-3);
-    background: var(--surface-sub);
-  }
-  .fcard.st-exclude {
-    opacity: 0.5;
-  }
-  .fcard.st-exclude .fsent {
-    text-decoration: line-through;
-    text-decoration-color: var(--ink-3);
-  }
-  .fcard.st-hold {
-    position: relative;
-  }
-  .fcard.st-hold::after {
-    content: "보류 중";
-    position: absolute;
-    top: 9px;
-    right: 12px;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--ink-3);
-  }
-
-  .ujwrap {
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--line-2);
-  }
-  .ujwrap .seclabel .n {
-    background: var(--surface-sub);
-    color: var(--ink-3);
-    border: 1px solid var(--line-2);
-  }
-  .ujlist {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .ujrow {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    border: 1px dashed var(--line-2);
-    background: var(--surface-sub);
-    padding: 8px 10px;
-  }
-  .ujrow .ujbadge {
-    flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--ink-3);
-    border: 1.5px dashed var(--ink-3);
-    border-radius: 50%;
-  }
-  .ujrow .ujsent {
-    flex: 1;
-    font-size: 12.5px;
-    color: var(--ink-2);
-  }
-  .ujrow .ujloc {
-    flex: 0 0 auto;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--ink-3);
-  }
-
-  .bridge {
-    padding: 18px 20px;
-    border-top: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  .bridge p {
-    margin: 0;
-    font-size: 12px;
-    color: var(--ink-3);
-    max-width: 56ch;
-  }
-  .btn {
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 700;
-    padding: 11px 16px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    transition: background 0.12s, color 0.12s;
-    text-decoration: none;
-  }
-  .btn.primary {
-    background: var(--brand);
-    color: #fff;
-    border-color: var(--brand);
-  }
-  :root[data-theme="dark"] .btn.primary {
-    color: var(--on-brand);
-  }
-  .btn.primary:hover {
-    background: var(--brand-ink);
-  }
-  :root[data-theme="dark"] .btn.primary:hover {
-    background: #63e89f;
-  }
-
-  .compliance {
-    padding: 10px 20px;
-    border-top: 1px solid var(--line);
-    background: var(--surface-sub);
-    font-size: 11px;
-    color: var(--ink-3);
-    line-height: 1.65;
-  }
-  .compliance b {
-    color: var(--brand-ink);
-    font-weight: 600;
-  }
-  @media (max-width: 900px) {
-    .reportgrid {
-      grid-template-columns: 1fr;
-    }
-    .repcol.left {
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
-    }
-    .modeswitch {
-      margin-left: 0;
-      width: 100%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      transition: none !important;
-      animation: none !important;
-    }
-  }
-
-  .hlband.st-exclude {
-    opacity: 0.5;
-  }
-  .hlspan.st-exclude {
-    opacity: 0.5;
-    text-decoration: line-through;
-  }
-`;

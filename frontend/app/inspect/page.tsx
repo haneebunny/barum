@@ -349,22 +349,22 @@ function InspectContent() {
 
   return (
     <>
-      <div className="metastrip">
-        <span className="crumb">
-          <Link href="/" className="home">
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
+        <span className="text-[var(--ink-2)]">
+          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
             홈
           </Link>{" "}
-          <span className="sep">›</span>{" "}
+          <span className="text-[var(--ink-3)]">›</span>{" "}
           {regionParam === "US" ? (
             <>
-              해외 수출 검증 <span className="sep">›</span> 미국
+              해외 수출 검증 <span className="text-[var(--ink-3)]">›</span> 미국
             </>
           ) : (
             <>국내 광고 검증</>
           )}
         </span>
-        <span className="mstat">
-          <span className="dot"></span>
+        <span className="ml-auto text-[var(--brand-ink)] inline-flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 bg-[var(--brand)]"></span>
           <span id="mstatTxt">
             {status === "idle" && "입력 대기"}
             {status === "ready" && "입력 완료"}
@@ -374,38 +374,39 @@ function InspectContent() {
         </span>
       </div>
 
-      <div className="upgrid">
+      <div className="grid grid-cols-[1.02fr_0.98fr] max-[900px]:grid-cols-1">
         {/* 좌: 자료 투입 */}
-        <div className="upcol left">
-          <div className="block">
-            <div className="seclabel">
-              <span className="n">01</span>
-              <h2>검사 대상 · 광고 자료</h2>
-              <span className="rule"></span>
-              <span className="hint">문구 또는 이미지 · 최소 하나</span>
+        <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
+          <div className="mb-5 last:mb-0">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 대상 · 광고 자료</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+              <span className="text-[var(--ink-3)] font-mono text-[10.5px]">문구 또는 이미지 · 최소 하나</span>
             </div>
-            <div className="adfield">
-              <span className="talabel">검사할 광고 문구 붙여넣기</span>
+            <div>
+              <span className="block text-[12px] text-[var(--ink-2)] font-semibold mb-1.5">검사할 광고 문구 붙여넣기</span>
               <textarea
                 id="adtext"
-                className="adtext"
+                className="w-full min-h-[92px] vertical border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] font-sans text-[13.5px] leading-1.6 p-[11px_12px] outline-none block placeholder:text-[var(--ink-3)] focus:border-[var(--brand)]"
                 placeholder="예) 단 4주 만에 여드름 완치! 미국 피부과가 인정한 미백 세럼. 부작용 전혀 없는 100% 순수 성분."
                 value={adText}
                 onChange={handleAdTextChange}
                 disabled={status === "running"}
               />
             </div>
-            <div className="ordiv">
+            <div className="flex items-center gap-2.5 text-[var(--ink-3)] font-mono text-[10.5px] m-[13px_0_11px] before:content-[''] before:flex-1 before:border-t before:border-[var(--line)] after:content-[''] after:flex-1 after:border-t after:border-[var(--line)]">
               <span>또는 이미지 첨부</span>
             </div>
             <div
-              className={`drop compact${status === "running" ? " disabled" : ""}${isDragging ? " dragging" : ""}`}
+              className={`border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-center p-[15px_16px] transition-all duration-[120ms] ${
+                status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              }`}
               onClick={status === "running" ? undefined : triggerAdFileSelect}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               style={{
-                cursor: status === "running" ? "not-allowed" : "pointer",
                 borderColor: isDragging ? "var(--brand)" : undefined,
                 borderStyle: isDragging ? "solid" : undefined,
                 backgroundColor: isDragging ? "var(--surface)" : undefined,
@@ -418,12 +419,12 @@ function InspectContent() {
                 handleKeyDown(e, triggerAdFileSelect);
               }}
             >
-              <div className="ico">
+              <div className="text-[var(--brand-ink)] mb-2.25">
                 <UploadSimple size={24} weight="regular" />
               </div>
-              <h3>상세페이지 · 광고 이미지 던져넣기</h3>
-              <span className="cmd">
-                drop or click · jpg png pdf xlsx <span className="c">▊</span>
+              <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">상세페이지 · 광고 이미지 던져넣기</h3>
+              <span className="inline-block font-mono text-[11.5px] text-[var(--brand-ink)] bg-[var(--surface)] border border-[var(--line)] p-[7px_11px]">
+                drop or click · jpg png pdf xlsx <span className="text-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]">▊</span>
               </span>
             </div>
             <input
@@ -433,17 +434,17 @@ function InspectContent() {
               multiple
               onChange={(e) => handleFileAdd(e, false)}
             />
-            <div className="files" id="files">
+            <div className="mt-3 flex flex-col gap-[5px]" id="files">
               {adFiles.map((file) => (
-                <div className="frow" key={file.id}>
-                  <Check size={14} weight="bold" className="ok" />
-                  <span className="nm">
+                <div className="flex items-center gap-2.5 bg-[var(--surface-sub)] border border-[var(--line)] p-[8px_10px] font-mono text-[11.5px]" key={file.id}>
+                  <Check size={14} weight="bold" className="text-[var(--brand-ink)] font-bold" />
+                  <span className="text-[var(--ink)] flex-1">
                     {file.name}
-                    <span className="ext">{file.ext}</span>
+                    <span className="text-[var(--ink-3)]">{file.ext}</span>
                   </span>
-                  <span className="st">첨부됨</span>
+                  <span className="text-[var(--brand-ink)] text-[10.5px]">첨부됨</span>
                   <span
-                    className="x"
+                    className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--crit)]"
                     onClick={() => {
                       if (status === "running") return;
                       removeAdFile(file.id);
@@ -464,7 +465,9 @@ function InspectContent() {
                 </div>
               ))}
               <div
-                className={`frow add${status === "running" ? " disabled" : ""}`}
+                className={`flex items-center gap-2.5 border border-line p-[8px_10px] font-mono text-[11.5px] border-dashed justify-center text-[var(--ink-3)] transition-colors duration-[120ms] ${
+                  status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+                }`}
                 onClick={status === "running" ? undefined : triggerAdFileSelect}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
@@ -479,25 +482,25 @@ function InspectContent() {
             </div>
           </div>
 
-          <div className="block">
-            <div className="seclabel">
-              <span className="n">02</span>
-              <h2>제품 정보 · 참고자료</h2>
-              <span className="rule"></span>
-              <span className="hint">전성분 · 선택</span>
+          <div className="mb-5 last:mb-0">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">제품 정보 · 참고자료</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+              <span className="text-[var(--ink-3)] font-mono text-[10.5px]">전성분 · 선택</span>
             </div>
-            <div className="adfield">
-              <span className="talabel">전성분 붙여넣기 (함량 % 선택 기재)</span>
+            <div>
+              <span className="block text-[12px] text-[var(--ink-2)] font-semibold mb-1.5">전성분 붙여넣기 (함량 % 선택 기재)</span>
               <textarea
                 id="ingtext"
-                className="adtext"
+                className="w-full min-h-[92px] vertical border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] font-sans text-[13.5px] leading-1.6 p-[11px_12px] outline-none block placeholder:text-[var(--ink-3)] focus:border-[var(--brand)]"
                 placeholder="예) 정제수, 나이아신아마이드 5%, 글리세린, 판테놀..."
                 value={ingText}
                 onChange={handleIngTextChange}
                 disabled={status === "running"}
               />
             </div>
-            <div className="ordiv">
+            <div className="flex items-center gap-2.5 text-[var(--ink-3)] font-mono text-[10.5px] m-[13px_0_11px] before:content-[''] before:flex-1 before:border-t before:border-[var(--line)] after:content-[''] after:flex-1 after:border-t after:border-[var(--line)]">
               <span>또는 파일 첨부</span>
             </div>
             <input
@@ -507,17 +510,17 @@ function InspectContent() {
               multiple
               onChange={(e) => handleFileAdd(e, true)}
             />
-            <div className="files" id="pfiles">
+            <div className="mt-3 flex flex-col gap-[5px]" id="pfiles">
               {pFiles.map((file) => (
-                <div className="frow" key={file.id}>
-                  <Check size={14} weight="bold" className="ok" />
-                  <span className="nm">
+                <div className="flex items-center gap-2.5 bg-[var(--surface-sub)] border border-[var(--line)] p-[8px_10px] font-mono text-[11.5px]" key={file.id}>
+                  <Check size={14} weight="bold" className="text-[var(--brand-ink)] font-bold" />
+                  <span className="text-[var(--ink)] flex-1">
                     {file.name}
-                    <span className="ext">{file.ext}</span>
+                    <span className="text-[var(--ink-3)]">{file.ext}</span>
                   </span>
-                  <span className="st">첨부됨</span>
+                  <span className="text-[var(--brand-ink)] text-[10.5px]">첨부됨</span>
                   <span
-                    className="x"
+                    className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--crit)]"
                     onClick={() => {
                       if (status === "running") return;
                       removePFile(file.id);
@@ -538,7 +541,9 @@ function InspectContent() {
                 </div>
               ))}
               <div
-                className={`frow add${status === "running" ? " disabled" : ""}`}
+                className={`flex items-center gap-2.5 border border-line p-[8px_10px] font-mono text-[11.5px] border-dashed justify-center text-[var(--ink-3)] transition-colors duration-[120ms] ${
+                  status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+                }`}
                 onClick={status === "running" ? undefined : triggerPFileSelect}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
@@ -553,18 +558,24 @@ function InspectContent() {
             </div>
           </div>
 
-          <div className="block">
-            <div className="run">
+          <div className="mb-5 last:mb-0">
+            <div className="flex gap-2.5 mt-0.5">
               <button
-                className={`btn primary${status === "running" || status === "idle" ? " disabled" : ""}`}
+                className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+                  status === "running" || status === "idle"
+                    ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
+                    : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+                }`}
                 id="runBtn"
                 disabled={status === "running" || status === "idle"}
                 onClick={handleRun}
               >
-                검사 실행 <span className="mono">→</span>
+                검사 실행 <span className="font-mono">→</span>
               </button>
               <button
-                className={`btn ghost${status === "running" ? " disabled" : ""}`}
+                className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+                  status === "running" ? "text-[var(--ink-3)] cursor-not-allowed" : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+                }`}
                 disabled={status === "running"}
                 onClick={handleReset}
               >
@@ -575,27 +586,30 @@ function InspectContent() {
         </div>
 
         {/* 우: 실시간 검토 로그 */}
-        <div className="upcol right">
+        <div className="p-[18px_20px_22px]">
           <div className="block" style={{ marginBottom: "14px" }}>
-            <div className="seclabel">
-              <span className="n">03</span>
-              <h2>분석 로그</h2>
-              <span className="rule"></span>
-              <span className="hint">실시간</span>
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">03</span>
+              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">분석 로그</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+              <span className="text-[var(--ink-3)] font-mono text-[10.5px]">실시간</span>
             </div>
-            <div className="console" id="log" ref={consoleRef}>
+            <div className="bg-[var(--surface-sub)] border border-[var(--line-2)] p-[13px_14px] min-h-[250px] font-mono text-[12px] overflow-y-auto" id="log" ref={consoleRef}>
               {logs.map((log, index) => (
-                <div key={index} className="logline">
-                  <span className="ts">{log.ts}</span>
-                  <span className="msg">{log.msg}</span>
+                <div key={index} className="flex gap-2.5 p-[2.5px_0] opacity-0 translate-y-[3px] animate-[rise_0.3s_forwards]">
+                  <span className="text-[var(--ink-3)] shrink-0 pt-0.25">{log.ts}</span>
+                  <span className="break-all">{log.msg}</span>
                 </div>
               ))}
             </div>
           </div>
           <button
-            className={`btn primary${status !== "done" ? " disabled" : ""}`}
+            className={`font-sans text-[13px] font-bold p-[11px_16px] border w-full inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+              status !== "done"
+                ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
+                : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+            }`}
             id="toReport"
-            style={{ width: "100%" }}
             disabled={status !== "done"}
             onClick={() => {
               if (status === "done" && resultId) {
@@ -603,7 +617,7 @@ function InspectContent() {
               }
             }}
           >
-            리포트 보기 <span className="mono">→</span>
+            리포트 보기 <span className="font-mono">→</span>
           </button>
         </div>
       </div>
