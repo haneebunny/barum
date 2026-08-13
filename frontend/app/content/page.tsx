@@ -7,6 +7,7 @@ import { getReport, generateContent } from "@/lib/api/client";
 import type { CheckReport, GenerateResponse, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { Modal } from "@/components/Modal/Modal";
 
 interface ContentMockData {
   productName: string;
@@ -620,83 +621,63 @@ function ContentGeneratorContent() {
       <PageFooter />
 
       {/* 생성 전 확인 모달 (터미널 다이얼로그) */}
-      {isModalOpen && (
-        <div className="modal-backdrop" id="confirmModal" onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
-            <div className="modal-head">
-              <span id="cmTitle">[ 생성 전 확인 ]</span>
-              <button
-                className="modal-x"
-                id="cmClose"
-                ref={closeBtnRef}
-                aria-label="닫기"
-                onClick={() => setIsModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="modal-body" style={{ fontFamily: "var(--sans)" }}>
-              <p className="modal-sub" style={{ margin: "6px 0 9px", fontSize: "11px", color: "var(--ink-3)", fontFamily: "var(--mono)", letterSpacing: "0.2px" }}>
-                제거된 개인정보 · 2건
-              </p>
-              <ul className="piilist">
-                <li>
-                  <X size={14} weight="bold" style={{ color: "var(--ink-3)", marginTop: "2px" }} />
-                  <span>이미지 배경 속 매장 명판 텍스트를 자동으로 지웠어요.</span>
-                </li>
-                <li>
-                  <X size={14} weight="bold" style={{ color: "var(--ink-3)", marginTop: "2px" }} />
-                  <span>고객 후기 캡처에 있던 개인 아이디를 자동으로 지웠어요.</span>
-                </li>
-              </ul>
-              <p className="modal-sub" style={{ margin: "14px 0 9px", fontSize: "11px", color: "var(--ink-3)", fontFamily: "var(--mono)", letterSpacing: "0.2px" }}>
-                생성 전 확인 필요 · 2건
-              </p>
-              <ul className="checklist" id="checkList">
-                <li
-                  className="checkrow"
-                  onClick={() => setChecks((prev) => ({ ...prev, ck1: !prev.ck1 }))}
-                >
-                  <input
-                    type="checkbox"
-                    id="ck1"
-                    checked={checks.ck1}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, ck1: e.target.checked }))}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <span>효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.</span>
-                </li>
-                <li
-                  className="checkrow"
-                  onClick={() => setChecks((prev) => ({ ...prev, ck2: !prev.ck2 }))}
-                >
-                  <input
-                    type="checkbox"
-                    id="ck2"
-                    checked={checks.ck2}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, ck2: e.target.checked }))}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <span>생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.</span>
-                </li>
-              </ul>
-            </div>
-            <div className="modal-foot" style={{ display: "flex", justifyContent: "flex-end", gap: "8px", padding: "12px 14px 14px" }}>
-              <button className="btn ghost" id="cmCancel" onClick={() => setIsModalOpen(false)}>
-                취소
-              </button>
-              <button
-                className="btn primary"
-                id="cmConfirm"
-                disabled={!checks.ck1 || !checks.ck2}
-                onClick={handleConfirm}
-              >
-                확인하고 생성
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={isModalOpen}
+        title="생성 전 확인"
+        onClose={() => setIsModalOpen(false)}
+        ref={closeBtnRef}
+        footer={
+          <>
+            <button className="btn ghost" id="cmCancel" onClick={() => setIsModalOpen(false)}>
+              취소
+            </button>
+            <button
+              className="btn primary"
+              id="cmConfirm"
+              disabled={!checks.ck1 || !checks.ck2}
+              onClick={handleConfirm}
+            >
+              확인하고 생성
+            </button>
+          </>
+        }
+      >
+        <p className="modal-sub">[ 제거된 개인정보 · 2건 ]</p>
+        <ul className="piilist">
+          <li>
+            <span className="cli-tag system">[system]</span>
+            <span>이미지 배경 속 매장 명판 텍스트를 자동으로 지웠어요.</span>
+          </li>
+          <li>
+            <span className="cli-tag system">[system]</span>
+            <span>고객 후기 캡처에 있던 개인 아이디를 자동으로 지웠어요.</span>
+          </li>
+        </ul>
+        <div className="modal-divider" />
+        <p className="modal-sub">[ 생성 전 확인 필요 · 2건 ]</p>
+        <ul className="checklist" id="checkList">
+          <li
+            className="checkrow"
+            onClick={() => setChecks((prev) => ({ ...prev, ck1: !prev.ck1 }))}
+          >
+            <span className="cli-tag warn">[warn]</span>
+            <span className={`cli-checkbox ${checks.ck1 ? "checked" : ""}`}>
+              [{checks.ck1 ? "x" : " "}]
+            </span>
+            <span>효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.</span>
+          </li>
+          <li
+            className="checkrow"
+            onClick={() => setChecks((prev) => ({ ...prev, ck2: !prev.ck2 }))}
+          >
+            <span className="cli-tag warn">[warn]</span>
+            <span className={`cli-checkbox ${checks.ck2 ? "checked" : ""}`}>
+              [{checks.ck2 ? "x" : " "}]
+            </span>
+            <span>생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.</span>
+          </li>
+        </ul>
+      </Modal>
     </>
   );
 }
