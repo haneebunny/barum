@@ -60,6 +60,25 @@
 - **오탐**: 세 방식 다 12~13건으로 비슷. 이번 재측정에서는 오탐 억제력 차이가 크지 않음.
 - **한계**: 여전히 표본 14장. 정답셋은 검수 완료지만 표본 크기 자체는 안 늘어서 통계적 유의성은 제한적.
 
+### 2-1-1. 원인 대응: 3축 일반수식어 키워드 추가 후 파이프라인 재측정 (2026-08-13)
+
+2-1에서 탐지율이 떨어진 원인을 36건 재분류 내역으로 뜯어봤다. 채점 대상(위반군)에 새로 들어온 11건 중 다수가 "완벽한", "최적의", "파워 수분공급" 같은 **절대적 표현(3축① 일반수식어 확정규칙, 2026-08-13)** 이었는데, `judge_rules.json`엔 이 표현들이 아직 키워드로 없었다(원래 파일 note에도 "일반 수식어(5호)는 미확정이라 VLM에 맡긴다"고 명시돼 있었음).
+
+검수 과정에서 명시적으로 절대적표현으로 확정된 3개("완벽한", "최적의", "파워")를 `judge_rules.json`의 `needs_review.5호_거짓과장기만`에 추가하고, 파이프라인만 재측정했다.
+
+| 항목 | 키워드 추가 전 (2-1) | 키워드 추가 후 | 증감 |
+|---|---|---|---|
+| 정탐 | 17 | 19 | +2 |
+| 미탐 | 6 | 4 | -2 |
+| 오탐 | 12 | 11 | -1 |
+| **탐지율** | **73.9%** | **82.6%** | **+8.7%p** |
+| 토큰 | 291,244 | 308,428 | +5.9% |
+| 소요시간 | 717.0초 | 637.7초 | -11.0% |
+
+**실행 로그·산출물 (근거)**: `backend/11st_probe_cosmetic/read_test/_run_log_pipeline_v2_keywords.txt` + `ocr_comparison_result_pipeline_v2_keywords.xlsx`
+
+키워드 3개만 추가했는데 미탐이 6건→4건으로 줄고 탐지율이 8.7%p 올랐다. 토큰은 소폭(+5.9%) 늘었는데, 새로 걸린 문장들이 `needs_review`로 잡히며 판정 근거 텍스트가 늘어난 정도로 보인다. 11건 중 3개 키워드로 못 잡는 나머지(피지컨트롤 계열 동의어 매칭·성분함량 검증·시험검사표현 등)는 이번에 손 안 댔다. 원샷/원샷+RAG는 이번엔 재측정 안 함(파이프라인 규칙 변경이라 원샷 결과엔 영향 없음).
+
 ### 2-2. 1차 실험 (잠정 정답셋, 참고용. 아래 §3~§5의 분석 대상)
 
 `label_worksheet.xlsx`(검수 전) 기준. §3~§5의 토큰 분석·원인 분석·개선방향 논의는 이 실험 결과를 대상으로 한다. **2-1의 최종 수치로 대체됨.**
@@ -160,5 +179,6 @@
 - `backend/11st_probe_cosmetic/read_test/label_worksheet_reviewed.xlsx`: 정답셋 검수 완료본(§2-1 대상, L열 "비비_최종판단")
 - `backend/11st_probe_cosmetic/read_test/ocr_comparison_result_pipeline.xlsx` / `_oneshot.xlsx` / `_oneshot_rag.xlsx`: §2-1 최종 재측정 3종 산출물
 - `backend/11st_probe_cosmetic/read_test/_run_log_pipeline.txt` / `_run_log_oneshot.txt` / `_run_log_oneshot_rag.txt`: §2-1 실행 로그(원본 근거)
+- `backend/11st_probe_cosmetic/read_test/ocr_comparison_result_pipeline_v2_keywords.xlsx` / `_run_log_pipeline_v2_keywords.txt`: §2-1-1 키워드 추가 후 재측정 산출물/로그
 - `backend/src/barum/reference/rules.py`: `out_of_scope` 갈래 반영됨 (§5-1)
-- `backend/src/barum/reference/data/judge_rules.json`: `out_of_scope` 키 추가됨(목록은 아직 빈 상태, 2순위 작업 남음)
+- `backend/src/barum/reference/data/judge_rules.json`: `out_of_scope` 키 추가됨(목록은 아직 빈 상태, 2순위 작업 남음). `needs_review.5호_거짓과장기만`에 절대적표현 3개(완벽한/최적의/파워) 추가됨 (§2-1-1)
