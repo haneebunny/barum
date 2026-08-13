@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
+  const router = useRouter();
   const [selectedRegion, setSelectedRegion] = useState("미국 FDA·FTC");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [needCount, setNeedCount] = useState(2);
 
   const triggerRef = useRef<HTMLSpanElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
-  const openModal = () => setIsModalOpen(true);
+  const openModal = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    setIsModalOpen(true);
+  };
   const closeModal = () => setIsModalOpen(false);
 
   const selectRegion = (region: string) => {
@@ -21,7 +28,7 @@ export default function HomePage() {
   const handleSelKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      openModal();
+      openModal(e);
     }
   };
 
@@ -59,24 +66,65 @@ export default function HomePage() {
     return "/inspect";
   };
 
+  const handleDomesticClick = () => {
+    router.push("/inspect");
+  };
+
+  const handleDomesticKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      router.push("/inspect");
+    }
+  };
+
+  const handleOverseasClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest(".sel")) {
+      return;
+    }
+    router.push(getInspectUrl());
+  };
+
+  const handleOverseasKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest(".sel")) {
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      router.push(getInspectUrl());
+    }
+  };
+
   return (
     <>
       {/* 알림 바: 대기 건수 0이면 자동 숨김(상시 빨강 아님). data-count로 제어 */}
-      <div className="needbar" id="needbar" data-count="2">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-          <path d="M12 3 2 20h20L12 3z" />
-          <path d="M12 10v4M12 17v.5" />
-        </svg>
-        <span>
-          <b>확인 안 한 항목 2건.</b> 게시 전 검토해 주세요.
-        </span>
-        <span className="go">
-          보기
+      {needCount > 0 && (
+        <div className="needbar" id="needbar" data-count={needCount}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-            <path d="M5 12h14M13 6l6 6-6 6" />
+            <path d="M12 3 2 20h20L12 3z" />
+            <path d="M12 10v4M12 17v.5" />
           </svg>
-        </span>
-      </div>
+          <span>
+            <b>확인 안 한 항목 {needCount}건.</b> 게시 전 검토해 주세요.
+          </span>
+          <span
+            className="go"
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push("/report/demo-id-1")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push("/report/demo-id-1");
+              }
+            }}
+          >
+            보기
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </span>
+        </div>
+      )}
 
       <div className="hero">
         <div className="eyebrow">
@@ -94,7 +142,14 @@ export default function HomePage() {
 
       <div className="doorwrap">
         <div className="doors">
-          <Link href="/inspect" className="door">
+          <div
+            className="door"
+            role="button"
+            tabIndex={0}
+            onClick={handleDomesticClick}
+            onKeyDown={handleDomesticKeyDown}
+            aria-label="국내 광고 검증 시작"
+          >
             <div className="dtop">
               <span className="dno">KR</span>
               <span>국내 · 화장품법 기준</span>
@@ -122,9 +177,16 @@ export default function HomePage() {
                 <span className="mono">→</span>
               </div>
             </div>
-          </Link>
+          </div>
 
-          <Link href={getInspectUrl()} className="door">
+          <div
+            className="door"
+            role="button"
+            tabIndex={0}
+            onClick={handleOverseasClick}
+            onKeyDown={handleOverseasKeyDown}
+            aria-label="해외 수출용 광고 검증 시작"
+          >
             <div className="dtop">
               <span className="dno">EX</span>
               <span>해외 · 수출 대상국 기준</span>
@@ -167,7 +229,7 @@ export default function HomePage() {
                 <span className="mono">→</span>
               </div>
             </div>
-          </Link>
+          </div>
         </div>
       </div>
 
