@@ -42,6 +42,21 @@ _MISMATCH_XLSX = _READ_TEST / "label_worksheet_mismatches.xlsx"
 # 최우선으로 봐야 하는 (이미지번호, 문장#). 2026-08-13 검수 실행 결과 기준.
 _PRIORITY_CASES = {("13", 20)}
 
+# 결론이 "그 성분이 실제로 기준 함량을 채웠는가"에 달린 불일치(2호_기능성오인 계열).
+# 문장·이미지만으로는 함량을 확정할 수 없으니, 하니 지시대로 비비가 따로 안 찾아보고
+# 바로 검토필요로 두게 표시만 해준다(PM 2026-08-13 추가 규칙). 판정 자체을 여기서
+# 대신 내리는 게 아니라 "이건 함량 확인이 필요한 유형이다"라는 분류 힌트일 뿐이라,
+# 최종 기입은 여전히 비비 몫이다. 36건 원문·근거를 읽고 직접 골랐다(2026-08-13).
+_AMOUNT_DEPENDENT_CASES = {
+    ("06", 6),   # 안나홀츠 안티링클 아이크림 — 주름개선 표방, 고시원료·함량 확인 필요
+    ("07", 1),   # 홀츠포맨 콜라겐 안티링크 화이트닝 올인원 — 미백·주름개선 표방
+    ("07", 3),   # 미백, 주름개선 2중 기능성 — LLM 근거가 직접 "기준함량 정합성" 언급
+    ("07", 4),   # 콜라겐 추출물 1000ppm 함유 — LLM 근거가 직접 "함량 산정 기준" 언급
+    ("09", 83),  # 피부의 미백에 도움을 준다 — 미백 표방, 고시원료·함량 확인 필요
+    ("09", 84),  # 피부의 주름개선에 도움을 준다 — 주름개선 표방, 고시원료·함량 확인 필요
+    ("13", 20),  # 미백ㆍ주름개선 이중기능성 화장품 — 최우선(_PRIORITY_CASES)과 겹침
+}
+
 # 검수용 모델 — 프로덕션(gpt-5-mini)과 다른 모델이어야 순환참조가 안 생긴다.
 REVIEW_MODEL = "gpt-5.6-luna"
 
@@ -263,7 +278,9 @@ def export_mismatches() -> None:
     label_worksheet_reviewed.xlsx에서 "일치여부"=="불일치"인 행을, 대수 판정/근거메모와
     LLM 판정/근거를 나란히 놓아 인용 검증하기 쉽게 정리한다. _PRIORITY_CASES에 지정된
     (이미지, 문장#)는 recall 우선 원칙상 가장 위험한 방향(사람=위반→LLM=합법 등)이라
-    빨간색으로 최우선 표시한다.
+    빨간색으로 최우선 표시한다. _AMOUNT_DEPENDENT_CASES는 결론이 성분 함량 확인에
+    달린 유형이라(PM 2026-08-13 규칙: 이런 건 무조건 검토필요) 초록색으로 표시해
+    비비가 바로 규칙 적용하고 넘어갈 수 있게 한다 — 최종 기입은 비비 몫이다.
     """
     wb = openpyxl.load_workbook(_OUT_XLSX)
     ws = wb["라벨링"]
@@ -275,6 +292,7 @@ def export_mismatches() -> None:
     header_font = Font(bold=True, size=11)
     header_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
     priority_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    amount_fill = PatternFill(start_color="C6E0B4", end_color="C6E0B4", fill_type="solid")
     thin = Border(*(Side(style="thin"),) * 4)
     wrap = Alignment(wrap_text=True, vertical="top")
 
@@ -282,9 +300,9 @@ def export_mismatches() -> None:
         "이미지", "상품코드", "문장#", "문장",
         "대수_판정", "대수_위반유형", "대수_근거메모",
         "LLM_판정", "LLM_위반유형", "LLM_근거",
-        "우선순위", "비비_최종판단",
+        "우선순위", "성분함량_의존", "비비_최종판단",
     ]
-    widths = [8, 12, 8, 45, 10, 16, 30, 10, 16, 45, 10, 40]
+    widths = [8, 12, 8, 45, 10, 16, 30, 10, 16, 45, 10, 14, 40]
     for ci, (h, w) in enumerate(zip(headers, widths), 1):
         c = out_ws.cell(row=1, column=ci, value=h)
         c.font, c.fill, c.border = header_font, header_fill, thin
@@ -292,17 +310,20 @@ def export_mismatches() -> None:
 
     row_out = 2
     n_priority = 0
+    n_amount_dependent = 0
     for r in range(2, ws.max_row + 1):
         if str(ws.cell(r, 11).value or "").strip() != "불일치":
             continue
         nn = str(ws.cell(r, 1).value or "").strip()
         seq = ws.cell(r, 3).value
         is_priority = (nn, seq) in _PRIORITY_CASES
+        is_amount_dependent = (nn, seq) in _AMOUNT_DEPENDENT_CASES
         values = [
             nn, ws.cell(r, 2).value, seq, ws.cell(r, 4).value,
             ws.cell(r, 5).value, ws.cell(r, 6).value, ws.cell(r, 7).value,
             ws.cell(r, 8).value, ws.cell(r, 9).value, ws.cell(r, 10).value,
             "최우선" if is_priority else "",
+            "예 (규칙: 검토필요)" if is_amount_dependent else "",
             "",
         ]
         for ci, v in enumerate(values, 1):
@@ -312,13 +333,19 @@ def export_mismatches() -> None:
                 c.alignment = wrap
             if is_priority:
                 c.fill = priority_fill
+            elif is_amount_dependent:
+                c.fill = amount_fill
         n_priority += is_priority
+        n_amount_dependent += is_amount_dependent
         row_out += 1
 
-    out_ws.auto_filter.ref = f"A1:L{row_out - 1}"
+    out_ws.auto_filter.ref = f"A1:M{row_out - 1}"
     out_ws.freeze_panes = "A2"
     out_wb.save(_MISMATCH_XLSX)
-    print(f"불일치 {row_out - 2}건 저장: {_MISMATCH_XLSX} (최우선 {n_priority}건 빨간색 표시)")
+    print(
+        f"불일치 {row_out - 2}건 저장: {_MISMATCH_XLSX} "
+        f"(최우선 {n_priority}건 빨간색, 성분함량_의존 {n_amount_dependent}건 초록색 표시)"
+    )
 
 
 def main() -> None:
