@@ -161,6 +161,12 @@
   .falt .faltlabel b{font-size:11.5px; color:var(--ink-2); font-weight:700}
   .falt .faltlabel .faltflag{font-family:var(--mono); font-size:9.5px; color:var(--ink-3); border:1px solid var(--line-2); padding:1px 6px}
   .falt .falttext{font-size:13px; color:var(--ink-2); line-height:1.6}
+  .falt .falttext + .falttext{margin-top:6px}
+  /* free 티어 잠금: 두 번째 문장만 블러 처리 + 오버레이(색 아님, 회색·아이콘·글자로 상태 표시) */
+  .faltlock{position:relative; margin-top:6px}
+  .faltlock .falttext.blur{filter:blur(4px); user-select:none}
+  .faltlockov{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--surface-sub); opacity:.92; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); text-align:center; padding:4px}
+  .faltlockov svg{width:14px; height:14px; flex:0 0 auto}
   .factions{display:flex; gap:6px}
   .fabtn{font-family:var(--sans); font-size:11.5px; font-weight:600; padding:6px 11px; border:1px solid var(--line-2); background:transparent; color:var(--ink-3); cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:background .12s,color .12s,border-color .12s}
   .fabtn svg{width:13px; height:13px}
@@ -259,6 +265,12 @@
               <button data-f="text">텍스트 예시</button>
               <button data-f="unjudged">미판정 포함</button>
             </div>
+            <span class="msl devnote">요금제:</span>
+            <div class="msbtns" id="tierSwitch" role="group" aria-label="요금제 전환">
+              <button data-t="free" class="on">Free</button>
+              <button data-t="basic">Basic</button>
+              <button data-t="pro">Pro</button>
+            </div>
           </div>
         </div>
 
@@ -353,10 +365,14 @@
 
     var TYPE_LABEL = { "1호_의약품오인":"1호 · 의약품 오인", "2호_기능성오인":"2호 · 기능성 오인", "5호_거짓과장기만":"5호 · 거짓·과장·기만" };
 
+    /* teaser = free 티어에도 보이는 한 문장, detail = basic부터 전체 공개(free는 블러+잠금) */
     var ALT_POOL = [
-      "성분·효과 근거를 확인한 뒤, 개인차가 있을 수 있다는 표현으로 순화하는 안을 검토해보세요.",
-      "단정적 효능 표현 대신 “도움을 줄 수 있어요”처럼 가능성을 시사하는 톤으로 조정해보세요.",
-      "비교·수치 표현은 근거 자료(시험성적서 등)를 확보했을 때만 남기는 걸 권장해요."
+      { teaser:"성분·효과 근거를 확인한 뒤, 개인차가 있을 수 있다는 표현으로 순화하는 안을 검토해보세요.",
+        detail:"예: “피부 상태에 따라 효과 체감이 다를 수 있어요”처럼 조건표 안에서 허용되는 문구로 다듬을 수 있어요." },
+      { teaser:"단정적 효능 표현 대신 “도움을 줄 수 있어요”처럼 가능성을 시사하는 톤으로 조정해보세요.",
+        detail:"함께 표기된 근거 조항·성분표를 참고해 표현 범위를 정하면 더 안전해요." },
+      { teaser:"비교·수치 표현은 근거 자료(시험성적서 등)를 확보했을 때만 남기는 걸 권장해요.",
+        detail:"자료가 없다면 비교 문구 자체를 빼고 사용감 위주로 서술하는 게 안전해요." }
     ];
 
     var ICONS = {
@@ -367,8 +383,8 @@
       hold:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>'
     };
 
-    /* ===== 상태: 현재 fixture + 카드별 사용자 액션(수용/제외/보류) ===== */
-    var state = { fixture:'image', actions:{} };
+    /* ===== 상태: 현재 fixture + 티어(무료/유료 게이팅 목업) + 카드별 사용자 액션(수용/제외/보류) ===== */
+    var state = { fixture:'image', tier:'free', actions:{} };
 
     function esc(s){ return String(s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
     function altFor(i){ return ALT_POOL[i % ALT_POOL.length]; }
@@ -465,7 +481,13 @@
             '<p class="fexpl">'+esc(f.explanation)+'</p>'+
             '<div class="falt">'+
               '<div class="faltlabel"><b>대체 표현 제안</b><span class="faltflag">권고안 · 확정 아님</span></div>'+
-              '<div class="falttext">'+esc(altFor(i))+'</div>'+
+              '<div class="falttext">'+esc(altFor(i).teaser)+'</div>'+
+              (state.tier === 'free'
+                ? '<div class="faltlock">'+
+                    '<div class="falttext blur">'+esc(altFor(i).detail)+'</div>'+
+                    '<div class="faltlockov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><rect x="5" y="10" width="14" height="10"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Basic부터 전체 권고안 제공</div>'+
+                  '</div>'
+                : '<div class="falttext">'+esc(altFor(i).detail)+'</div>')+
             '</div>'+
             '<div class="factions">'+
               '<button class="fabtn accept'+(act==='accept'?' on':'')+'" data-act="accept">'+ICONS.accept+'수용</button>'+
@@ -499,6 +521,14 @@
       var b = e.target.closest('button'); if(!b) return;
       state.fixture = b.getAttribute('data-f'); state.actions = {};
       sw.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x===b); });
+      render();
+    });
+
+    var tsw = document.getElementById('tierSwitch');
+    tsw.addEventListener('click', function(e){
+      var b = e.target.closest('button'); if(!b) return;
+      state.tier = b.getAttribute('data-t');
+      tsw.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x===b); });
       render();
     });
 
