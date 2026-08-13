@@ -116,6 +116,17 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // unjudged의 order 기준으로 정렬
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
 
+  const hasInteracted = Object.keys(actions).length > 0;
+  const acceptedIndices = hasInteracted
+    ? Object.entries(actions)
+        .filter(([_, act]) => act === "accept")
+        .map(([i]) => i)
+        .join(",")
+    : d.findings
+        .map((f, i) => (f.flag === "위반" ? i : -1))
+        .filter((idx) => idx !== -1)
+        .join(",");
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
@@ -464,7 +475,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 하단 브릿지 */}
       <div className="bridge">
         <p>지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        <Link href="/content" className="btn primary">
+        <Link
+          href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+          className="btn primary"
+        >
           이 수정안대로 상세페이지 만들기 <span className="mono">→</span>
         </Link>
       </div>
