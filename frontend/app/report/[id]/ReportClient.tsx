@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, Clock } from "@phosphor-icons/react";
-import type { ReportEnvelope } from "@/lib/api/schema";
-import { getReport } from "@/lib/api/client";
+import type { ReportEnvelope, Finding } from "@/lib/api/schema";
+import { getReport, getRemediation } from "@/lib/api/client";
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -12,11 +12,115 @@ const TYPE_LABEL = {
   "5호_거짓과장기만": "5호 · 거짓·과장·기만",
 };
 
-const ALT_POOL = [
-  "성분·효과 근거를 확인한 뒤, 개인차가 있을 수 있다는 표현으로 순화하는 안을 검토해보세요.",
-  "단정적 효능 표현 대신 “도움을 줄 수 있어요”처럼 가능성을 시사하는 톤으로 조정해보세요.",
-  "비교·수치 표현은 근거 자료(시험성적서 등)를 확보했을 때만 남기는 걸 권장해요."
-];
+interface FindingCardProps {
+  finding: Finding;
+  index: number;
+  num: number;
+  act: "accept" | "exclude" | "hold" | null;
+  onAction: (idx: number, act: "accept" | "exclude" | "hold") => void;
+}
+
+function FindingCard({ finding, index, num, act, onAction }: FindingCardProps) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getRemediation({
+      sentence: finding.sentence,
+      violation_type: finding.violation_type,
+      span: finding.span,
+    })
+      .then((res) => {
+        if (active) {
+          setSuggestions(res.suggestions);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch remediation suggestion", err);
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [finding]);
+
+  const cls = finding.flag === "위반" ? "violation" : "review";
+  const stCls = act ? ` st-${act}` : "";
+
+  return (
+    <div className={`fcard ${cls}${stCls}`} data-i={index}>
+      <div className="fhead">
+        <span className="fbadge">{num}</span>
+        <span className="ftype">
+          {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+        </span>
+        <span className="fflag">
+          {cls === "violation" ? (
+            <Warning size={14} weight="bold" />
+          ) : (
+            <MagnifyingGlass size={14} weight="bold" />
+          )}
+          {finding.flag}
+        </span>
+      </div>
+      <div className="fbody">
+        <p
+          className="fsent"
+          dangerouslySetInnerHTML={{
+            __html: escapeHtml(finding.sentence).replace(
+              escapeHtml(finding.span),
+              `<span class="fspan">${escapeHtml(finding.span)}</span>`
+            ),
+          }}
+        />
+        <p className="fbasis">{finding.legal_basis}</p>
+        <p className="fexpl">{finding.explanation}</p>
+        <div className="falt">
+          <div className="faltlabel">
+            <b>대체 표현 제안</b>
+            <span className="faltflag">권고안 · 확정 아님</span>
+          </div>
+          <div className="falttext">
+            {loading ? (
+              <span className="dim">로딩 중...</span>
+            ) : suggestions.length > 0 ? (
+              suggestions.join(", ")
+            ) : (
+              <span className="dim">대체 표현 없음</span>
+            )}
+          </div>
+        </div>
+        <div className="factions">
+          <button
+            className={`fabtn accept${act === "accept" ? " on" : ""}`}
+            onClick={() => onAction(index, "accept")}
+          >
+            <Check size={13} weight="bold" />
+            수용
+          </button>
+          <button
+            className={`fabtn exclude${act === "exclude" ? " on" : ""}`}
+            onClick={() => onAction(index, "exclude")}
+          >
+            <X size={13} weight="bold" />
+            제외
+          </button>
+          <button
+            className={`fabtn hold${act === "hold" ? " on" : ""}`}
+            onClick={() => onAction(index, "hold")}
+          >
+            <Clock size={13} weight="bold" />
+            보류
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface ReportClientProps {
   envelope: ReportEnvelope;
@@ -378,75 +482,16 @@ export function ReportClient({ envelope }: ReportClientProps) {
             <span className="hint"><span className="num">{d.findings.length}</span>건</span>
           </div>
           <div className="findlist">
-            {findByOrder.map((o) => {
-              const f = o.f;
-              const i = o.idx;
-              const cls = f.flag === "위반" ? "violation" : "review";
-              const act = actions[i];
-              const stCls = act ? ` st-${act}` : "";
-
-              return (
-                <div className={`fcard ${cls}${stCls}`} key={i} data-i={i}>
-                  <div className="fhead">
-                    <span className="fbadge">{o.num}</span>
-                    <span className="ftype">
-                      {TYPE_LABEL[f.violation_type as keyof typeof TYPE_LABEL] || f.violation_type}
-                    </span>
-                    <span className="fflag">
-                      {cls === "violation" ? (
-                        <Warning size={14} weight="bold" />
-                      ) : (
-                        <MagnifyingGlass size={14} weight="bold" />
-                      )}
-                      {f.flag}
-                    </span>
-                  </div>
-                  <div className="fbody">
-                    <p
-                      className="fsent"
-                      dangerouslySetInnerHTML={{
-                        __html: escapeHtml(f.sentence).replace(
-                          escapeHtml(f.span),
-                          `<span class="fspan">${escapeHtml(f.span)}</span>`
-                        ),
-                      }}
-                    />
-                    <p className="fbasis">{f.legal_basis}</p>
-                    <p className="fexpl">{f.explanation}</p>
-                    <div className="falt">
-                      <div className="faltlabel">
-                        <b>대체 표현 제안</b>
-                        <span className="faltflag">권고안 · 확정 아님</span>
-                      </div>
-                      <div className="falttext">{ALT_POOL[i % ALT_POOL.length]}</div>
-                    </div>
-                    <div className="factions">
-                      <button
-                        className={`fabtn accept${act === "accept" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "accept")}
-                      >
-                        <Check size={13} weight="bold" />
-                        수용
-                      </button>
-                      <button
-                        className={`fabtn exclude${act === "exclude" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "exclude")}
-                      >
-                        <X size={13} weight="bold" />
-                        제외
-                      </button>
-                      <button
-                        className={`fabtn hold${act === "hold" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "hold")}
-                      >
-                        <Clock size={13} weight="bold" />
-                        보류
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {findByOrder.map((o) => (
+              <FindingCard
+                key={o.idx}
+                finding={o.f}
+                index={o.idx}
+                num={o.num}
+                act={actions[o.idx] || null}
+                onAction={handleAction}
+              />
+            ))}
           </div>
           {d.unjudged.length > 0 && (
             <div className="ujwrap">

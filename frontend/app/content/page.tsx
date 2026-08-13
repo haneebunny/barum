@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport } from "@/lib/api/client";
-import type { CheckReport } from "@/lib/api/schema";
+import { getReport, generateContent } from "@/lib/api/client";
+import type { CheckReport, GenerateResponse, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf } from "@phosphor-icons/react";
 
 interface ContentMockData {
@@ -99,6 +99,23 @@ function ContentGeneratorContent() {
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [exportingType, setExportingType] = useState<"html" | "png" | "pdf" | null>(null);
+  const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
+  const [confirmedRisks, setConfirmedRisks] = useState<Record<string, boolean>>({});
+
+  const buildOriginalContent = (reportData: CheckReport) => {
+    const items: Array<{ sentence: string; order: number }> = [];
+    reportData.findings.forEach((f) => {
+      if (!items.some((it) => it.sentence === f.sentence)) {
+        items.push({ sentence: f.sentence, order: f.location.order });
+      }
+    });
+    reportData.unjudged.forEach((u) => {
+      if (!items.some((it) => it.sentence === u.sentence)) {
+        items.push({ sentence: u.sentence, order: u.location.order });
+      }
+    });
+    return items.sort((a, b) => a.order - b.order).map((it) => it.sentence).join(" ");
+  };
 
   const startGenRef = useRef<HTMLButtonElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -204,18 +221,44 @@ function ContentGeneratorContent() {
     };
   }, [dropdownOpen]);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsModalOpen(false);
-    setIsGenerated(true);
+    setLoading(true);
+    try {
+      let rawContent = "";
+      if (report) {
+        rawContent = buildOriginalContent(report);
+      } else {
+        rawContent = "자외선 차단 100%! 피부 재생 및 기미·주근깨 완벽 치료하는 선크림 SPF50";
+      }
+
+      const ingredients = report
+        ? Array.from(new Set(report.findings.map(f => f.span))).join(", ")
+        : undefined;
+
+      const res = await generateContent({
+        mode: "improve",
+        content: rawContent,
+        result_id: id || undefined,
+        product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
+        ingredients: ingredients || undefined,
+        certifications: [],
+      });
+      setGenResult(res);
+      setIsGenerated(true);
+    } catch (err) {
+      console.error(err);
+      alert("콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCopy = () => {
-    const text =
-      `${mockData.productName}\n\n` +
-      mockData.sections
-        .filter((s) => s.text)
-        .map((s) => s.text)
-        .join("\n\n");
+    if (!genResult) return;
+    const text = genResult.sections
+      .map((s) => `[${s.kind}]\n${s.text}`)
+      .join("\n\n");
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
@@ -224,11 +267,22 @@ function ContentGeneratorContent() {
 
   // HTML 내보내기 (Blob)
   const exportHtml = () => {
+    if (!genResult) return;
+    const productName = report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "제품";
+    
+    const sectionsHtml = genResult.sections.map((s) => {
+      return `<div class="dp-block"><b>${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})</b><p>${s.text}</p></div>`;
+    }).join("");
+
+    const imagesHtml = genResult.image_plan.placed.map((img) => {
+      return `<div class="dp-img"><span>${img.image_url}</span></div>`;
+    }).join("");
+
     const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>${mockData.productName} 상세페이지 초안</title>
+  <title>${productName} 상세페이지 초안</title>
   <style>
     body { font-family: sans-serif; padding: 40px; background: #E7ECEB; color: #14231B; display: flex; justify-content: center; }
     .detailpage { width: 100%; max-width: 520px; background: #fff; border: 1px solid #CDD6D3; }
@@ -243,18 +297,10 @@ function ContentGeneratorContent() {
 </head>
 <body>
   <div class="detailpage">
-    <div class="dp-hero"><span>${mockData.productName}</span></div>
-    ${mockData.layout
-      .map((row) => {
-        if (row.type === "image") {
-          const img = mockData.imagesPlaced[row.i];
-          return `<div class="dp-img"><span>${img.image_url}</span></div>`;
-        }
-        const s = mockData.sections[row.i];
-        return `<div class="dp-block"><b>${s.kind} (${SRC_LABEL[s.source] || s.source})</b><p>${s.text}</p></div>`;
-      })
-      .join("")}
-    <div class="dp-close">본 상세페이지는 바름의 수정 권고안을 반영한 초안입니다. 게시 전 사업자 확인이 필요합니다.</div>
+    <div class="dp-hero"><span>${productName}</span></div>
+    ${sectionsHtml}
+    ${imagesHtml}
+    <div class="dp-close">${genResult.disclaimer}</div>
   </div>
 </body>
 </html>`;
@@ -263,7 +309,7 @@ function ContentGeneratorContent() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${mockKey}_detail_draft.html`;
+    a.download = `detail_draft.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -449,56 +495,86 @@ function ContentGeneratorContent() {
         )}
 
         {/* 생성 결과 (게이트 통과 후 표시) */}
-        {isGenerated && (
+        {isGenerated && genResult && (
           <div id="resultWrap">
-            <div className="recheck" id="recheckBadge">
-              <Check size={14} weight="bold" style={{ color: "var(--brand-ink)", marginRight: "4px" }} />
-              재검증 통과 · 위반 0건 · 검토필요 0건
+            <div className={`recheck${!genResult.recheck.safe ? " warn" : ""}`} id="recheckBadge" style={{
+              backgroundColor: genResult.recheck.safe ? undefined : "var(--crit-surface)",
+              borderColor: genResult.recheck.safe ? undefined : "var(--crit)",
+              color: genResult.recheck.safe ? undefined : "var(--crit)"
+            }}>
+              {genResult.recheck.safe ? (
+                <>
+                  <Check size={14} weight="bold" style={{ color: "var(--brand-ink)", marginRight: "4px" }} />
+                  재검증 통과 · 위반 0건 · 검토필요 0건
+                </>
+              ) : (
+                <>
+                  <X size={14} weight="bold" style={{ color: "var(--crit)", marginRight: "4px" }} />
+                  재검증 실패 · 위반 {genResult.recheck.n_violation}건 · 검토필요 {genResult.recheck.n_needs_review}건
+                </>
+              )}
             </div>
             <div className="genframe">
               <div className="genhead">
                 <span className="dot"></span>
-                <span className="fname">{mockKey}_detail_draft.html</span>
+                <span className="fname">detail_draft.html</span>
               </div>
               <div className="genbody">
                 <div className="detailpage" id="detailPage">
                   <div className="dp-hero">
-                    <span className="dp-htxt">{mockData.productName}</span>
+                    <span className="dp-htxt">{report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림"}</span>
                   </div>
                   <div id="secList">
-                    {mockData.layout.map((row, idx) => {
-                      if (row.type === "image") {
-                        const img = mockData.imagesPlaced[row.i];
-                        return (
-                          <div className="dp-block img" key={idx}>
-                            <div className="dp-img">
-                              <span className="dp-imglabel">{img?.image_url}</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      const s = mockData.sections[row.i];
-                      return (
-                        <div className="dp-block" key={idx}>
-                          <div className="dp-kind">
-                            <b>{s.kind}</b>
-                            <span className="dp-src">{SRC_LABEL[s.source] || s.source}</span>
-                          </div>
-                          <p>{s.text}</p>
+                    {genResult.sections.map((s, idx) => (
+                      <div className="dp-block" key={idx}>
+                        <div className="dp-kind">
+                          <b>{s.kind}</b>
+                          <span className="dp-src">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
                         </div>
-                      );
-                    })}
+                        <p>{s.text}</p>
+                      </div>
+                    ))}
+                    {genResult.image_plan.placed.map((img, idx) => (
+                      <div className="dp-block img" key={`img-${idx}`}>
+                        <div className="dp-img">
+                          <span className="dp-imglabel">{img.image_url}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                   <div className="dp-close" id="dpDisclaimer">
-                    본 상세페이지는 바름의 수정 권고안을 반영한 초안입니다. 게시 전 사업자 확인이 필요합니다.
+                    {genResult.disclaimer}
                   </div>
                 </div>
               </div>
             </div>
+            {genResult.risk_confirmations.length > 0 && (
+              <div className="srccard" style={{ margin: "14px 0", width: "100%", border: "1px solid var(--crit)" }}>
+                <p className="sctitle" style={{ color: "var(--crit)", fontWeight: "bold" }}>⚠️ 자동 수정 불가 잔존 위험 · {genResult.risk_confirmations.length}건 (확인 필요)</p>
+                <ul className="srclist" style={{ padding: "8px 12px" }}>
+                  {genResult.risk_confirmations.map((rc) => (
+                    <li key={rc.id} style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "8px" }}>
+                      <input
+                        type="checkbox"
+                        id={rc.id}
+                        checked={!!confirmedRisks[rc.id]}
+                        onChange={(e) => setConfirmedRisks(prev => ({ ...prev, [rc.id]: e.target.checked }))}
+                        style={{ marginTop: "3px" }}
+                      />
+                      <label htmlFor={rc.id} style={{ cursor: "pointer" }}>
+                        <span style={{ fontWeight: "bold", fontSize: "13px" }}>{rc.text}</span>
+                        <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>{rc.reason}</p>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="genactions">
               <p>
                 생성된 문구는 리포트에서 수용한 권고안을 조건표 안에서 재배열한 것으로, 원문에 없던 효능을 새로 만들지
                 않았습니다.
+                {genResult.risk_confirmations.length > 0 && " (잔존 위험 항목 확인 후 사용을 권장합니다.)"}
               </p>
               <div className="btnrow">
                 <button className={`btn ghost ${copied ? "copied" : ""}`} id="copyBtn" onClick={handleCopy}>
