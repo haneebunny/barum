@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, Clock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding } from "@/lib/api/schema";
-import { getReport, getRemediation } from "@/lib/api/client";
+import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 const TYPE_LABEL = {
@@ -19,9 +19,12 @@ interface FindingCardProps {
   num: number;
   act: "accept" | "exclude" | "hold" | null;
   onAction: (idx: number, act: "accept" | "exclude" | "hold") => void;
+  isHovered: boolean;
+  onHover: (hover: boolean) => void;
+  onCardClick?: (idx: number) => void;
 }
 
-function FindingCard({ finding, index, num, act, onAction }: FindingCardProps) {
+function FindingCard({ finding, index, num, act, onAction, isHovered, onHover, onCardClick }: FindingCardProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,12 +58,28 @@ function FindingCard({ finding, index, num, act, onAction }: FindingCardProps) {
 
   const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] ${
     cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
-  } ${isExcluded ? "opacity-50" : ""} ${isHold ? "relative" : ""}`;
+  } ${isExcluded ? "opacity-50" : ""} ${isHold ? "relative" : ""} ${
+    isHovered ? "translate-x-0.5 border-[var(--ink-2)] bg-[var(--surface-sub)]" : ""
+  }`;
 
   const spanStyle = cls === "violation" ? "font-bold text-[var(--crit)] border-b-2 border-[var(--crit)]" : "font-bold text-[var(--ink)] border-b-2 border-[var(--ink-3)]";
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) {
+      return;
+    }
+    onCardClick?.(index);
+  };
+
   return (
-    <div className={cardCls} data-i={index}>
+    <div
+      className={cardCls}
+      data-i={index}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      onClick={handleCardClick}
+      style={{ cursor: "pointer" }}
+    >
       {isHold && <span className="absolute top-[9px] right-[12px] font-mono text-[10px] text-[var(--ink-3)]">보류 중</span>}
       <div className="flex items-center gap-2.25 p-[9px_12px] border-b border-[var(--line)] bg-[var(--surface-sub)]">
         <span className={`shrink-0 w-5 h-5 inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${
@@ -195,6 +214,19 @@ export function ReportClient({ envelope }: ReportClientProps) {
   });
   const [loading, setLoading] = useState(false);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | "hold" | null>>({});
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const scrollToBox = (idx: number, isUj = false) => {
+    const id = isUj ? `highlight-box-uj-${idx}` : `highlight-box-${idx}`;
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  };
 
   const handleAction = (idx: number, act: "accept" | "exclude" | "hold") => {
     setActions((prev) => {
@@ -384,6 +416,168 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 const tiles = Object.keys(byTile).sort();
 
+                const sampleLoc = findByOrder[0]?.f.location || ujByOrder[0]?.location;
+                const srcW = sampleLoc?.source_w;
+                const srcH = sampleLoc?.source_h;
+
+                const hasCoords =
+                  typeof srcW === "number" &&
+                  typeof srcH === "number" &&
+                  srcW > 0 &&
+                  srcH > 0;
+
+                const isMockId =
+                  activeEnvelope.result_id === "demo-image-id" ||
+                  activeEnvelope.result_id === "image" ||
+                  activeEnvelope.result_id === "demo-id-1" ||
+                  activeEnvelope.result_id === "demo-id-3" ||
+                  activeEnvelope.result_id === "demo-id-5";
+
+                const showRealImage = hasCoords && !isMockId && !imageErrors.global;
+                const imageUrl = getReportImageUrl(activeEnvelope.result_id);
+
+                if (showRealImage) {
+                  return (
+                    <div className="border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
+                      <div className="font-mono text-[10.5px] text-[var(--ink-3)] mb-1">
+                        원본 광고 검증 이미지 ({srcW}x{srcH} px)
+                      </div>
+                      <div
+                        className="relative w-full"
+                        style={{
+                          aspectRatio: `${srcW} / ${srcH}`,
+                          overflow: "hidden",
+                          backgroundColor: "var(--surface)",
+                        }}
+                      >
+                        <img
+                          src={imageUrl}
+                          alt="원본 광고"
+                          onError={() => {
+                            setImageErrors((prev) => ({ ...prev, global: true }));
+                          }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "block",
+                          }}
+                        />
+
+                            {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
+                            <div className="absolute inset-0 z-10 pointer-events-none">
+                              {findByOrder.map((o) => {
+                                const loc = o.f.location;
+                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+                                const isExcluded = actions[o.idx] === "exclude";
+                                if (isExcluded) return null;
+
+                                const topPct = (loc.y_start / srcH) * 100;
+                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const isViolation = o.f.flag === "위반";
+                                const isHovered = hoveredIndex === o.idx;
+
+                                return (
+                                  <div
+                                    id={`highlight-box-${o.idx}`}
+                                    key={`find-${o.idx}`}
+                                    style={{
+                                  position: "absolute",
+                                  left: 0,
+                                  right: 0,
+                                  top: `${topPct}%`,
+                                  height: `${heightPct}%`,
+                                  border: isViolation
+                                    ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.4)"}`
+                                    : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.3)"}`,
+                                  backgroundColor: isViolation
+                                    ? (isHovered ? "rgba(239, 68, 68, 0.12)" : "rgba(239, 68, 68, 0.04)")
+                                    : (isHovered ? "rgba(100, 116, 139, 0.12)" : "rgba(100, 116, 139, 0.02)"),
+                                  pointerEvents: "auto",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease-in-out",
+                                }}
+                                onMouseEnter={() => setHoveredIndex(o.idx)}
+                                onMouseLeave={() => setHoveredIndex(null)}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    left: "6px",
+                                    top: "6px",
+                                    width: "19px",
+                                    height: "19px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontFamily: "monospace",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    borderRadius: "50%",
+                                    border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
+                                    color: isViolation ? "var(--crit)" : "var(--ink-3)",
+                                    backgroundColor: "var(--surface)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                  }}
+                                >
+                                  {o.num}
+                                </span>
+                              </div>
+                            );
+                          })}
+
+                              {ujByOrder.map((u, i) => {
+                                const loc = u.location;
+                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+
+                                const topPct = (loc.y_start / srcH) * 100;
+                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const letter = String.fromCharCode(65 + i);
+
+                                return (
+                                  <div
+                                    id={`highlight-box-uj-${i}`}
+                                    key={`uj-${i}`}
+                                    style={{
+                                  position: "absolute",
+                                  left: 0,
+                                  right: 0,
+                                  top: `${topPct}%`,
+                                  height: `${heightPct}%`,
+                                  border: "2px dashed rgba(100, 116, 139, 0.2)",
+                                  backgroundColor: "rgba(100, 116, 139, 0.01)",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    right: "6px",
+                                    top: "6px",
+                                    width: "19px",
+                                    height: "19px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontFamily: "monospace",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    borderRadius: "50%",
+                                    border: "1px dashed var(--ink-3)",
+                                    color: "var(--ink-3)",
+                                    backgroundColor: "var(--surface)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                  }}
+                                >
+                                  {letter}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <>
                     {tiles.map((t) => {
@@ -398,14 +592,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
                               if (r.type === "find") {
                                 const isExcluded = actions[r.idx] === "exclude";
                                 const cls = r.item.flag === "위반" ? "violation" : "review";
+                                const isRowHovered = hoveredIndex === r.idx;
                                 return (
-                                  <div className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
-                                    isExcluded
-                                      ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                                      : cls === "violation"
-                                        ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-                                        : "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)] border-solid"
-                                  }`} key={ri}>
+                                  <div
+                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
+                                      isExcluded
+                                        ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                                        : cls === "violation"
+                                          ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
+                                          : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
+                                    }`}
+                                    onMouseEnter={() => setHoveredIndex(r.idx)}
+                                    onMouseLeave={() => setHoveredIndex(null)}
+                                    key={ri}
+                                  >
                                     <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${
                                       isExcluded
                                         ? "text-[var(--ink-3)] border-[var(--ink-3)]"
@@ -534,6 +734,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 num={o.num}
                 act={actions[o.idx] || null}
                 onAction={handleAction}
+                isHovered={hoveredIndex === o.idx}
+                onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                onCardClick={(idx) => scrollToBox(idx, false)}
               />
             ))}
           </div>
@@ -547,7 +750,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
               </div>
               <div className="flex flex-col gap-1.5">
                 {ujByOrder.map((u, i) => (
-                  <div className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px]" key={i}>
+                  <div
+                    className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px] cursor-pointer hover:bg-[var(--surface)] transition-all duration-[120ms]"
+                    onClick={() => scrollToBox(i, true)}
+                    key={i}
+                  >
                     <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
                     <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
                     <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
