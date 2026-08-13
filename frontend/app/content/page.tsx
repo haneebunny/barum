@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getReport, generateContent } from "@/lib/api/client";
 import type { CheckReport, GenerateResponse, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf } from "@phosphor-icons/react";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 interface ContentMockData {
   productName: string;
@@ -616,22 +617,7 @@ function ContentGeneratorContent() {
         )}
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 이 초안은 참고용이며 최종 게시 판단과 책임은 사업자에게
-        있습니다. <b>적용 기준: 화장품법 · 고시 2025-79호</b>
-      </div>
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">콘텐츠 생성 · 초안</span>
-        <span
-          className="seg"
-          style={{ cursor: "pointer" }}
-          onClick={() => router.push(id ? `/report/${id}` : "/")}
-        >
-          ^R 다시 검사
-        </span>
-      </div>
+      <PageFooter />
 
       {/* 생성 전 확인 모달 (터미널 다이얼로그) */}
       {isModalOpen && (

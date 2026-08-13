@@ -585,7 +585,7 @@ body {
   white-space: nowrap;
 }
 
-/* 컴플라이언스 + 상태바 */
+/* 컴플라이언스 고지 */
 .compliance {
   margin-top: 22px;
   padding: 10px 20px;
@@ -598,28 +598,6 @@ body {
 .compliance b {
   color: var(--brand-ink);
   font-weight: 600;
-}
-.statusbar {
-  display: flex;
-  border-top: 1px solid var(--line-2);
-  font-family: var(--mono);
-  font-size: 11px;
-  background: var(--surface-sub);
-}
-.statusbar .seg {
-  padding: 7px 13px;
-  border-right: 1px solid var(--line);
-  color: var(--ink-3);
-}
-.statusbar .seg.inv {
-  background: var(--brand-deep);
-  color: var(--on-brand);
-  font-weight: 700;
-}
-.statusbar .seg.grow {
-  flex: 1;
-  border-right: none;
-  color: var(--ink-3);
 }
 
 /* 터미널 커서(컨셉): 입력 대기 신호. reduced-motion이면 정지(보임 유지) */

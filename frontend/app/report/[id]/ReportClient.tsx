@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, Clock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding } from "@/lib/api/schema";
 import { getReport, getRemediation } from "@/lib/api/client";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -528,17 +529,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         </Link>
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) &apos;통과&apos;가
-        100% 안전을 보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b>적용 기준: 화장품법 · 고시 2025-79호</b>
-      </div>
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">국내 광고 검증 · 리포트</span>
-        <span className="seg">^R 다시 검사</span>
-      </div>
+      <PageFooter />
     </>
   );
 }
@@ -1037,29 +1028,6 @@ const styles = `
     color: var(--brand-ink);
     font-weight: 600;
   }
-  .statusbar {
-    display: flex;
-    border-top: 1px solid var(--line-2);
-    font-family: var(--mono);
-    font-size: 11px;
-    background: var(--surface-sub);
-  }
-  .statusbar .seg {
-    padding: 7px 13px;
-    border-right: 1px solid var(--line);
-    color: var(--ink-3);
-  }
-  .statusbar .seg.inv {
-    background: var(--brand-deep);
-    color: var(--on-brand);
-    font-weight: 700;
-  }
-  .statusbar .seg.grow {
-    flex: 1;
-    border-right: none;
-    color: var(--ink-3);
-  }
-
   @media (max-width: 900px) {
     .reportgrid {
       grid-template-columns: 1fr;
@@ -1067,9 +1035,6 @@ const styles = `
     .repcol.left {
       border-right: 0;
       border-bottom: 1px solid var(--line);
-    }
-    .statusbar .seg.grow {
-      display: none;
     }
     .modeswitch {
       margin-left: 0;
