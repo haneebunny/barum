@@ -629,13 +629,18 @@ body {
 }
 .modal {
   width: 100%;
-  max-width: 380px;
   background: var(--surface);
   border: 1px solid var(--line-2);
   font-family: var(--mono);
   box-shadow:
     0 14px 44px rgba(7, 11, 8, 0.28);
   animation: modalin 0.16s ease;
+}
+.modal.modal-sm {
+  max-width: 380px;
+}
+.modal.modal-md {
+  max-width: 560px;
 }
 @keyframes modalin {
   from {
@@ -673,7 +678,14 @@ body {
   color: var(--ink);
 }
 .modal-body {
-  padding: 8px;
+  padding: 16px 20px;
+}
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px dashed var(--line-2);
 }
 .modal .opt {
   display: flex;
@@ -1881,12 +1893,12 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .piilist li {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  gap: 8px;
   font-size: 12.5px;
   color: var(--ink-2);
 }
@@ -1908,10 +1920,14 @@ body {
 .checkrow {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  padding: 9px 6px;
-  border-bottom: 1px solid var(--line);
+  gap: 8px;
+  padding: 10px 8px;
+  border-bottom: 1px dashed var(--line);
   cursor: pointer;
+  transition: background 0.12s;
+}
+.checkrow:hover {
+  background: var(--surface-sub);
 }
 .checkrow:last-child {
   border-bottom: 0;
@@ -1928,6 +1944,37 @@ body {
   color: var(--ink-2);
   font-family: var(--sans);
   line-height: 1.55;
+}
+
+/* CLI 로그 전용 태그 및 체크박스 */
+.cli-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  line-height: 1;
+}
+.cli-tag.system {
+  color: var(--ink-3);
+}
+.cli-tag.warn {
+  color: var(--crit);
+}
+.cli-tag.info {
+  color: var(--brand-ink);
+}
+.cli-checkbox {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  margin-right: 4px;
+  flex: 0 0 auto;
+  user-select: none;
+}
+.cli-checkbox.checked {
+  color: var(--brand-ink);
 }
 
 @media (max-width: 900px) {
