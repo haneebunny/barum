@@ -22,11 +22,12 @@ _SYNONYMS_PATH = Path(__file__).resolve().parent / "data" / "synonyms.json"
 
 
 class RuleOutcome(Enum):
-    """규칙 매칭의 세 갈래. 미매칭은 match_rule이 None을 낸다(VLM 위임)."""
+    """규칙 매칭의 네 갈래. 미매칭은 match_rule이 None을 낸다(VLM 위임)."""
 
     violation = "violation"  # 위반 확정
     needs_review = "needs_review"  # 실증대상 등 근거 약함 → 검토필요
     legal_allow = "legal_allow"  # 합법 확정(finding 없음, VLM에도 안 넘김)
+    out_of_scope = "out_of_scope"  # 대상외(광고 문구 아님, finding 없음, VLM에도 안 넘김)
 
 
 @dataclass
@@ -83,6 +84,8 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
                 )
         if canonical in rules["legal_allow"]:
             return RuleMatch(RuleOutcome.legal_allow, canonical, None, None)
+        if canonical in rules.get("out_of_scope", []):
+            return RuleMatch(RuleOutcome.out_of_scope, canonical, None, None)
     return None
 
 
@@ -114,6 +117,10 @@ def match_rule(sentence: str) -> RuleMatch | None:
     for kw in rules["legal_allow"]:
         if _normalize(kw) in norm:
             return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
+
+    for kw in rules.get("out_of_scope", []):
+        if _normalize(kw) in norm:
+            return RuleMatch(RuleOutcome.out_of_scope, kw, None, None)
 
     # 대표어로 안 걸렸으면 동의어 변형으로 재시도
     return _match_synonyms(norm, rules)
