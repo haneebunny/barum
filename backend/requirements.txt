@@ -37,6 +37,7 @@ hyperframe==6.1.0
 idna==3.18
 iniconfig==2.3.0
 jiter==0.16.0
+langsmith>=0.4.33
 lxml==6.1.1
 multidict==6.7.1
 numpy==2.4.6

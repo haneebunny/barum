@@ -34,13 +34,15 @@ class GeminiVLM:
         rpm: int = 15,
     ):
         from google import genai
+        from langsmith import wrappers
 
         load_dotenv()
         self.model = model or os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite")
         key = api_key or os.environ.get("GOOGLE_API_KEY")
         if not key:
             raise RuntimeError("GOOGLE_API_KEY가 없다. .env를 확인할 것.")
-        self.client = genai.Client(api_key=key)
+        raw_client = genai.Client(api_key=key)
+        self.client = wrappers.wrap_gemini(raw_client)
         self.total_tokens = 0
         # 무료 티어는 분당 요청 수가 막혀 있다(기본 15 RPM). 초과하면 429로
         # 통째로 스킵되므로, 재시도 대신 호출 간격을 벌려 애초에 안 걸리게 한다.
@@ -101,13 +103,15 @@ class OpenAIVLM:
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
         from openai import OpenAI
+        from langsmith import wrappers
 
         load_dotenv()
         self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5-mini")
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY가 없다. .env를 확인할 것.")
-        self.client = OpenAI(api_key=key)
+        raw_client = OpenAI(api_key=key)
+        self.client = wrappers.wrap_openai(raw_client)
         self.total_tokens = 0
 
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
