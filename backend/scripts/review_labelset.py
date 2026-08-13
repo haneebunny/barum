@@ -36,6 +36,11 @@ _IMAGES_DIR = _READ_TEST / "images"
 _ANSWER_KEY = _READ_TEST / "_llm_answer_key.json"
 _LABEL_XLSX = _READ_TEST / "label_worksheet.xlsx"
 _OUT_XLSX = _READ_TEST / "label_worksheet_reviewed.xlsx"
+_MISMATCH_XLSX = _READ_TEST / "label_worksheet_mismatches.xlsx"
+
+# 불일치 중 recall 우선 원칙상 가장 위험한 방향(사람=위반→LLM=합법 등)이라 비비가
+# 최우선으로 봐야 하는 (이미지번호, 문장#). 2026-08-13 검수 실행 결과 기준.
+_PRIORITY_CASES = {("13", 20)}
 
 # 검수용 모델 — 프로덕션(gpt-5-mini)과 다른 모델이어야 순환참조가 안 생긴다.
 REVIEW_MODEL = "gpt-5.6-luna"
@@ -157,7 +162,7 @@ def write_reviewed_xlsx(rows: list[dict], results: dict[str, dict[int, dict]]) -
     thin = Border(*(Side(style="thin"),) * 4)
     wrap = Alignment(wrap_text=True, vertical="top")
 
-    headers = ["LLM_판정", "LLM_위반유형", "LLM_근거", "일치여부"]
+    headers = ["LLM_판정", "LLM_위반유형", "LLM_근거", "일치여부", "비비_최종판단"]
     for ci, h in enumerate(headers, 8):  # H=8
         c = ws.cell(row=1, column=ci, value=h)
         c.font, c.fill, c.border = header_font, header_fill, thin
@@ -165,6 +170,7 @@ def write_reviewed_xlsx(rows: list[dict], results: dict[str, dict[int, dict]]) -
     ws.column_dimensions["I"].width = 18
     ws.column_dimensions["J"].width = 50
     ws.column_dimensions["K"].width = 12
+    ws.column_dimensions["L"].width = 40  # 비비가 인용 검증 후 채우는 감사추적용 칸, 빈 채로 둔다
 
     by_nn = defaultdict(list)
     for r in rows:
@@ -225,11 +231,116 @@ def write_reviewed_xlsx(rows: list[dict], results: dict[str, dict[int, dict]]) -
         print(f"불일치 {n_mismatch}건은 노란색으로 표시됨 — 사람 최종확인 우선순위.")
 
 
+def ensure_final_column() -> None:
+    """이미 생성된 label_worksheet_reviewed.xlsx에 비비_최종판단 컬럼(L)이 없으면 추가한다.
+
+    API 호출 없이 기존 산출물만 패치한다 — review_labelset.py를 이 컬럼 포함 버전으로
+    다시 돌려 API 비용을 또 쓸 필요 없게, 과거 산출물 호환용으로 둔다.
+    """
+    wb = openpyxl.load_workbook(_OUT_XLSX)
+    ws = wb["라벨링"]
+    if ws.cell(row=1, column=12).value == "비비_최종판단":
+        print("이미 있음, 건너뜀.")
+        return
+
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    thin = Border(*(Side(style="thin"),) * 4)
+
+    c = ws.cell(row=1, column=12, value="비비_최종판단")
+    c.font, c.fill, c.border = header_font, header_fill, thin
+    ws.column_dimensions["L"].width = 40
+    for r in range(2, ws.max_row + 1):
+        ws.cell(row=r, column=12).border = thin
+    ws.auto_filter.ref = f"A1:L{ws.max_row}"
+    wb.save(_OUT_XLSX)
+    print(f"비비_최종판단 컬럼(L) 추가 완료: {_OUT_XLSX}")
+
+
+def export_mismatches() -> None:
+    """불일치 행만 뽑아 비비에게 넘길 별도 워크북을 만든다.
+
+    label_worksheet_reviewed.xlsx에서 "일치여부"=="불일치"인 행을, 대수 판정/근거메모와
+    LLM 판정/근거를 나란히 놓아 인용 검증하기 쉽게 정리한다. _PRIORITY_CASES에 지정된
+    (이미지, 문장#)는 recall 우선 원칙상 가장 위험한 방향(사람=위반→LLM=합법 등)이라
+    빨간색으로 최우선 표시한다.
+    """
+    wb = openpyxl.load_workbook(_OUT_XLSX)
+    ws = wb["라벨링"]
+
+    out_wb = openpyxl.Workbook()
+    out_ws = out_wb.active
+    out_ws.title = "불일치"
+
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    priority_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    thin = Border(*(Side(style="thin"),) * 4)
+    wrap = Alignment(wrap_text=True, vertical="top")
+
+    headers = [
+        "이미지", "상품코드", "문장#", "문장",
+        "대수_판정", "대수_위반유형", "대수_근거메모",
+        "LLM_판정", "LLM_위반유형", "LLM_근거",
+        "우선순위", "비비_최종판단",
+    ]
+    widths = [8, 12, 8, 45, 10, 16, 30, 10, 16, 45, 10, 40]
+    for ci, (h, w) in enumerate(zip(headers, widths), 1):
+        c = out_ws.cell(row=1, column=ci, value=h)
+        c.font, c.fill, c.border = header_font, header_fill, thin
+        out_ws.column_dimensions[c.column_letter].width = w
+
+    row_out = 2
+    n_priority = 0
+    for r in range(2, ws.max_row + 1):
+        if str(ws.cell(r, 11).value or "").strip() != "불일치":
+            continue
+        nn = str(ws.cell(r, 1).value or "").strip()
+        seq = ws.cell(r, 3).value
+        is_priority = (nn, seq) in _PRIORITY_CASES
+        values = [
+            nn, ws.cell(r, 2).value, seq, ws.cell(r, 4).value,
+            ws.cell(r, 5).value, ws.cell(r, 6).value, ws.cell(r, 7).value,
+            ws.cell(r, 8).value, ws.cell(r, 9).value, ws.cell(r, 10).value,
+            "최우선" if is_priority else "",
+            "",
+        ]
+        for ci, v in enumerate(values, 1):
+            c = out_ws.cell(row=row_out, column=ci, value=v)
+            c.border = thin
+            if ci in (4, 7, 10):
+                c.alignment = wrap
+            if is_priority:
+                c.fill = priority_fill
+        n_priority += is_priority
+        row_out += 1
+
+    out_ws.auto_filter.ref = f"A1:L{row_out - 1}"
+    out_ws.freeze_panes = "A2"
+    out_wb.save(_MISMATCH_XLSX)
+    print(f"불일치 {row_out - 2}건 저장: {_MISMATCH_XLSX} (최우선 {n_priority}건 빨간색 표시)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="정답셋 검수: gpt-5.6-luna 초안 + 근거")
     ap.add_argument("--dry", action="store_true", help="API 호출 없이 배선만 점검")
     ap.add_argument("--limit", type=int, default=None, help="이미지 N장만 처리(스모크 테스트)")
+    ap.add_argument(
+        "--add-final-column", action="store_true",
+        help="API 호출 없이 기존 산출물에 비비_최종판단 컬럼만 추가(과거 산출물 호환용)",
+    )
+    ap.add_argument(
+        "--export-mismatches", action="store_true",
+        help="API 호출 없이 기존 산출물에서 불일치 행만 별도 워크북으로 뽑는다",
+    )
     args = ap.parse_args()
+
+    if args.add_final_column:
+        ensure_final_column()
+        return
+    if args.export_mismatches:
+        export_mismatches()
+        return
 
     print("정답셋 로드...")
     rows = load_worksheet_rows()
