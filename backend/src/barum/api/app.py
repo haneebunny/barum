@@ -190,7 +190,8 @@ async def check(
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
         raise HTTPException(
-            status_code=422, detail="ad_text 또는 image 중 최소 하나는 필요하다."
+            status_code=422,
+            detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
