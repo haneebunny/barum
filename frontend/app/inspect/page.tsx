@@ -152,43 +152,7 @@ function InspectContent() {
     return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (status === "running") return;
-    e.preventDefault();
-    setIsDragging(true);
-  };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    if (status === "running") return;
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (!files) return;
-
-    const newItems: FileItem[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const lastDot = file.name.lastIndexOf(".");
-      let name = file.name;
-      let ext = "";
-      if (lastDot !== -1) {
-        name = file.name.substring(0, lastDot);
-        ext = file.name.substring(lastDot);
-      }
-      newItems.push({
-        id: `ad-file-${Date.now()}-${i}-${Math.random()}`,
-        name,
-        ext,
-      });
-    }
-    setAdFiles((prev) => [...prev, ...newItems]);
-  };
 
   const handleRun = async () => {
     if (status === "running" || (!adText.trim() && adFiles.length === 0)) return;
