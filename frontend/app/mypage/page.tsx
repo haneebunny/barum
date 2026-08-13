@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 interface FeatItem {
   text: string;
@@ -430,19 +431,7 @@ export default function MyPage() {
         </div>
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b>적용 기준: 화장품법 · 고시 2025-79호</b>
-      </div>
-
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">
-          마이페이지 · <span id="tierSeg">{active_tier.name}</span>
-        </span>
-        <span className="seg">^N 새 검사</span>
-      </div>
+      <PageFooter />
 
       {/* 요금제 비교 모달 */}
       {is_compare_modal_open && (

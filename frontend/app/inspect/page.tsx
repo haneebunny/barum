@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
 import { UploadSimple, Check, X } from "@phosphor-icons/react";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 interface FileItem {
   id: string;
@@ -607,19 +608,7 @@ function InspectContent() {
         </div>
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) &apos;통과&apos;가 100% 안전을 보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b>적용 기준: 화장품법 · 고시 2025-79호</b>
-      </div>
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">
-          {regionParam === "US" ? "해외 광고 검증 (미국)" : "국내 광고 검증"} ·{" "}
-          <span id="fileSeg">파일 {adFiles.length + pFiles.length}</span>
-        </span>
-        <span className="seg">^R 다시 실행</span>
-      </div>
+      <PageFooter />
     </>
   );
 }

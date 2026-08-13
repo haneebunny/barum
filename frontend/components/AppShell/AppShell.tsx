@@ -62,7 +62,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             />
           </svg>
         </span>
-        <span className="tag">규제 검증 콘솔</span>
         <div className="right">
           <ThemeToggle />
           <span className="who">
@@ -107,13 +106,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </svg>
                 <span className="lbl">마이페이지</span>
               </Link>
-              <span className="sitem disabled" title="설정 (준비 중)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
-                </svg>
-                <span className="lbl">설정</span>
-              </span>
             </nav>
           </div>
         </aside>

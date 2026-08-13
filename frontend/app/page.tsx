@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
+
 
 export default function HomePage() {
   const router = useRouter();
@@ -288,18 +290,7 @@ export default function HomePage() {
         </Link>
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) &apos;통과&apos;가 100% 안전을
-        보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b>적용 기준: 화장품법 · 고시 2025-79호 · 미국 FDA/FTC (리전별 자동 적용)</b>
-      </div>
-
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">홈 · 2개 입구 중 선택</span>
-        <span className="seg">^N 새 검사</span>
-      </div>
+      <PageFooter />
 
       {/* 대상국 선택 모달 (터미널 다이얼로그, 전부 모노) - React State 바인딩 */}
       {isModalOpen && (
