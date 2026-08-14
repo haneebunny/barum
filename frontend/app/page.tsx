@@ -94,21 +94,7 @@ export default function LandingPage() {
     handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-  // ── 헤더 높이 측정 (ResizeObserver 사용) ──
-  const headerRef = useRef<HTMLDivElement>(null);
-  const [headerHeight, setHeaderHeight] = useState(54);
-  useEffect(() => {
-    if (!headerRef.current) return;
-    const updateHeight = () => {
-      if (headerRef.current) {
-        setHeaderHeight(headerRef.current.offsetHeight);
-      }
-    };
-    updateHeight();
-    const resizeObserver = new ResizeObserver(updateHeight);
-    resizeObserver.observe(headerRef.current);
-    return () => resizeObserver.disconnect();
-  }, []);
+
   // ── 섹션 등장 reveal 훅들 ──
   const [featuresRef, featuresRevealedRaw] = useReveal(0.15);
   const [reportRef, reportRevealedRaw] = useReveal(0.15);
@@ -232,8 +218,7 @@ export default function LandingPage() {
 
       {/* ── 랜딩 전용 네비 (목업 헤더 우측 nav 파트 + 테마 토글 탑재) ── */}
       <div 
-        ref={headerRef}
-        className="flex items-center gap-6 px-4 border-b bg-[var(--surface-sub)] text-[13.5px] font-semibold sticky top-0 z-50 transition-all"
+        className="flex items-center gap-6 px-4 border-b bg-[var(--surface-sub)] text-[13.5px] font-semibold sticky top-0 z-50 transition-all relative"
         style={{
           paddingTop: compact ? "8px" : "12px",
           paddingBottom: compact ? "8px" : "12px",
@@ -294,35 +279,30 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
-      </div>
 
-      {/* ── 스크롤 진행률 라인 & 라벨 ── */}
-      <div 
-        style={{ 
-          position: "sticky", 
-          top: headerHeight, 
-          zIndex: 49, 
-          height: "0px", 
-          width: "100%", 
-          pointerEvents: "none"
-        }}
-      >
+        {/* ── 스크롤 진행률 라인 (헤더 내부 하단 절대 배치) ── */}
         <div 
           style={{
+            position: "absolute",
+            bottom: "-1px",
+            left: 0,
+            width: "100%",
             height: "2px",
             backgroundColor: "var(--brand)",
             transform: `scaleX(${scrollProgress})`,
             transformOrigin: "left",
-            width: "100%",
-            transition: prefersReducedMotion ? "none" : "transform 60ms linear"
+            transition: prefersReducedMotion ? "none" : "transform 60ms linear",
+            pointerEvents: "none"
           }}
         />
-        {/* Label on the right */}
+
+        {/* ── 스크롤 진행률 라벨 (헤더 내부 하단 우측 배치) ── */}
         <div 
           style={{
             position: "absolute",
             right: "16px",
-            top: "6px",
+            top: "100%",
+            marginTop: "6px",
             fontFamily: "var(--mono)",
             fontSize: "11px",
             color: scrollProgress >= 1 ? "var(--brand-ink)" : "var(--ink-3)",
@@ -331,6 +311,8 @@ export default function LandingPage() {
             padding: "2px 6px",
             border: `1px solid ${scrollProgress >= 1 ? "var(--brand-ink)" : "var(--line-2)"}`,
             lineHeight: "1",
+            opacity: scrollProgress > 0 ? 1 : 0,
+            transition: prefersReducedMotion ? "none" : "opacity 200ms ease-out",
             pointerEvents: "auto"
           }}
         >
