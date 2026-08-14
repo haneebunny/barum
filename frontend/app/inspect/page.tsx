@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent, Suspense } from "react";
+import { useState, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
-import { UploadSimple, Check, X, CircleNotch } from "@phosphor-icons/react";
+import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 
@@ -53,11 +53,19 @@ function InspectContent() {
   const [isDragging, setIsDragging] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
-  const [logs, setLogs] = useState<Array<{ ts: string; msg: React.ReactNode }>>([
-    {
-      ts: "--:--:--",
-      msg: <span className="dim">검사 실행을 누르면 분석이 시작됩니다.</span>,
-    },
+  interface TaskStep {
+    id: number;
+    label: string;
+    status: "idle" | "running" | "done" | "warn";
+    valueText?: string;
+  }
+
+  const [steps, setSteps] = useState<TaskStep[]>([
+    { id: 1, label: "자료 확인", status: "idle" },
+    { id: 2, label: "광고 문구 분석", status: "idle" },
+    { id: 3, label: "규제 기준 대조", status: "idle" },
+    { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+    { id: 5, label: "수정 권고안 준비", status: "idle" },
   ]);
   const [resultId, setResultId] = useState<string | null>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -152,13 +160,6 @@ function InspectContent() {
     ]);
   };
 
-  const getTimestamp = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  };
-
-
 
   const handleRun = async () => {
     if (status === "running" || (!adText.trim() && adFiles.length === 0)) return;
@@ -182,156 +183,96 @@ function InspectContent() {
     });
 
     const isImage = adFiles.length > 0;
-    const isIngredient = ingText.trim().length > 0 || pFiles.length > 0;
-
-    // 로그 목록 템플릿 빌드용 헬퍼
-    const getLog1Msg = () => (
-      <span>
-        <span className="k">[확인]</span> 자료 확인 중{" "}
-        <span className="dim">
-          · {isImage ? `이미지 ${adFiles.length}개` : "광고 문구"}
-          {isIngredient ? " + 제품 정보" : ""}
-        </span>
-      </span>
-    );
-    const getLog2Msg = () => (
-      <span>
-        <span className="k">[분석]</span> 광고 문구 분석 <span className="bar">██████████</span> <span className="ok">완료</span>
-      </span>
-    );
-    const getLog3Msg = (findingsCount?: number) => (
-      <span>
-        <span className="k">[대조]</span> 규제 기준 대조 중…{" "}
-        {findingsCount !== undefined ? (
-          <>
-            <span className="risk">{findingsCount}건 감지</span>
-            {isIngredient ? <span className="dim"> · 고시원료 매칭 포함</span> : ""}
-          </>
-        ) : (
-          <span className="dim">분석 대기...</span>
-        )}
-      </span>
-    );
-    const getLog4Msg = () => (
-      <span>
-        <span className="k">[근거]</span> 위반 근거 연결 <span className="bar">██████████</span> <span className="ok">완료</span>
-      </span>
-    );
-    const getLog5Msg = (count: number, fileName: string) => (
-      <span>
-        <span className="k">[근거]</span> 이미지 내 위험 표현 <span className="risk">{count}건</span>{" "}
-        <span className="dim">→ {fileName}</span>
-      </span>
-    );
-    const getLog6Msg = () => (
-      <span>
-        <span className="k">[준비]</span> <span className="ok">수정 권고안 준비 완료</span> <span className="dim">→ 우측 하단 「리포트 보기」</span>
-      </span>
-    );
 
     if (reduceMotion) {
-      // 모션 감축이 켜진 경우 지연 없이 API 응답을 대기한 뒤 한 번에 출력
       try {
         const report = await apiPromise;
         setResultId(report.result_id);
 
-        const currentLogs: Array<{ ts: string; msg: React.ReactNode }> = [];
-
-        // 1번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog1Msg() });
-        // 2번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog2Msg() });
-        // 3번 로그 (API 결과 바인딩)
-        currentLogs.push({ ts: getTimestamp(), msg: getLog3Msg(report.findings.length) });
-        // 4번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog4Msg() });
-
-        // 5번 로그 (이미지가 있고 이미지 위반 건수가 있는 경우)
+        const findingsCount = report.findings.length;
         const imageFindings = report.findings.filter((f) => f.location?.tile);
-        if (isImage && imageFindings.length > 0) {
-          const firstImageFinding = imageFindings[0];
-          const fileName = firstImageFinding.location?.tile || "상세페이지";
-          currentLogs.push({
-            ts: getTimestamp(),
-            msg: getLog5Msg(imageFindings.length, fileName),
-          });
-        }
 
-        // 6번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog6Msg() });
-
-        setLogs(currentLogs);
+        setSteps([
+          { id: 1, label: "자료 확인", status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" },
+          { id: 2, label: "광고 문구 분석", status: "done", valueText: "완료" },
+          { id: 3, label: "규제 기준 대조", status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" },
+          { id: 4, label: "이미지 내 위험 표현 검사", status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" },
+          { id: 5, label: "수정 권고안 준비", status: "done", valueText: "준비 완료" },
+        ]);
         setInspectStatus("done");
       } catch (err) {
         console.error(err);
-        setLogs([
-          {
-            ts: getTimestamp(),
-            msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
-          },
-        ]);
+        setSteps(prev => prev.map(s => ({ ...s, status: "warn", valueText: "에러 발생" })));
         setInspectStatus(null);
       }
       return;
     }
 
-    // 모션 감축이 꺼진 경우: 애니메이션 & API 대기 동기화
-    setLogs([]); // 기존 로그 비우기
-
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
-      // 1번 로그 추가 (즉시)
-      setLogs([{ ts: getTimestamp(), msg: getLog1Msg() }]);
+      // 0단계 초기화
+      setSteps([
+        { id: 1, label: "자료 확인", status: "running" },
+        { id: 2, label: "광고 문구 분석", status: "idle" },
+        { id: 3, label: "규제 기준 대조", status: "idle" },
+        { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+        { id: 5, label: "수정 권고안 준비", status: "idle" },
+      ]);
+
+      // 1단계 애니메이션 진행 후 2단계 시작
       await delay(430);
+      setSteps(prev => prev.map(s => {
+        if (s.id === 1) return { ...s, status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" };
+        if (s.id === 2) return { ...s, status: "running" };
+        return s;
+      }));
 
-      // 2번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog2Msg() }]);
+      // 2단계 애니메이션 진행 후 3단계 시작
       await delay(430);
+      setSteps(prev => prev.map(s => {
+        if (s.id === 2) return { ...s, status: "done", valueText: "완료" };
+        if (s.id === 3) return { ...s, status: "running" };
+        return s;
+      }));
 
-      // 3번 로그 대기 상태로 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog3Msg() }]);
-
-      // API 완료 대기
+      // 3단계: 실제 API 응답 대기
       const report = await apiPromise;
       setResultId(report.result_id);
 
-      // API 완료 후 3번 로그 갱신 (결과 바인딩)
-      setLogs((prev) => {
-        const nextLogs = [...prev];
-        nextLogs[2] = { ts: nextLogs[2].ts, msg: getLog3Msg(report.findings.length) };
-        return nextLogs;
-      });
-      await delay(430);
-
-      // 4번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog4Msg() }]);
-      await delay(430);
-
-      // 5번 로그 추가 (이미지가 있고 이미지 위반 건수가 있는 경우)
+      const findingsCount = report.findings.length;
       const imageFindings = report.findings.filter((f) => f.location?.tile);
-      if (isImage && imageFindings.length > 0) {
-        const firstImageFinding = imageFindings[0];
-        const fileName = firstImageFinding.location?.tile || "상세페이지";
-        const msgNode = getLog5Msg(imageFindings.length, fileName);
-        if (msgNode) {
-          setLogs((prev) => [...prev, { ts: getTimestamp(), msg: msgNode }]);
-          await delay(430);
-        }
-      }
 
-      // 6번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog6Msg() }]);
+      // 3단계 완료 처리 후 4단계 시작
+      setSteps(prev => prev.map(s => {
+        if (s.id === 3) return { ...s, status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" };
+        if (s.id === 4) return { ...s, status: "running" };
+        return s;
+      }));
+      await delay(430);
+
+      // 4단계 완료 처리 후 5단계 시작
+      setSteps(prev => prev.map(s => {
+        if (s.id === 4) return { ...s, status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" };
+        if (s.id === 5) return { ...s, status: "running" };
+        return s;
+      }));
+      await delay(430);
+
+      // 5단계 완료 처리
+      setSteps(prev => prev.map(s => {
+        if (s.id === 5) return { ...s, status: "done", valueText: "준비 완료" };
+        return s;
+      }));
       setInspectStatus("done");
     } catch (err) {
       console.error(err);
-      setLogs((prev) => [
-        ...prev,
-        {
-          ts: getTimestamp(),
-          msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
-        },
-      ]);
+      setSteps(prev => prev.map(s => {
+        if (s.status === "running" || s.status === "idle") {
+          return { ...s, status: "warn", valueText: "실패" };
+        }
+        return s;
+      }));
       setInspectStatus(null);
     }
   };
