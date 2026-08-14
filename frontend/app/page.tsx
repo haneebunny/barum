@@ -95,6 +95,91 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // ── 모바일 환경 체크 & 리포트 스티키 스크럽 상태 ──
+  const [isMobile, setIsMobile] = useState(false);
+  const [reportProgress, setReportProgress] = useState(0);
+  const [reportScore, setReportScore] = useState(62);
+  const reportContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 900);
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // 리포트 스크롤 진행률 (p: 0 ~ 1) 측정
+  useEffect(() => {
+    if (typeof window === "undefined" || prefersReducedMotion || isMobile) return;
+    
+    const handleScroll = () => {
+      if (!reportContainerRef.current) return;
+      const rect = reportContainerRef.current.getBoundingClientRect();
+      const containerHeight = rect.height;
+      const viewportHeight = window.innerHeight;
+      
+      const p = Math.max(0, Math.min(1, -rect.top / (containerHeight - viewportHeight)));
+      setReportProgress(p);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [prefersReducedMotion, isMobile]);
+
+  // 모바일/감소모드 자동 재생 (autoplay)
+  useEffect(() => {
+    if (!prefersReducedMotion && !isMobile) return;
+    
+    const steps = [0.0, 0.25, 0.5, 0.75, 1.0];
+    let currentIndex = 0;
+    
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % steps.length;
+      setReportProgress(steps[currentIndex]);
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [prefersReducedMotion, isMobile]);
+
+  // 리포트 점수 카운트업 애니메이션 (p >= 0.85 일 때 62 -> 98, p < 0.85 일 때 98 -> 62)
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setReportScore(reportProgress >= 0.85 ? 98 : 62);
+      return;
+    }
+    
+    let startTimestamp: number | null = null;
+    const duration = 600;
+    const isTargetUp = reportProgress >= 0.85;
+    const startVal = isTargetUp ? 62 : 98;
+    const endVal = isTargetUp ? 98 : 62;
+    
+    if ((isTargetUp && reportScore === 98) || (!isTargetUp && reportScore === 62)) {
+      return;
+    }
+
+    let animationFrameId: number;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const elapsed = timestamp - startTimestamp;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      
+      const currentVal = Math.round(startVal + (endVal - startVal) * easeProgress);
+      setReportScore(currentVal);
+      
+      if (progress < 1) {
+        animationFrameId = window.requestAnimationFrame(step);
+      }
+    };
+    animationFrameId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [reportProgress >= 0.85]);
+
   // ── 섹션 등장 reveal 훅들 ──
   const [featuresRef, featuresRevealedRaw] = useReveal(0.15);
   const [reportRef, reportRevealedRaw] = useReveal(0.15);
@@ -592,98 +677,536 @@ export default function LandingPage() {
       </div>
 
       {/* ── 리포트 섹션 ── */}
-      <div 
-        id="report" 
-        ref={reportRef} 
-        className="border-b border-[var(--line)] bg-[var(--surface-sub)] p-[58px_44px_54px]"
-        style={{
-          opacity: reportRevealed ? 1 : 0,
-          transform: reportRevealed ? "none" : "translateY(12px)",
-          transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1)"
-        }}
-      >
-        <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start">
-          <div>
-            <div className="text-[var(--brand-ink)] mb-[12px] font-mono text-[11.5px] font-bold tracking-[0.4px]">리포트</div>
-            <h2 className="m-0 mb-[14px] text-[var(--ink)] text-[34px] font-extrabold leading-[1.3] tracking-[-1px] break-keep">
-              어디가, 왜,<br />어떻게 고쳐야 하는지
-            </h2>
-            <p className="m-0 mb-[22px] text-[var(--ink-3)] text-[15px] leading-[1.7] break-keep">
-              원본 위에 위험 문구를 표시하고, 근거 조항과 고친 문구를 나란히 보여드려요. 게시 판단에 필요한 것만 한 화면에.
-            </p>
-            {/* 범례 */}
-            <div className="flex flex-col gap-[8px] text-[var(--ink-2)] text-[13px] font-medium">
-              <div className="flex gap-[8px] items-center">
-                <span className="inline-block w-[10px] h-[10px] bg-[var(--crit-bg)] border border-[var(--crit)]" />
-                위반 · 조항 근거가 분명한 것
-              </div>
-              <div className="flex gap-[8px] items-center">
-                <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-dashed border-[var(--crit)]" />
-                검토필요 · 입증 자료가 필요한 것
-              </div>
-              <div className="flex gap-[8px] items-center">
-                <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-[var(--line-2)]" />
-                통과 · 이번 기준에서 미검출
+      {isMobile || prefersReducedMotion ? (
+        <div 
+          id="report" 
+          ref={reportRef} 
+          className="border-b border-[var(--line)] bg-[var(--surface-sub)] p-[58px_44px_54px]"
+          style={{
+            opacity: reportRevealed ? 1 : 0,
+            transform: reportRevealed ? "none" : "translateY(12px)",
+            transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1)"
+          }}
+        >
+          {/* Main Content */}
+          <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
+            <div>
+              <div className="text-[var(--brand-ink)] mb-[12px] font-mono text-[11.5px] font-bold tracking-[0.4px]">리포트</div>
+              <h2 className="m-0 mb-[14px] text-[var(--ink)] text-[34px] font-extrabold leading-[1.3] tracking-[-1px] break-keep">
+                어디가, 왜,<br />어떻게 고쳐야 하는지
+              </h2>
+              <p className="m-0 mb-[22px] text-[var(--ink-3)] text-[15px] leading-[1.7] break-keep">
+                원본 위에 위험 문구를 표시하고, 근거 조항과 고친 문구를 나란히 보여드려요. 게시 판단에 필요한 것만 한 화면에.
+              </p>
+              {/* 범례 */}
+              <div className="flex flex-col gap-[8px] text-[var(--ink-2)] text-[13px] font-medium">
+                <div className="flex gap-[8px] items-center">
+                  <span className="inline-block w-[10px] h-[10px] bg-[var(--crit-bg)] border border-[var(--crit)]" />
+                  위반 · 조항 근거가 분명한 것
+                </div>
+                <div className="flex gap-[8px] items-center">
+                  <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-dashed border-[var(--crit)]" />
+                  검토필요 · 입증 자료가 필요한 것
+                </div>
+                <div className="flex gap-[8px] items-center">
+                  <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-[var(--line-2)]" />
+                  통과 · 이번 기준에서 미검출
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* 리포트 UI 데모 */}
-          <div className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)]">
-            {/* 상단 바 */}
-            <div className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface-sub)] p-[9px_14px] font-mono text-[11px] text-[var(--ink-3)]">
-              <span>리포트 &gt; 글로우세럼_상세페이지</span>
-              <span className="ml-auto font-semibold text-[var(--crit)]">위반 1 · 검토필요 1</span>
-              <span className="text-[var(--ink-3)]">이미지 4 / 12</span>
-            </div>
-            {/* 파일 태그들 */}
-            <div className="flex flex-wrap gap-2 border-b border-[var(--line)] p-[8px_14px]">
-              {["텍스트 붙여넣기", "상세페이지 이미지 12", "제품 상세 · 성분표", "인증 · 시험 자료 PDF 2"].map(t => (
-                <span key={t} className="inline-flex items-center gap-1 bg-[var(--brand-deep)] text-[var(--on-brand)] font-mono text-[10.5px] font-bold px-[7px] py-[2px]">■ {t}</span>
-              ))}
-              <span className="ml-auto text-[var(--ink-3)] font-mono text-[11px]">한 번에 함께 분석</span>
-            </div>
-            <div className="grid grid-cols-2">
-              {/* 좌: 이미지 영역 */}
-              <div className="border-r border-[var(--line)] p-[12px_14px]">
-                <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">업로드한 상세페이지</div>
-                <div className="flex items-center justify-center text-[var(--ink-3)] bg-[var(--surface-sub)] border border-dashed border-[var(--line-2)] h-[120px] text-[11px] text-center leading-[1.7]">
-                  [ 상세페이지 이미지 ]<br />원본 그대로 보관
-                </div>
-                <div className="mt-[8px] text-[var(--crit)] text-[10.5px]">▸ 이미지 속 문구 2건 검출</div>
+            {/* 리포트 UI 데모 (Autoplay / Mobile) */}
+            <div 
+              className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)] overflow-hidden w-full"
+              style={{
+                opacity: reportProgress > 0 ? 1 : 0.8,
+                transition: "opacity 300ms ease-out"
+              }}
+            >
+              {/* 상단 바 */}
+              <div className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface-sub)] p-[9px_14px] font-mono text-[11px] text-[var(--ink-3)]">
+                <span>리포트 &gt; 글로우세럼_상세페이지</span>
+                <span 
+                  className="ml-2 bg-[var(--surface)] border border-[var(--line-2)] px-1.5 py-[1px] font-mono text-[10px] font-bold text-[var(--ink)] transition-all duration-300"
+                  style={{
+                    borderColor: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--line-2)",
+                    color: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--ink)"
+                  }}
+                >
+                  점수 {reportScore}점
+                </span>
+                <span 
+                  className="ml-auto font-semibold transition-all duration-300"
+                  style={{
+                    color: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--crit)",
+                    opacity: reportProgress >= 0.35 ? 1 : 0.3
+                  }}
+                >
+                  {reportProgress >= 0.85 ? "위반 0 · 검토필요 0" : "위반 1 · 검토필요 1"}
+                </span>
+                <span className="text-[var(--ink-3)]">이미지 4 / 12</span>
               </div>
-              {/* 우: 판정 */}
-              <div className="p-[12px_14px]">
-                <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">문구별 판정</div>
-                {/* 위반 카드 */}
-                <div className="mb-[8px] border border-[var(--crit-bd)] bg-[var(--crit-bg)] p-[10px_12px]">
-                  <div className="flex items-center justify-between mb-[6px]">
-                    <span className="font-semibold text-[var(--crit)] text-[11px]">위반 · 기능성 범위 이탈</span>
-                    <span className="text-[var(--on-brand)] bg-[var(--crit)] font-mono text-[9px] font-bold px-[6px] py-[2px]">화장품법 제13조 ①2호</span>
+              
+              {/* 파일 태그들 */}
+              <div 
+                className="flex flex-wrap gap-2 border-b border-[var(--line)] p-[8px_14px] transition-opacity duration-300"
+                style={{ opacity: reportProgress >= 0.35 ? 1 : reportProgress <= 0.15 ? 0 : (reportProgress - 0.15) / 0.20 }}
+              >
+                {["텍스트 붙여넣기", "상세페이지 이미지 12", "제품 상세 · 성분표", "인증 · 시험 자료 PDF 2"].map(t => (
+                  <span key={t} className="inline-flex items-center gap-1 bg-[var(--brand-deep)] text-[var(--on-brand)] font-mono text-[10.5px] font-bold px-[7px] py-[2px]">■ {t}</span>
+                ))}
+                <span className="ml-auto text-[var(--ink-3)] font-mono text-[11px]">한 번에 함께 분석</span>
+              </div>
+              
+              <div className="grid grid-cols-2">
+                {/* 좌: 이미지 영역 */}
+                <div className="border-r border-[var(--line)] p-[12px_14px]">
+                  <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">업로드한 상세페이지</div>
+                  <div 
+                    className="flex flex-col items-center justify-center text-[var(--ink-3)] bg-[var(--surface-sub)] border border-dashed border-[var(--line-2)] h-[120px] text-[11px] text-center leading-[1.7] transition-all duration-300 relative overflow-hidden"
+                    style={{
+                      opacity: reportProgress >= 0.15 ? 1 : 0.3
+                    }}
+                  >
+                    {reportProgress >= 0.15 ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface-sub)]">
+                        <span className="font-bold text-[var(--ink-2)]">[ 상세페이지 이미지 ]</span>
+                        <span className="text-[10px] text-[var(--ink-3)] mt-1">원본 그대로 보관</span>
+                      </div>
+                    ) : (
+                      <span className="text-[var(--ink-3)] font-mono">[ 상세페이지 자료 대기 중 ]</span>
+                    )}
                   </div>
-                  <div className="font-semibold text-[var(--ink)] mb-[6px] text-[11.5px]">&quot;7일 만에 미백 완성&quot; - 심사받은 범위를 벗어난 기간 · 완성 단정 표현</div>
-                  <div className="text-[var(--ink-3)] text-[11px] leading-[1.6] border-t border-[var(--crit-bd)] pt-1.5 mt-1">
-                    권고안 &quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot; <span className="text-[var(--brand-ink)]">적용 →</span>
+                  <div 
+                    className="mt-[8px] text-[var(--crit)] text-[10.5px] font-semibold transition-all duration-300"
+                    style={{
+                      opacity: reportProgress >= 0.35 ? 1 : 0,
+                      transform: reportProgress >= 0.35 ? "none" : "translateY(4px)"
+                    }}
+                  >
+                    {reportProgress >= 0.85 ? (
+                      <span className="text-[var(--brand-ink)]">✓ 이미지 속 위반 내역 해결됨</span>
+                    ) : (
+                      <span>▸ 이미지 속 문구 2건 검출</span>
+                    )}
                   </div>
                 </div>
-                {/* 검토필요 카드 */}
-                <div className="border border-dashed border-[var(--crit-bd)] p-[10px_12px]">
-                  <div className="flex items-center justify-between mb-[6px]">
-                    <span className="text-[var(--ink-3)] text-[11px] font-semibold">검토필요 · 입증 자료 필요</span>
-                    <span className="text-[var(--crit)] border border-[var(--crit-bd)] font-mono text-[9px] font-bold px-[6px] py-[2px]">표시광고 실증제</span>
+                
+                {/* 우: 판정 */}
+                <div className="p-[12px_14px]">
+                  <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">문구별 판정</div>
+                  
+                  {/* 위반 카드 */}
+                  <div className="mb-[8px] relative overflow-hidden">
+                    <div 
+                      className="border border-[var(--crit-bd)] bg-[var(--crit-bg)] p-[10px_12px] transition-all duration-300"
+                      style={{
+                        clipPath: reportProgress >= 0.55 ? "inset(0)" : reportProgress <= 0.35 ? "inset(0 100% 0 0)" : `inset(0 ${100 - ((reportProgress - 0.35) / 0.20) * 100}% 0 0)`,
+                        borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                        backgroundColor: reportProgress >= 0.85 ? "var(--surface-sub)" : "var(--crit-bg)"
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-[6px]">
+                        <span 
+                          className="font-semibold text-[11px] transition-colors duration-300"
+                          style={{ color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--crit)" }}
+                        >
+                          {reportProgress >= 0.85 ? "해결됨 · 대체 문구 적용" : "위반 · 기능성 범위 이탈"}
+                        </span>
+                        <span 
+                          className="font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                          style={{
+                            backgroundColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit)",
+                            color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--on-brand)"
+                          }}
+                        >
+                          화장품법 제13조 ①2호
+                        </span>
+                      </div>
+                      
+                      <div className="font-semibold text-[var(--ink)] mb-[6px] text-[11.5px] leading-[1.4] transition-all duration-300">
+                        {reportProgress >= 0.85 ? (
+                          <div className="flex flex-col gap-1">
+                            <del className="text-[var(--ink-3)] font-normal text-[11px] decoration-1">"7일 만에 미백 완성"</del>
+                            <span className="text-[var(--brand-ink)]">"나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움"</span>
+                          </div>
+                        ) : (
+                          <span>"7일 만에 미백 완성" - 심사받은 범위를 벗어난 기간 · 완성 단정 표현</span>
+                        )}
+                      </div>
+                      
+                      <div 
+                        className="text-[var(--ink-3)] text-[11px] leading-[1.6] border-t pt-1.5 mt-1 transition-all duration-300"
+                        style={{
+                          borderColor: reportProgress >= 0.85 ? "var(--line)" : "var(--crit-bd)",
+                          opacity: reportProgress >= 0.85 ? 0.5 : 1
+                        }}
+                      >
+                        권고안 &quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot; <span className="text-[var(--brand-ink)]">적용됨</span>
+                      </div>
+                    </div>
+                    
+                    {/* Badge */}
+                    <div 
+                      className="absolute right-2 top-2 z-10 pointer-events-none"
+                      style={{
+                        transform: `scale(${0.8 + 0.2 * (reportProgress >= 0.55 ? 1 : reportProgress <= 0.35 ? 0 : (reportProgress - 0.35) / 0.20)})`,
+                        opacity: reportProgress >= 0.55 ? 1 : reportProgress <= 0.35 ? 0 : (reportProgress - 0.35) / 0.20,
+                        transition: "transform 150ms ease-out, opacity 150ms ease-out"
+                      }}
+                    >
+                      {reportProgress >= 0.35 && reportProgress < 0.85 && (
+                        <span className="bg-[var(--crit)] text-white text-[9px] font-bold px-1.5 py-0.5 shadow-sm">위험!</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-[var(--ink)] text-[11.5px]">&quot;순식간에 스며드는&quot; - 체감 표현, 인체적용시험 자료 권장</div>
-                </div>
-                {/* 버튼 */}
-                <div className="flex gap-[8px] mt-[10px]">
-                  <span className="flex-1 flex items-center justify-center text-[var(--on-brand)] bg-[var(--brand)] cursor-pointer hover:bg-[var(--brand-ink)] py-2.5 text-[13px] font-bold">권고안 전체 적용</span>
-                  <span className="flex-1 flex items-center justify-center text-[var(--ink-2)] border border-[var(--line-2)] cursor-pointer hover:bg-[var(--nav-active-bg)] py-2.5 text-[13px] font-bold">수정 후 재검사</span>
+
+                  {/* 검토필요 카드 */}
+                  <div className="relative overflow-hidden">
+                    <div 
+                      className="border border-dashed border-[var(--crit-bd)] p-[10px_12px] transition-all duration-300"
+                      style={{
+                        clipPath: reportProgress >= 0.75 ? "inset(0)" : reportProgress <= 0.55 ? "inset(0 100% 0 0)" : `inset(0 ${100 - ((reportProgress - 0.55) / 0.20) * 100}% 0 0)`,
+                        borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                        backgroundColor: reportProgress >= 0.85 ? "var(--surface-sub)" : "transparent"
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-[6px]">
+                        <span 
+                          className="text-[11px] font-semibold transition-colors duration-300"
+                          style={{ color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--ink-2)" }}
+                        >
+                          {reportProgress >= 0.85 ? "해결됨 · 실증자료 준비" : "검토필요 · 입증 자료 필요"}
+                        </span>
+                        <span 
+                          className="border font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                          style={{
+                            borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                            color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--crit)"
+                          }}
+                        >
+                          표시광고 실증제
+                        </span>
+                      </div>
+                      
+                      <div className="text-[var(--ink)] text-[11.5px] leading-[1.4] transition-all duration-300">
+                        {reportProgress >= 0.85 ? (
+                          <div className="flex flex-col gap-1">
+                            <del className="text-[var(--ink-3)] font-normal text-[11px] decoration-1">"순식간에 스며드는"</del>
+                            <span className="text-[var(--brand-ink)]">"인체적용시험 실증 자료 첨부 완료"</span>
+                          </div>
+                        ) : (
+                          <span>"순식간에 스며드는" - 체감 표현, 인체적용시험 자료 권장</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Badge */}
+                    <div 
+                      className="absolute right-2 top-2 z-10 pointer-events-none"
+                      style={{
+                        transform: `scale(${0.8 + 0.2 * (reportProgress >= 0.75 ? 1 : reportProgress <= 0.55 ? 0 : (reportProgress - 0.55) / 0.20)})`,
+                        opacity: reportProgress >= 0.75 ? 1 : reportProgress <= 0.55 ? 0 : (reportProgress - 0.55) / 0.20,
+                        transition: "transform 150ms ease-out, opacity 150ms ease-out"
+                      }}
+                    >
+                      {reportProgress >= 0.55 && reportProgress < 0.85 && (
+                        <span className="bg-[var(--crit-bg)] text-[var(--crit)] border border-[var(--crit-bd)] text-[9px] font-bold px-1.5 py-0.5 shadow-sm">실증필요</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 버튼 */}
+                  <div className="flex gap-[8px] mt-[10px]">
+                    <span 
+                      className="flex-1 flex items-center justify-center text-[var(--on-brand)] bg-[var(--brand)] cursor-pointer hover:bg-[var(--brand-ink)] py-2.5 text-[13px] font-bold transition-all duration-200"
+                      style={{
+                        transform: reportProgress >= 0.75 && reportProgress < 0.85 
+                          ? `scale(${1.0 - 0.04 * ((reportProgress - 0.75) / 0.10)})` 
+                          : reportProgress >= 0.85 && reportProgress <= 0.95 
+                          ? `scale(${0.96 + 0.04 * ((reportProgress - 0.85) / 0.10)})` 
+                          : "scale(1)",
+                        backgroundColor: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--brand)"
+                      }}
+                    >
+                      {reportProgress >= 0.85 ? "권고안 적용 완료" : "권고안 전체 적용"}
+                    </span>
+                    <span className="flex-1 flex items-center justify-center text-[var(--ink-2)] border border-[var(--line-2)] cursor-pointer hover:bg-[var(--nav-active-bg)] py-2.5 text-[13px] font-bold">수정 후 재검사</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div 
+          id="report" 
+          ref={reportContainerRef} 
+          className="relative h-[260vh] border-b border-[var(--line)] bg-[var(--surface-sub)]"
+        >
+          <div 
+            ref={reportRef}
+            className="sticky flex items-center p-[58px_44px_54px] w-full"
+            style={{
+              top: compact ? "46px" : "54px",
+              height: compact ? "calc(100vh - 46px)" : "calc(100vh - 54px)",
+              opacity: reportRevealed ? 1 : 0,
+              transform: reportRevealed ? "none" : "translateY(12px)",
+              transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1), top 180ms ease-in-out, height 180ms ease-in-out"
+            }}
+          >
+            {/* Main Content */}
+            <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
+              <div>
+                <div className="text-[var(--brand-ink)] mb-[12px] font-mono text-[11.5px] font-bold tracking-[0.4px]">리포트</div>
+                <h2 className="m-0 mb-[14px] text-[var(--ink)] text-[34px] font-extrabold leading-[1.3] tracking-[-1px] break-keep">
+                  어디가, 왜,<br />어떻게 고쳐야 하는지
+                </h2>
+                <p className="m-0 mb-[22px] text-[var(--ink-3)] text-[15px] leading-[1.7] break-keep">
+                  원본 위에 위험 문구를 표시하고, 근거 조항과 고친 문구를 나란히 보여드려요. 게시 판단에 필요한 것만 한 화면에.
+                </p>
+                {/* 범례 */}
+                <div className="flex flex-col gap-[8px] text-[var(--ink-2)] text-[13px] font-medium">
+                  <div className="flex gap-[8px] items-center">
+                    <span className="inline-block w-[10px] h-[10px] bg-[var(--crit-bg)] border border-[var(--crit)]" />
+                    위반 · 조항 근거가 분명한 것
+                  </div>
+                  <div className="flex gap-[8px] items-center">
+                    <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-dashed border-[var(--crit)]" />
+                    검토필요 · 입증 자료가 필요한 것
+                  </div>
+                  <div className="flex gap-[8px] items-center">
+                    <span className="inline-block w-[10px] h-[10px] bg-[var(--surface)] border border-[var(--line-2)]" />
+                    통과 · 이번 기준에서 미검출
+                  </div>
+                </div>
+              </div>
+
+              {/* 리포트 UI 데모 (Scrub Timeline) */}
+              <div 
+                className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)] overflow-hidden w-full"
+                style={{
+                  opacity: reportProgress > 0 ? 1 : 0.8,
+                  transition: "opacity 300ms ease-out"
+                }}
+              >
+                {/* 상단 바 */}
+                <div className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface-sub)] p-[9px_14px] font-mono text-[11px] text-[var(--ink-3)]">
+                  <span>리포트 &gt; 글로우세럼_상세페이지</span>
+                  <span 
+                    className="ml-2 bg-[var(--surface)] border border-[var(--line-2)] px-1.5 py-[1px] font-mono text-[10px] font-bold text-[var(--ink)] transition-all duration-300"
+                    style={{
+                      borderColor: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--line-2)",
+                      color: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--ink)"
+                    }}
+                  >
+                    점수 {reportScore}점
+                  </span>
+                  <span 
+                    className="ml-auto font-semibold transition-all duration-300"
+                    style={{
+                      color: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--crit)",
+                      opacity: reportProgress >= 0.35 ? 1 : 0.3
+                    }}
+                  >
+                    {reportProgress >= 0.85 ? "위반 0 · 검토필요 0" : "위반 1 · 검토필요 1"}
+                  </span>
+                  <span className="text-[var(--ink-3)]">이미지 4 / 12</span>
+                </div>
+                
+                {/* 파일 태그들 */}
+                <div 
+                  className="flex flex-wrap gap-2 border-b border-[var(--line)] p-[8px_14px] transition-opacity duration-300"
+                  style={{ opacity: reportProgress >= 0.35 ? 1 : reportProgress <= 0.15 ? 0 : (reportProgress - 0.15) / 0.20 }}
+                >
+                  {["텍스트 붙여넣기", "상세페이지 이미지 12", "제품 상세 · 성분표", "인증 · 시험 자료 PDF 2"].map(t => (
+                    <span key={t} className="inline-flex items-center gap-1 bg-[var(--brand-deep)] text-[var(--on-brand)] font-mono text-[10.5px] font-bold px-[7px] py-[2px]">■ {t}</span>
+                  ))}
+                  <span className="ml-auto text-[var(--ink-3)] font-mono text-[11px]">한 번에 함께 분석</span>
+                </div>
+                
+                <div className="grid grid-cols-2">
+                  {/* 좌: 이미지 영역 */}
+                  <div className="border-r border-[var(--line)] p-[12px_14px]">
+                    <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">업로드한 상세페이지</div>
+                    <div 
+                      className="flex flex-col items-center justify-center text-[var(--ink-3)] bg-[var(--surface-sub)] border border-dashed border-[var(--line-2)] h-[120px] text-[11px] text-center leading-[1.7] transition-all duration-300 relative overflow-hidden"
+                      style={{
+                        opacity: reportProgress >= 0.15 ? 1 : 0.3
+                      }}
+                    >
+                      {reportProgress >= 0.15 ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface-sub)]">
+                          <span className="font-bold text-[var(--ink-2)]">[ 상세페이지 이미지 ]</span>
+                          <span className="text-[10px] text-[var(--ink-3)] mt-1">원본 그대로 보관</span>
+                        </div>
+                      ) : (
+                        <span className="text-[var(--ink-3)] font-mono">[ 상세페이지 자료 대기 중 ]</span>
+                      )}
+                    </div>
+                    <div 
+                      className="mt-[8px] text-[var(--crit)] text-[10.5px] font-semibold transition-all duration-300"
+                      style={{
+                        opacity: reportProgress >= 0.35 ? 1 : 0,
+                        transform: reportProgress >= 0.35 ? "none" : "translateY(4px)"
+                      }}
+                    >
+                      {reportProgress >= 0.85 ? (
+                        <span className="text-[var(--brand-ink)]">✓ 이미지 속 위반 내역 해결됨</span>
+                      ) : (
+                        <span>▸ 이미지 속 문구 2건 검출</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* 우: 판정 */}
+                  <div className="p-[12px_14px]">
+                    <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">문구별 판정</div>
+                    
+                    {/* 위반 카드 */}
+                    <div className="mb-[8px] relative overflow-hidden">
+                      <div 
+                        className="border border-[var(--crit-bd)] bg-[var(--crit-bg)] p-[10px_12px] transition-all duration-300"
+                        style={{
+                          clipPath: reportProgress >= 0.55 ? "inset(0)" : reportProgress <= 0.35 ? "inset(0 100% 0 0)" : `inset(0 ${100 - ((reportProgress - 0.35) / 0.20) * 100}% 0 0)`,
+                          borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                          backgroundColor: reportProgress >= 0.85 ? "var(--surface-sub)" : "var(--crit-bg)"
+                        }}
+                      >
+                        <div className="flex items-center justify-between mb-[6px]">
+                          <span 
+                            className="font-semibold text-[11px] transition-colors duration-300"
+                            style={{ color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--crit)" }}
+                          >
+                            {reportProgress >= 0.85 ? "해결됨 · 대체 문구 적용" : "위반 · 기능성 범위 이탈"}
+                          </span>
+                          <span 
+                            className="font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                            style={{
+                              backgroundColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit)",
+                              color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--on-brand)"
+                            }}
+                          >
+                            화장품법 제13조 ①2호
+                          </span>
+                        </div>
+                        
+                        <div className="font-semibold text-[var(--ink)] mb-[6px] text-[11.5px] leading-[1.4] transition-all duration-300">
+                          {reportProgress >= 0.85 ? (
+                            <div className="flex flex-col gap-1">
+                              <del className="text-[var(--ink-3)] font-normal text-[11px] decoration-1">"7일 만에 미백 완성"</del>
+                              <span className="text-[var(--brand-ink)]">"나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움"</span>
+                            </div>
+                          ) : (
+                            <span>"7일 만에 미백 완성" - 심사받은 범위를 벗어난 기간 · 완성 단정 표현</span>
+                          )}
+                        </div>
+                        
+                        <div 
+                          className="text-[var(--ink-3)] text-[11px] leading-[1.6] border-t pt-1.5 mt-1 transition-all duration-300"
+                          style={{
+                            borderColor: reportProgress >= 0.85 ? "var(--line)" : "var(--crit-bd)",
+                            opacity: reportProgress >= 0.85 ? 0.5 : 1
+                          }}
+                        >
+                          권고안 &quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot; <span className="text-[var(--brand-ink)]">적용됨</span>
+                        </div>
+                      </div>
+                      
+                      {/* Badge */}
+                      <div 
+                        className="absolute right-2 top-2 z-10 pointer-events-none"
+                        style={{
+                          transform: `scale(${0.8 + 0.2 * (reportProgress >= 0.55 ? 1 : reportProgress <= 0.35 ? 0 : (reportProgress - 0.35) / 0.20)})`,
+                          opacity: reportProgress >= 0.55 ? 1 : reportProgress <= 0.35 ? 0 : (reportProgress - 0.35) / 0.20,
+                          transition: "transform 150ms ease-out, opacity 150ms ease-out"
+                        }}
+                      >
+                        {reportProgress >= 0.35 && reportProgress < 0.85 && (
+                          <span className="bg-[var(--crit)] text-white text-[9px] font-bold px-1.5 py-0.5 shadow-sm">위험!</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 검토필요 카드 */}
+                    <div className="relative overflow-hidden">
+                      <div 
+                        className="border border-dashed border-[var(--crit-bd)] p-[10px_12px] transition-all duration-300"
+                        style={{
+                          clipPath: reportProgress >= 0.75 ? "inset(0)" : reportProgress <= 0.55 ? "inset(0 100% 0 0)" : `inset(0 ${100 - ((reportProgress - 0.55) / 0.20) * 100}% 0 0)`,
+                          borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                          backgroundColor: reportProgress >= 0.85 ? "var(--surface-sub)" : "transparent"
+                        }}
+                      >
+                        <div className="flex items-center justify-between mb-[6px]">
+                          <span 
+                            className="text-[11px] font-semibold transition-colors duration-300"
+                            style={{ color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--ink-2)" }}
+                          >
+                            {reportProgress >= 0.85 ? "해결됨 · 실증자료 준비" : "검토필요 · 입증 자료 필요"}
+                          </span>
+                          <span 
+                            className="border font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                            style={{
+                              borderColor: reportProgress >= 0.85 ? "var(--line-2)" : "var(--crit-bd)",
+                              color: reportProgress >= 0.85 ? "var(--ink-3)" : "var(--crit)"
+                            }}
+                          >
+                            표시광고 실증제
+                          </span>
+                        </div>
+                        
+                        <div className="text-[var(--ink)] text-[11.5px] leading-[1.4] transition-all duration-300">
+                          {reportProgress >= 0.85 ? (
+                            <div className="flex flex-col gap-1">
+                              <del className="text-[var(--ink-3)] font-normal text-[11px] decoration-1">"순식간에 스며드는"</del>
+                              <span className="text-[var(--brand-ink)]">"인체적용시험 실증 자료 첨부 완료"</span>
+                            </div>
+                          ) : (
+                            <span>"순식간에 스며드는" - 체감 표현, 인체적용시험 자료 권장</span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Badge */}
+                      <div 
+                        className="absolute right-2 top-2 z-10 pointer-events-none"
+                        style={{
+                          transform: `scale(${0.8 + 0.2 * (reportProgress >= 0.75 ? 1 : reportProgress <= 0.55 ? 0 : (reportProgress - 0.55) / 0.20)})`,
+                          opacity: reportProgress >= 0.75 ? 1 : reportProgress <= 0.55 ? 0 : (reportProgress - 0.55) / 0.20,
+                          transition: "transform 150ms ease-out, opacity 150ms ease-out"
+                        }}
+                      >
+                        {reportProgress >= 0.55 && reportProgress < 0.85 && (
+                          <span className="bg-[var(--crit-bg)] text-[var(--crit)] border border-[var(--crit-bd)] text-[9px] font-bold px-1.5 py-0.5 shadow-sm">실증필요</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 버튼 */}
+                    <div className="flex gap-[8px] mt-[10px]">
+                      <span 
+                        className="flex-1 flex items-center justify-center text-[var(--on-brand)] bg-[var(--brand)] cursor-pointer hover:bg-[var(--brand-ink)] py-2.5 text-[13px] font-bold transition-all duration-200"
+                        style={{
+                          transform: reportProgress >= 0.75 && reportProgress < 0.85 
+                            ? `scale(${1.0 - 0.04 * ((reportProgress - 0.75) / 0.10)})` 
+                            : reportProgress >= 0.85 && reportProgress <= 0.95 
+                            ? `scale(${0.96 + 0.04 * ((reportProgress - 0.85) / 0.10)})` 
+                            : "scale(1)",
+                          backgroundColor: reportProgress >= 0.85 ? "var(--brand-ink)" : "var(--brand)"
+                        }}
+                      >
+                        {reportProgress >= 0.85 ? "권고안 적용 완료" : "권고안 전체 적용"}
+                      </span>
+                      <span className="flex-1 flex items-center justify-center text-[var(--ink-2)] border border-[var(--line-2)] cursor-pointer hover:bg-[var(--nav-active-bg)] py-2.5 text-[13px] font-bold">수정 후 재검사</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 수출 검사 섹션 ── */}
       <div 

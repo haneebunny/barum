@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
+import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
@@ -74,7 +74,7 @@ function InspectContent() {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [logs, isLogModalOpen]);
+  }, [steps, isLogModalOpen]);
 
   const adFileInputRef = useRef<HTMLInputElement>(null);
   const pFileInputRef = useRef<HTMLInputElement>(null);
@@ -152,11 +152,12 @@ function InspectContent() {
     setInspectStatus(null);
     setResultId(null);
     setIsLogModalOpen(false);
-    setLogs([
-      {
-        ts: "--:--:--",
-        msg: <span className="dim">검사 실행을 누르면 분석이 시작됩니다.</span>,
-      },
+    setSteps([
+      { id: 1, label: "자료 확인", status: "idle" },
+      { id: 2, label: "광고 문구 분석", status: "idle" },
+      { id: 3, label: "규제 기준 대조", status: "idle" },
+      { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+      { id: 5, label: "수정 권고안 준비", status: "idle" },
     ]);
   };
 
@@ -604,16 +605,51 @@ function InspectContent() {
         }
       >
         <div
-          className="bg-[var(--surface-sub)] border border-[var(--line-2)] p-[13px_14px] h-[300px] font-mono text-[12px] overflow-y-auto w-full"
+          className="bg-[var(--surface-sub)] border border-[var(--line-2)] min-h-[250px] font-sans text-[13px] overflow-y-auto flex flex-col justify-center py-2 w-full"
           id="log"
           ref={consoleRef}
         >
-          {logs.map((log, index) => (
-            <div key={index} className="flex gap-2.5 p-[2.5px_0] opacity-0 translate-y-[3px] animate-[rise_0.3s_forwards]">
-              <span className="text-[var(--ink-3)] shrink-0 pt-0.25">{log.ts}</span>
-              <span className="break-all">{log.msg}</span>
-            </div>
-          ))}
+          {steps.map((step) => {
+            const isIdle = step.status === "idle";
+            const isRunning = step.status === "running";
+            const isDone = step.status === "done";
+            const isWarn = step.status === "warn";
+
+            return (
+              <div
+                key={step.id}
+                className={`flex items-center justify-between p-[12px_16px] border-b border-[var(--line)] last:border-b-0 transition-opacity duration-300 ${
+                  isIdle ? "opacity-50" : "opacity-100"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {isIdle && <Minus className="text-[var(--ink-3)]" size={16} />}
+                  {isRunning && <CircleNotch className="text-[var(--brand)] animate-spin" size={16} />}
+                  {isDone && <Check className="text-[var(--brand-ink)] font-bold" size={16} />}
+                  {isWarn && <Warning className="text-[var(--crit)]" size={16} />}
+                  
+                  <span className={`font-semibold ${isRunning ? "text-[var(--brand-ink)]" : "text-[var(--ink)]"}`}>
+                    {step.label}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isRunning && <span className="text-[var(--brand-ink)] font-mono text-[11px] uppercase tracking-wider">분석 중</span>}
+                  {isIdle && <span className="text-[var(--ink-3)] text-[11px]">대기 중</span>}
+                  {isDone && (
+                    <span className="text-[var(--ink-3)] text-[12px] font-sans">
+                      {step.valueText || "완료"}
+                    </span>
+                  )}
+                  {isWarn && (
+                    <span className="text-[var(--crit)] font-semibold text-[12px]">
+                      {step.valueText || "검토 필요"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Modal>
 
