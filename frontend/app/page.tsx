@@ -945,6 +945,7 @@ export default function LandingPage() {
           className="relative h-[260vh] border-b border-[var(--line)] bg-[var(--surface-sub)]"
         >
           <div 
+            ref={reportRef}
             className="sticky flex items-center p-[58px_44px_54px] w-full"
             style={{
               top: compact ? "46px" : "54px",
