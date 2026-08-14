@@ -1,6 +1,6 @@
 {
   "source": "reference/cosmetic_kr/violation_types/type_1_drug_misperception.md (핵심 판정 기준, 규정 리서치 검증)",
-  "note": "손 큐레이션 규칙집(자동추출 아님). §3에서 규정 리서치로 검증된 1호 경계표현 중심. 우선순위: violation > needs_review > legal_allow. 미매칭 문장은 VLM(PromptJudge)에 위임. 미백/주름/자외선(2호)·일반 수식어(5호 미확정)는 규칙에 안 넣고 VLM에 맡긴다.",
+  "note": "손 큐레이션 규칙집(자동추출 아님). §3에서 규정 리서치로 검증된 1호 경계표현 중심. 우선순위: violation > needs_review > legal_allow > out_of_scope. 미매칭 문장은 VLM(PromptJudge)에 위임. 미백/주름/자외선(2호)는 규칙에 안 넣고 VLM에 맡긴다. 일반 수식어(5호)는 3축①확정규칙(2026-08-13, 정답셋 검수 과정에서 확정)에 따라 needs_review.5호_거짓과장기만에 절대적표현 3개만 반영, 나머지는 아직 VLM에 맡긴다.",
   "violation": {
     "1호_의약품오인": [
       "아토피",
@@ -58,6 +58,11 @@
       "다크서클",
       "혈행",
       "피지분비조절"
+    ],
+    "5호_거짓과장기만": [
+      "완벽한",
+      "최적의",
+      "파워"
     ]
   },
   "legal_allow": [
