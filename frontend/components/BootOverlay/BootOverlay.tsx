@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 
 const BOOT_LINES = [
   "› 바름 콘솔 연결",
-  "› 검사 기준 불러오는 중 · 화장품법 / 고시 2025-79호",
+  "› 검사 기준 불러오는 중 · 화장품법 제13조 / 별표5",
   "[ok] 세션 준비 완료",
 ];
 

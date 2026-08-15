@@ -33,6 +33,8 @@ function toggleNav(current: boolean) {
   } catch {
     // 저장 실패해도 이번 화면에서는 그대로 토글
   }
+  // pre-paint CSS(globals.css의 html[data-nav="collapsed"] 규칙)와 상태를 맞춘다
+  document.documentElement.setAttribute("data-nav", next ? "collapsed" : "open");
   navListeners.forEach((notify) => notify());
 }
 
@@ -50,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className={`w-full transition-all duration-200 ${isLandingPage ? "max-w-none" : "max-w-[1240px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]"}`}>
+    <div className={`w-full transition-all duration-200 ${isLandingPage ? "max-w-none" : "flex flex-col max-w-[1240px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]"}`}>
       {!isLandingPage && (
         <div className="flex items-center gap-3 p-[11px_15px] border-b border-[var(--line-2)] bg-[var(--surface-sub)]">
           <Link href="/home" className="flex items-center gap-3 no-underline cursor-pointer">
@@ -112,42 +114,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className={isLandingPage ? "w-full" : `grid max-[900px]:flex max-[900px]:flex-col transition-[grid-template-columns] duration-[220ms] ease-in-out ${collapsed ? "grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[216px_minmax(0,1fr)]"}`}>
+      <div className={isLandingPage ? "w-full" : `app-side-grid grid flex-1 max-[900px]:flex max-[900px]:flex-col transition-[grid-template-columns] duration-[220ms] ease-in-out ${collapsed ? "grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[216px_minmax(0,1fr)]"}`}>
         {!isLandingPage && (
           <aside className="bg-[var(--surface-sub)] border-r border-[var(--line-2)] overflow-hidden max-[900px]:fixed max-[900px]:bottom-0 max-[900px]:left-0 max-[900px]:right-0 max-[900px]:z-40 max-[900px]:w-full max-[900px]:h-auto max-[900px]:border-r-0 max-[900px]:border-t max-[900px]:border-[var(--line-2)]">
             <div className={`w-full h-full flex flex-col gap-2 max-[900px]:flex-row max-[900px]:p-[8px_12px] max-[900px]:justify-around max-[900px]:items-center ${collapsed ? "p-[13px_8px] items-center" : "p-[13px_11px]"}`}>
-              <button
-                className={`inline-flex items-center justify-center border-0 bg-transparent text-[var(--ink-3)] cursor-pointer p-[5px] transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] max-[900px]:hidden ${collapsed ? "self-center" : "self-end"}`}
-                onClick={() => toggleNav(collapsed)}
-                aria-label="사이드바 접기/펼치기"
-                aria-expanded={!collapsed}
-                title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
-              >
-                <svg className={`w-4 h-4 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-                  <path d="M15 6l-6 6 6 6" />
-                </svg>
-              </button>
-              <nav className={`flex flex-col gap-[2px] mt-[2px] max-[900px]:flex-row max-[900px]:mt-0 max-[900px]:w-full max-[900px]:justify-around ${collapsed ? "items-center" : ""}`}>
-                <Link href="/home" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
-                  collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
-                } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 ${
-                  pathname === "/home"
-                    ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
-                    : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                }`} title="홈">
-                  <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-                    <path d="M4 11 12 4l8 7" />
-                    <path d="M6 10v9h12v-9" />
+              {/* 접힌 상태: 펼침 토글을 레일 최상단에 아이콘 단독으로 */}
+              {collapsed && (
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center w-10 p-[10px_0] border-0 bg-transparent text-[var(--ink-3)] cursor-pointer transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] max-[900px]:hidden"
+                  onClick={() => toggleNav(collapsed)}
+                  aria-label="사이드바 펼치기"
+                  aria-expanded={false}
+                  title="사이드바 펼치기"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+                    <path d="M9 6l6 6-6 6" />
                   </svg>
-                  <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>홈</span>
-                </Link>
+                </button>
+              )}
+              <nav className={`flex flex-col gap-[2px] mt-[2px] max-[900px]:flex-row max-[900px]:mt-0 max-[900px]:w-full max-[900px]:justify-around ${collapsed ? "items-center" : ""}`}>
+                {/* 홈 행: 펼친 상태에선 오른쪽에 접기 토글을 나란히 (클릭 영역은 분리) */}
+                <div className={collapsed ? "contents" : "flex items-center max-[900px]:contents"}>
+                  <Link href="/home" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
+                    collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "flex-1 gap-[11px] p-[9px_11px]"
+                  } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 ${
+                    pathname === "/home"
+                      ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
+                      : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                  }`} title="홈">
+                    <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+                      <path d="M4 11 12 4l8 7" />
+                      <path d="M6 10v9h12v-9" />
+                    </svg>
+                    <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>홈</span>
+                  </Link>
+                  {!collapsed && (
+                    <button
+                      type="button"
+                      className="app-side-expanded-only inline-flex items-center justify-center shrink-0 ml-[2px] p-[8px_6px] border-0 bg-transparent text-[var(--ink-3)] cursor-pointer transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] max-[900px]:hidden"
+                      onClick={() => toggleNav(collapsed)}
+                      aria-label="사이드바 접기"
+                      aria-expanded={true}
+                      title="사이드바 접기"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+                        <path d="M15 6l-6 6 6 6" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
                 <span className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                   collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
                 } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 cursor-default text-[var(--ink-3)] hover:bg-transparent hover:text-[var(--ink-3)]`} title="검사 이력 (준비 중)">
                   <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
                     <path d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
-                  <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>검사 이력</span>
+                  <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>검사 이력</span>
                 </span>
                 <Link href="/mypage" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                   collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
@@ -160,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <circle cx="12" cy="8" r="3.5" />
                     <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
                   </svg>
-                  <span className={`whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>마이페이지</span>
+                  <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>마이페이지</span>
                 </Link>
               </nav>
             </div>

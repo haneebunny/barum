@@ -4,10 +4,12 @@
  */
 export function PageFooter() {
   return (
-    <div className="mt-[22px] p-[10px_20px] border-t border-[var(--line)] bg-[var(--surface-sub)] text-[11px] text-[var(--ink-3)] leading-[1.65]">
+    // mt-auto: 본문이 짧아도 푸터가 셸 박스 바닥에 붙어 하단 흰 공백이 생기지 않게
+    <div className="mt-auto p-[10px_20px] border-t border-[var(--line)] bg-[var(--surface-sub)] text-[11px] text-[var(--ink-3)] leading-[1.65]">
       바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. &apos;통과&apos;가 100% 안전을 보장하지
       않으며, 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-      <b className="text-[var(--brand-ink)] font-semibold">적용 기준: 화장품법 · 고시 2025-79호 · 미국 FDA/FTC</b>
+      {/* 주의: 2025-79호는 식품 고시라 오기였음(2026-08-15 정정). 기준 표기는 citation_registry 도입 시 API 값으로 대체 예정 */}
+      <b className="text-[var(--brand-ink)] font-semibold">적용 기준: 화장품법 제13조 · 시행규칙 별표5 · 미국 FDA/FTC</b>
     </div>
   );
 }

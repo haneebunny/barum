@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const THEME_INIT_SCRIPT =
-  "(function(){try{var s=localStorage.getItem('barum-theme');document.documentElement.setAttribute('data-theme', s||'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();";
+  "(function(){try{var s=localStorage.getItem('barum-theme');document.documentElement.setAttribute('data-theme', s||'light');var n=localStorage.getItem('barum-nav');document.documentElement.setAttribute('data-nav', n==='0'?'collapsed':'open');}catch(e){document.documentElement.setAttribute('data-theme','light');document.documentElement.setAttribute('data-nav','open');}})();";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   // suppressHydrationWarning: 위 스크립트가 하이드레이션 전에 data-theme를 바꿔서
