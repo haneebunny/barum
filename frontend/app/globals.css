@@ -66,6 +66,8 @@ body {
   -webkit-font-smoothing: antialiased;
   display: flex;
   justify-content: center;
+  /* flex-start: 셸 박스가 콘텐츠 높이만큼만 되게 (stretch면 짧은 화면에서 박스 안에 흰 공백 구멍이 생긴다) */
+  align-items: flex-start;
   padding: 26px 18px 60px;
   min-height: 100dvh;
 }
