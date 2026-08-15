@@ -114,17 +114,42 @@ class Summary(BaseModel):
     counts_by_type: dict[str, int] = Field(default_factory=dict)  # 위반유형별 건수
 
 
+class BasisCitation(BaseModel):
+    """규제 근거 인용 하나. `citation_registry.json` 항목을 API 응답용으로 축약한다.
+
+    2026-08-13 프론트 푸터가 화장품과 무관한 식품 도메인 고시번호("2025-79호")를
+    하드코딩해 표시한 사고가 있었다. 그 뒤로 규제 근거 문자열은 어디서도 하드코딩
+    하지 않고 전부 이 레지스트리(`citation_registry.json`)에서 읽는다.
+    """
+
+    id: str
+    law_name: str
+    citation_id: str | None = None
+    effective_date: str | None = None
+    source_url: str | None = None
+
+
+class RegulatoryBasis(BaseModel):
+    """한 관할(jurisdiction)의 적용 기준. `GET /reference/basis`와 `CheckReport.basis`가 같이 쓴다."""
+
+    jurisdiction: Region
+    citations: list[BasisCitation]
+
+
 class CheckReport(BaseModel):
     """`POST /check` 응답. findings + unjudged + summary.
 
     result_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면
     (JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다.
+    basis: 검사 시점에 실제 적용된 규제 근거 스냅샷. 나중에 레지스트리가 갱신돼도
+    이 리포트를 다시 볼 때는 검사 당시 값 그대로 보여야 해서 결과에 박아 보낸다.
     """
 
     findings: list[Finding]
     unjudged: list[UnjudgedSentence] = Field(default_factory=list)
     summary: Summary
     result_id: str | None = None
+    basis: RegulatoryBasis | None = None
 
 
 class StoredCheck(BaseModel):

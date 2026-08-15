@@ -15,11 +15,13 @@ from barum.models import (
     GenerateRequest,
     GenerateResponse,
     Region,
+    RegulatoryBasis,
     RemediationRequest,
     RemediationResponse,
     StoredCheck,
 )
 from barum.generate.content import generate_content
+from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check
 from barum.storage.checks_store import (
@@ -135,6 +137,20 @@ def _persist_check(
 def health() -> dict:
     """헬스체크."""
     return {"status": "ok"}
+
+
+@app.get("/reference/basis", response_model=dict[str, RegulatoryBasis])
+def get_reference_basis() -> dict[str, RegulatoryBasis]:
+    """지금 시점 적용 기준(프론트 푸터용). `{"kr": ..., "us": ...}`.
+
+    `CheckReport.basis`와 같은 소스(citation_registry.json)에서 읽지만, 이건 항상
+    "지금" 기준이고 검사 시점 스냅샷이 아니다. 리포트 화면은 `report.basis`를 쓰고,
+    검사와 무관한 화면(홈·검사 시작 전)은 이 엔드포인트를 쓴다.
+    """
+    return {
+        "kr": build_regulatory_basis("KR"),
+        "us": build_regulatory_basis("US"),
+    }
 
 
 @app.get("/reports/{result_id}", response_model=StoredCheck)
