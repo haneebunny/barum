@@ -797,7 +797,6 @@ export default function LandingPage() {
             <span className="bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold p-[7px_13px]">바름</span>
             <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">퀴즈 {qNum}</span>
             <span className="text-[var(--ink-3)] p-[7px_13px]">맞힌 수 {score}개</span>
-            <span className="ml-auto text-[var(--ink-3)] p-[7px_13px]">^N 새 검사</span>
           </div>
         </div>
       </div>
@@ -1301,7 +1300,6 @@ export default function LandingPage() {
         <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">팀 유어베리 YourVeri</span>
         <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">© 2026</span>
         <span className="flex-1 text-[var(--ink-3)] p-[7px_13px]">올리기 전에, 바르게.</span>
-        <span className="text-[var(--ink-3)] p-[7px_13px]">^N 새 검사</span>
       </div>
 
       {/* ── /home 진입 부팅 오버레이 ── */}

@@ -75,6 +75,17 @@ body {
   }
 }
 
+/* ============ 사이드바 접힘 pre-paint ============ */
+/* 접힘 상태를 hydration 전에 CSS로 먼저 반영한다.
+   (서버는 항상 펼침으로 렌더하므로, 이 규칙이 없으면 진입 순간
+   라벨 달린 사이드바가 좁은 폭에 구겨졌다가 접히는 프레임이 보인다) */
+html[data-nav="collapsed"] .app-side-grid {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+html[data-nav="collapsed"] .app-side-expanded-only {
+  display: none;
+}
+
 /* ============ Animations ============ */
 @keyframes blink {
   50% {
