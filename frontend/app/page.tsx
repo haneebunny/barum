@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ThemeToggle } from "@/components/ThemeToggle/ThemeToggle";
 import { BootOverlay, useConsoleEntry } from "@/components/BootOverlay/BootOverlay";
 
@@ -70,10 +71,12 @@ function ReportIntro() {
 }
 
 // 리포트 UI 데모. 진입 즉시 위반 1건이 보이는 상태에서 시작한다(빈 박스 금지).
-// phase 0 = 위반 검출 / 1 = 검토필요 추가 / 2 = 권고안 적용·해결
+// phase 0 = 위반 검출 / 1 = 검토필요 추가 / 2 = 위반 카드 해결 / 3 = 전체 해결·점수 98
+// 해결을 두 박자로 나눠서 화면 전체가 한 번에 초록으로 반전되지 않게 한다.
 function ReportDemo({ phase, score }: { phase: number; score: number }) {
   const showReview = phase >= 1;
-  const resolved = phase >= 2;
+  const fixedViolation = phase >= 2; // 위반 카드만 먼저 해결
+  const resolved = phase >= 3;       // 검토필요·점수·상단바까지 해결
   return (
     <div className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)] overflow-hidden w-full">
       {/* 상단 바 */}
@@ -92,7 +95,13 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
           className="ml-auto font-semibold transition-colors duration-300"
           style={{ color: resolved ? "var(--brand-ink)" : "var(--crit)" }}
         >
-          {resolved ? "위반 0 · 검토필요 0" : showReview ? "위반 1 · 검토필요 1" : "위반 1 · 검토필요 0"}
+          {resolved
+            ? "위반 0 · 검토필요 0"
+            : fixedViolation
+            ? "위반 0 · 검토필요 1"
+            : showReview
+            ? "위반 1 · 검토필요 1"
+            : "위반 1 · 검토필요 0"}
         </span>
         <span className="text-[var(--ink-3)]">이미지 4 / 12</span>
       </div>
@@ -106,12 +115,60 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
       </div>
 
       <div className="grid grid-cols-2 max-[900px]:grid-cols-1">
-        {/* 좌: 이미지 영역 */}
+        {/* 좌: 이미지 영역. 실제 상세페이지처럼 이미지 위에 광고 문구를 얹고, 위반 문구는 번호 하이라이트로 표시 */}
         <div className="border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b p-[12px_14px]">
           <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">업로드한 상세페이지</div>
-          <div className="flex flex-col items-center justify-center text-[var(--ink-3)] bg-[var(--surface-sub)] border border-dashed border-[var(--line-2)] h-[120px] text-[11px] text-center leading-[1.7]">
-            <span className="font-bold text-[var(--ink-2)]">[ 상세페이지 이미지 ]</span>
-            <span className="text-[10px] text-[var(--ink-3)] mt-1">원본 그대로 보관</span>
+          <div className="relative h-[240px] overflow-hidden border border-[var(--line-2)]">
+            <Image
+              src="/image/landing_img.png"
+              alt="상세페이지 예시: 세럼 제품 컷"
+              fill
+              className="object-cover object-[center_30%]"
+              sizes="(max-width: 900px) 100vw, 430px"
+            />
+            {/* 광고 문구 오버레이: 사진 위 문구라 테마 무관 고정 잉크색(이미지 콘텐츠의 일부, UI 토큰 아님) */}
+            <div className="absolute top-[16px] left-0 right-0 flex flex-col items-center gap-[14px]">
+              <span className="relative inline-block text-[16px] font-extrabold tracking-[-0.4px]" style={{ color: "#14231B" }}>
+                7일 만에 미백 완성
+                {/* 하이라이트 ①: 위반. 해결되면 회색+체크로 (통과는 색으로 신호하지 않음) */}
+                <span
+                  className="absolute inset-x-[-7px] inset-y-[-4px] border-2 pointer-events-none transition-colors duration-300"
+                  style={{ borderColor: fixedViolation ? "var(--line-2)" : "var(--crit)" }}
+                  aria-hidden="true"
+                />
+                <span
+                  className="absolute top-[-13px] left-[-13px] font-mono text-[9px] font-bold px-[4px] py-[1px] transition-colors duration-300"
+                  style={{
+                    backgroundColor: fixedViolation ? "var(--line-2)" : "var(--crit)",
+                    color: fixedViolation ? "var(--ink-3)" : "#FFFFFF"
+                  }}
+                >
+                  {fixedViolation ? "✓1" : "1"}
+                </span>
+              </span>
+              <span className="relative inline-block text-[12px] font-semibold" style={{ color: "#33413A" }}>
+                순식간에 스며드는 흡수력
+                {/* 하이라이트 ②: 검토필요(점선). 단계 1부터 표시 */}
+                <span
+                  className="absolute inset-x-[-6px] inset-y-[-3px] border-2 border-dashed pointer-events-none transition-all duration-300"
+                  style={{
+                    borderColor: resolved ? "var(--line-2)" : "var(--crit)",
+                    opacity: showReview ? 1 : 0
+                  }}
+                  aria-hidden="true"
+                />
+                <span
+                  className="absolute top-[-12px] left-[-12px] font-mono text-[9px] font-bold px-[4px] py-[1px] transition-all duration-300"
+                  style={{
+                    backgroundColor: resolved ? "var(--line-2)" : "var(--crit)",
+                    color: resolved ? "var(--ink-3)" : "#FFFFFF",
+                    opacity: showReview ? 1 : 0
+                  }}
+                >
+                  {resolved ? "✓2" : "2"}
+                </span>
+              </span>
+            </div>
           </div>
           <div className="mt-[8px] text-[10.5px] font-semibold">
             {resolved ? (
@@ -126,35 +183,41 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
         <div className="p-[12px_14px]">
           <div className="text-[var(--ink-3)] mb-[8px] font-mono text-[11px]">문구별 판정</div>
 
-          {/* 위반 카드: 진입 시점부터 보인다 */}
-          <div className="mb-[8px] relative">
+          {/* 위반 카드: 진입 시점부터 보인다. 단계 2에서 먼저 해결된다 */}
+          <div className="mb-[8px]">
             <div
               className="border p-[10px_12px] transition-colors duration-300"
               style={{
-                borderColor: resolved ? "var(--line-2)" : "var(--crit-bd)",
-                backgroundColor: resolved ? "var(--surface-sub)" : "var(--crit-bg)"
+                borderColor: fixedViolation ? "var(--line-2)" : "var(--crit-bd)",
+                backgroundColor: fixedViolation ? "var(--surface-sub)" : "var(--crit-bg)"
               }}
             >
-              <div className="flex items-center justify-between mb-[6px]">
+              <div className="flex items-center justify-between gap-2 mb-[6px]">
                 <span
                   className="font-semibold text-[11px] transition-colors duration-300"
-                  style={{ color: resolved ? "var(--ink-3)" : "var(--crit)" }}
+                  style={{ color: fixedViolation ? "var(--ink-3)" : "var(--crit)" }}
                 >
-                  {resolved ? "해결됨 · 대체 문구 적용" : "위반 · 기능성 범위 이탈"}
+                  {fixedViolation ? "해결됨 · 대체 문구 적용" : "위반 · 기능성 범위 이탈"}
                 </span>
-                <span
-                  className="font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
-                  style={{
-                    backgroundColor: resolved ? "var(--line-2)" : "var(--crit)",
-                    color: resolved ? "var(--ink-3)" : "var(--on-brand)"
-                  }}
-                >
-                  화장품법 제13조 ①2호
+                {/* 배지는 절대배치 대신 필 옆 인라인으로 (겹침 방지) */}
+                <span className="flex items-center gap-[6px]">
+                  {!fixedViolation && (
+                    <span className="bg-[var(--crit)] text-white text-[9px] font-bold px-1.5 py-0.5">위험!</span>
+                  )}
+                  <span
+                    className="font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                    style={{
+                      backgroundColor: fixedViolation ? "var(--line-2)" : "var(--crit)",
+                      color: fixedViolation ? "var(--ink-3)" : "var(--on-brand)"
+                    }}
+                  >
+                    화장품법 제13조 ①2호
+                  </span>
                 </span>
               </div>
 
               <div className="font-semibold text-[var(--ink)] mb-[6px] text-[11.5px] leading-[1.4]">
-                {resolved ? (
+                {fixedViolation ? (
                   <div className="flex flex-col gap-1">
                     <del className="text-[var(--ink-3)] font-normal text-[11px] decoration-1">&quot;7일 만에 미백 완성&quot;</del>
                     <span className="text-[var(--brand-ink)]">&quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot;</span>
@@ -167,20 +230,13 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
               <div
                 className="text-[var(--ink-3)] text-[11px] leading-[1.6] border-t pt-1.5 mt-1 transition-colors duration-300"
                 style={{
-                  borderColor: resolved ? "var(--line)" : "var(--crit-bd)",
-                  opacity: resolved ? 0.5 : 1
+                  borderColor: fixedViolation ? "var(--line)" : "var(--crit-bd)",
+                  opacity: fixedViolation ? 0.5 : 1
                 }}
               >
-                권고안 &quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot;{resolved && <span className="text-[var(--brand-ink)]"> 적용됨</span>}
+                권고안 &quot;나이아신아마이드 함유, 멜라닌 생성 억제로 미백에 도움&quot;{fixedViolation && <span className="text-[var(--brand-ink)]"> 적용됨</span>}
               </div>
             </div>
-
-            {/* 배지는 카드 상단 테두리에 걸쳐서 조항 필과 겹치지 않게 */}
-            {!resolved && (
-              <div className="absolute right-[10px] top-[-8px] z-10 pointer-events-none">
-                <span className="bg-[var(--crit)] text-white text-[9px] font-bold px-1.5 py-0.5 shadow-sm">위험!</span>
-              </div>
-            )}
           </div>
 
           {/* 검토필요 카드: 단계 1부터 나타난다 (clip은 내부 카드가 담당, 래퍼는 배지가 걸치므로 hidden 금지) */}
@@ -194,21 +250,27 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
                 transition: "clip-path 300ms ease-out, border-color 300ms, background-color 300ms"
               }}
             >
-              <div className="flex items-center justify-between mb-[6px]">
+              <div className="flex items-center justify-between gap-2 mb-[6px]">
                 <span
                   className="text-[11px] font-semibold transition-colors duration-300"
                   style={{ color: resolved ? "var(--ink-3)" : "var(--ink-2)" }}
                 >
                   {resolved ? "해결됨 · 실증자료 준비" : "검토필요 · 입증 자료 필요"}
                 </span>
-                <span
-                  className="border font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
-                  style={{
-                    borderColor: resolved ? "var(--line-2)" : "var(--crit-bd)",
-                    color: resolved ? "var(--ink-3)" : "var(--crit)"
-                  }}
-                >
-                  표시광고 실증제
+                {/* 배지는 절대배치 대신 필 옆 인라인으로 (겹침 방지) */}
+                <span className="flex items-center gap-[6px]">
+                  {!resolved && (
+                    <span className="bg-[var(--crit-bg)] text-[var(--crit)] border border-[var(--crit-bd)] text-[9px] font-bold px-1.5 py-0.5">실증필요</span>
+                  )}
+                  <span
+                    className="border font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
+                    style={{
+                      borderColor: resolved ? "var(--line-2)" : "var(--crit-bd)",
+                      color: resolved ? "var(--ink-3)" : "var(--crit)"
+                    }}
+                  >
+                    표시광고 실증제
+                  </span>
                 </span>
               </div>
 
@@ -224,11 +286,6 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
               </div>
             </div>
 
-            {showReview && !resolved && (
-              <div className="absolute right-[10px] top-[-8px] z-10 pointer-events-none">
-                <span className="bg-[var(--crit-bg)] text-[var(--crit)] border border-[var(--crit-bd)] text-[9px] font-bold px-1.5 py-0.5 shadow-sm">실증필요</span>
-              </div>
-            )}
           </div>
 
           {/* 버튼 */}
@@ -237,7 +294,7 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
               className="flex-1 flex items-center justify-center text-[var(--on-brand)] cursor-pointer py-2.5 text-[13px] font-bold transition-colors duration-200"
               style={{ backgroundColor: resolved ? "var(--brand-ink)" : "var(--brand)" }}
             >
-              {resolved ? "권고안 적용 완료" : "권고안 전체 적용"}
+              {resolved ? "권고안 적용 완료" : fixedViolation ? "권고안 적용 중" : "권고안 전체 적용"}
             </span>
             <span className="flex-1 flex items-center justify-center text-[var(--ink-2)] border border-[var(--line-2)] cursor-pointer hover:bg-[var(--nav-active-bg)] py-2.5 text-[13px] font-bold">수정 후 재검사</span>
           </div>
@@ -271,8 +328,8 @@ export default function LandingPage() {
   }, []);
 
   // ── 스크롤 상태 ──
-  // 리포트 데모는 연속 스크럽 대신 3단계로 진행한다.
-  // 0 = 위반 1건 검출된 상태(진입 즉시) / 1 = 검토필요 추가 검출 / 2 = 권고안 적용·해결
+  // 리포트 데모는 연속 스크럽 대신 4단계로 진행한다. 해결을 두 박자로 나눠 급격한 색 반전을 피한다.
+  // 0 = 위반 검출(진입 즉시) / 1 = 검토필요 추가 / 2 = 위반 카드 해결 / 3 = 전체 해결·점수 98
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
@@ -320,8 +377,8 @@ export default function LandingPage() {
         const rect = reportContainerRef.current.getBoundingClientRect();
         const denom = rect.height - window.innerHeight;
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
-        // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게 (0.18: 약 1/5 지점, 0.55: 중반)
-        setReportPhase(rp >= 0.55 ? 2 : rp >= 0.18 ? 1 : 0);
+        // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게, 해결은 두 박자로 분산
+        setReportPhase(rp >= 0.75 ? 3 : rp >= 0.5 ? 2 : rp >= 0.18 ? 1 : 0);
       }
       ticking = false;
     };
@@ -339,13 +396,13 @@ export default function LandingPage() {
   // 모바일/감소모드에선 스크럽 대신 단계 자동 재생
   useEffect(() => {
     if (!prefersReducedMotion && !isMobile) return;
-    const interval = setInterval(() => setReportPhase(p => (p + 1) % 3), 3000);
+    const interval = setInterval(() => setReportPhase(p => (p + 1) % 4), 3000);
     return () => clearInterval(interval);
   }, [prefersReducedMotion, isMobile]);
 
   // 리포트 점수 카운트업 (해결 단계 진입 시 62 -> 98, 이탈 시 98 -> 62)
   useEffect(() => {
-    const isTargetUp = reportPhase === 2;
+    const isTargetUp = reportPhase === 3;
     const endVal = isTargetUp ? 98 : 62;
     if (scoreTargetRef.current === endVal) return; // 목표 변동 없으면 재생 안 함
     scoreTargetRef.current = endVal;
