@@ -100,6 +100,18 @@ body {
   }
 }
 
+/* 퀴즈 결과·완료 화면 등에서 쓰는 짧은 등장 모션 (기존에 참조만 있고 정의가 빠져 있었음) */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
