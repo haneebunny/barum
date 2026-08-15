@@ -1293,7 +1293,7 @@ export default function LandingPage() {
       {/* ── 면책 + 푸터 ── */}
       <div className="border-t border-[var(--line)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[10px_20px] text-[11px] leading-[1.65]">
         바름은 게시 전 사전 점검 도구이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡기 때문에 &lsquo;통과&rsquo;가 100% 안전을 보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b className="text-[var(--brand-ink)] font-semibold">적용 기준: 화장품법 · 고시 2025-79호 · 미국 FDA/FTC</b>
+        <b className="text-[var(--brand-ink)] font-semibold">적용 기준: 화장품법 제13조 · 시행규칙 별표5 · 미국 FDA/FTC</b>
       </div>
       <div className="flex border-t border-[var(--line-2)] bg-[var(--surface-sub)] font-mono text-[11px]">
         <span className="font-bold bg-[var(--brand-deep)] text-[var(--on-brand)] p-[7px_13px]">바름</span>
