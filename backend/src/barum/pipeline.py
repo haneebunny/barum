@@ -14,6 +14,7 @@ from PIL import Image
 from barum.judge.cosmetic import CosmeticJudge
 from barum.models import CheckReport, JudgmentFlag, Region, Summary
 from barum.preprocess.ocr import extract_product_sentences
+from barum.reference.citations import build_regulatory_basis
 from barum.vlm import VLM
 
 # 문장 분리: 줄바꿈과 문장부호(한/영) 기준. 광고 카피라 완벽한 분리보다 단순·안정을 택한다.
@@ -167,4 +168,9 @@ def run_check(
         n_unjudged=len(result.unjudged),
         counts_by_type=counts,
     )
-    return CheckReport(findings=findings, unjudged=result.unjudged, summary=summary)
+    return CheckReport(
+        findings=findings,
+        unjudged=result.unjudged,
+        summary=summary,
+        basis=build_regulatory_basis(region),
+    )
