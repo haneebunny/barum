@@ -320,7 +320,8 @@ export default function LandingPage() {
         const rect = reportContainerRef.current.getBoundingClientRect();
         const denom = rect.height - window.innerHeight;
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
-        setReportPhase(rp >= 0.75 ? 2 : rp >= 0.35 ? 1 : 0);
+        // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게 (0.18: 약 1/5 지점, 0.55: 중반)
+        setReportPhase(rp >= 0.55 ? 2 : rp >= 0.18 ? 1 : 0);
       }
       ticking = false;
     };
@@ -894,7 +895,7 @@ export default function LandingPage() {
         <div
           id="report"
           ref={reportContainerRef}
-          className="relative h-[260vh] border-b border-[var(--line)] bg-[var(--surface-sub)]"
+          className="relative h-[220vh] border-b border-[var(--line)] bg-[var(--surface-sub)]"
         >
           <div
             ref={reportRef}
