@@ -53,6 +53,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className={`w-full transition-all duration-200 ${isLandingPage ? "max-w-none" : "max-w-[1240px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]"}`}>
       {!isLandingPage && (
         <div className="flex items-center gap-3 p-[11px_15px] border-b border-[var(--line-2)] bg-[var(--surface-sub)]">
+          {/* 사이드바 토글: 상단바 로고 왼쪽 (Gmail·ChatGPT식 패널 토글 관례) */}
+          <button
+            type="button"
+            className="inline-flex items-center justify-center border-0 bg-transparent text-[var(--ink-3)] cursor-pointer p-[6px] transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] max-[900px]:hidden"
+            onClick={() => toggleNav(collapsed)}
+            aria-label="사이드바 접기/펼치기"
+            aria-expanded={!collapsed}
+            title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          >
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+              <rect x={3} y={4} width={18} height={16} />
+              <path d="M9 4v16" />
+            </svg>
+          </button>
           <Link href="/home" className="flex items-center gap-3 no-underline cursor-pointer">
             <svg className="w-8 h-8 shrink-0 block" viewBox="0 0 170 170" fill="none" role="img" aria-label="바름">
               <circle cx="101.542" cy="97.5538" r="42.3692" fill="#95DDB7" />
@@ -116,17 +130,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {!isLandingPage && (
           <aside className="bg-[var(--surface-sub)] border-r border-[var(--line-2)] overflow-hidden max-[900px]:fixed max-[900px]:bottom-0 max-[900px]:left-0 max-[900px]:right-0 max-[900px]:z-40 max-[900px]:w-full max-[900px]:h-auto max-[900px]:border-r-0 max-[900px]:border-t max-[900px]:border-[var(--line-2)]">
             <div className={`w-full h-full flex flex-col gap-2 max-[900px]:flex-row max-[900px]:p-[8px_12px] max-[900px]:justify-around max-[900px]:items-center ${collapsed ? "p-[13px_8px] items-center" : "p-[13px_11px]"}`}>
-              <button
-                className={`inline-flex items-center justify-center border-0 bg-transparent text-[var(--ink-3)] cursor-pointer p-[5px] transition-all duration-[120ms] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)] max-[900px]:hidden ${collapsed ? "self-center" : "self-end"}`}
-                onClick={() => toggleNav(collapsed)}
-                aria-label="사이드바 접기/펼치기"
-                aria-expanded={!collapsed}
-                title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
-              >
-                <svg className={`w-4 h-4 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-                  <path d="M15 6l-6 6 6 6" />
-                </svg>
-              </button>
               <nav className={`flex flex-col gap-[2px] mt-[2px] max-[900px]:flex-row max-[900px]:mt-0 max-[900px]:w-full max-[900px]:justify-around ${collapsed ? "items-center" : ""}`}>
                 <Link href="/home" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                   collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
