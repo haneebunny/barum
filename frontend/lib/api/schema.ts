@@ -56,11 +56,29 @@ export const SummarySchema = z.object({
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
+// 규제 근거 인용 (citation_registry 단일 소스에서 옴. 프론트 하드코딩 금지)
+export const BasisCitationSchema = z.object({
+  id: z.string(),
+  law_name: z.string(),
+  citation_id: z.string().nullable(),
+  effective_date: z.string().nullable(),
+  source_url: z.string().nullable(),
+});
+export type BasisCitation = z.infer<typeof BasisCitationSchema>;
+
+export const RegulatoryBasisSchema = z.object({
+  jurisdiction: RegionSchema,
+  citations: z.array(BasisCitationSchema),
+});
+export type RegulatoryBasis = z.infer<typeof RegulatoryBasisSchema>;
+
 export const CheckReportSchema = z.object({
   findings: z.array(FindingSchema),
   unjudged: z.array(UnjudgedSchema),
   summary: SummarySchema,
   result_id: z.string().nullable(),
+  // 검사 시점에 적용된 기준 스냅샷. 구버전 저장 리포트엔 없을 수 있어 optional
+  basis: RegulatoryBasisSchema.nullable().optional(),
 });
 export type CheckReport = z.infer<typeof CheckReportSchema>;
 

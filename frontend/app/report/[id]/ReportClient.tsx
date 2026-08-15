@@ -779,7 +779,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         </Link>
       </div>
 
-      <PageFooter />
+      <PageFooter basis={envelope.report.basis ?? null} snapshot />
     </>
   );
 }
