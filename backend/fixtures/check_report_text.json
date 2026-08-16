@@ -13,7 +13,8 @@
         "y_start": null,
         "y_end": null,
         "source_h": null,
-        "source_w": null
+        "source_w": null,
+        "source": null
       }
     },
     {
@@ -29,7 +30,8 @@
         "y_start": null,
         "y_end": null,
         "source_h": null,
-        "source_w": null
+        "source_w": null,
+        "source": null
       }
     }
   ],
@@ -46,5 +48,6 @@
       "1호_의약품오인": 1
     }
   },
-  "result_id": null
+  "result_id": null,
+  "basis": null
 }

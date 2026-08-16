@@ -13,7 +13,8 @@
         "y_start": 0,
         "y_end": 1480,
         "source_h": 9000,
-        "source_w": 1000
+        "source_w": 1000,
+        "source": null
       }
     },
     {
@@ -29,7 +30,8 @@
         "y_start": 1400,
         "y_end": 2900,
         "source_h": 9000,
-        "source_w": 1000
+        "source_w": 1000,
+        "source": null
       }
     },
     {
@@ -45,7 +47,8 @@
         "y_start": 1400,
         "y_end": 2900,
         "source_h": 9000,
-        "source_w": 1000
+        "source_w": 1000,
+        "source": null
       }
     }
   ],
@@ -63,5 +66,6 @@
       "5호_거짓과장기만": 1
     }
   },
-  "result_id": null
+  "result_id": null,
+  "basis": null
 }

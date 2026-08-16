@@ -1,7 +1,10 @@
+import { z } from "zod";
+import { RegulatoryBasisSchema } from "./schema";
 import type {
   Region,
   CheckReport,
   ReportEnvelope,
+  RegulatoryBasis,
   RemediationRequest,
   RemediationResponse,
   GenerateRequest,
@@ -290,6 +293,17 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
 
 export function getReportImageUrl(resultId: string): string {
   return `${getApiUrl()}/reports/${resultId}/image`;
+}
+
+// 지금 시점 적용 기준 (푸터 등 검사 이력 없는 화면용). 리포트 화면은 report.basis(검사 시점 스냅샷)를 쓴다
+export async function getReferenceBasis(): Promise<Record<string, RegulatoryBasis>> {
+  const url = `${getApiUrl()}/reference/basis`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Reference basis fetch failed: ${response.status}`);
+  }
+  const data = await response.json();
+  return z.record(z.string(), RegulatoryBasisSchema).parse(data);
 }
 
 export async function health(): Promise<{ status: string }> {

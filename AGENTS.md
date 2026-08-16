@@ -58,6 +58,7 @@ git push origin feature/fe-review-queue   # 내 브랜치로 푸시 (main 아님
 
 ### ⚠️ 필수 주의사항
 - 🚫 **`main`에 직접 푸시 절대 금지.** 반드시 `feature/` 브랜치 → PR → merge 경로만 사용합니다.
+- 🚫 **사용자 사전 승인 없는 원격 push 및 PR 금지.** 로컬 커밋 이후 `git push` 명령어나 PR 생성 동작은 **반드시 사용자의 명시적인 허락(허용 답변)을 채팅창에서 먼저 획득한 후 실행**해야 합니다. 에이전트 단독 판단으로 원격지에 변경 사항을 푸시하지 마십시오.
 - 📦 **의존성 추가 시 매니페스트를 반드시 커밋에 포함합니다.**
   - 프론트(npm): `package.json` + `package-lock.json`
   - 백엔드(pip): `backend/requirements.txt` (의존성 추가하면 `pip freeze > requirements.txt`로 갱신해 커밋). (지금은 LLM+RAG 구조라 무거운 학습용 ML 의존성 없음. 나중에 생기면 그때 `requirements-ml.txt`로 분리 검토.)

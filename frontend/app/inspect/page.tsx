@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent, Suspense } from "react";
+import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { checkAd } from "@/lib/api/client";
-import { UploadSimple, Check, X } from "@phosphor-icons/react";
+import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { Modal } from "@/components/Modal/Modal";
 
 interface FileItem {
   id: string;
@@ -50,12 +51,21 @@ function InspectContent() {
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
-  const [logs, setLogs] = useState<Array<{ ts: string; msg: React.ReactNode }>>([
-    {
-      ts: "--:--:--",
-      msg: <span className="dim">검사 실행을 누르면 분석이 시작됩니다.</span>,
-    },
+  interface TaskStep {
+    id: number;
+    label: string;
+    status: "idle" | "running" | "done" | "warn";
+    valueText?: string;
+  }
+
+  const [steps, setSteps] = useState<TaskStep[]>([
+    { id: 1, label: "자료 확인", status: "idle" },
+    { id: 2, label: "광고 문구 분석", status: "idle" },
+    { id: 3, label: "규제 기준 대조", status: "idle" },
+    { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+    { id: 5, label: "수정 권고안 준비", status: "idle" },
   ]);
   const [resultId, setResultId] = useState<string | null>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -64,7 +74,7 @@ function InspectContent() {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [steps, isLogModalOpen]);
 
   const adFileInputRef = useRef<HTMLInputElement>(null);
   const pFileInputRef = useRef<HTMLInputElement>(null);
@@ -141,20 +151,15 @@ function InspectContent() {
     setPFiles([]);
     setInspectStatus(null);
     setResultId(null);
-    setLogs([
-      {
-        ts: "--:--:--",
-        msg: <span className="dim">검사 실행을 누르면 분석이 시작됩니다.</span>,
-      },
+    setIsLogModalOpen(false);
+    setSteps([
+      { id: 1, label: "자료 확인", status: "idle" },
+      { id: 2, label: "광고 문구 분석", status: "idle" },
+      { id: 3, label: "규제 기준 대조", status: "idle" },
+      { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+      { id: 5, label: "수정 권고안 준비", status: "idle" },
     ]);
   };
-
-  const getTimestamp = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  };
-
 
 
   const handleRun = async () => {
@@ -162,6 +167,7 @@ function InspectContent() {
 
     setInspectStatus("running");
     setResultId(null);
+    setIsLogModalOpen(true);
 
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -178,156 +184,96 @@ function InspectContent() {
     });
 
     const isImage = adFiles.length > 0;
-    const isIngredient = ingText.trim().length > 0 || pFiles.length > 0;
-
-    // 로그 목록 템플릿 빌드용 헬퍼
-    const getLog1Msg = () => (
-      <span>
-        <span className="k">[확인]</span> 자료 확인 중{" "}
-        <span className="dim">
-          · {isImage ? `이미지 ${adFiles.length}개` : "광고 문구"}
-          {isIngredient ? " + 제품 정보" : ""}
-        </span>
-      </span>
-    );
-    const getLog2Msg = () => (
-      <span>
-        <span className="k">[분석]</span> 광고 문구 분석 <span className="bar">██████████</span> <span className="ok">완료</span>
-      </span>
-    );
-    const getLog3Msg = (findingsCount?: number) => (
-      <span>
-        <span className="k">[대조]</span> 규제 기준 대조 중…{" "}
-        {findingsCount !== undefined ? (
-          <>
-            <span className="risk">{findingsCount}건 감지</span>
-            {isIngredient ? <span className="dim"> · 고시원료 매칭 포함</span> : ""}
-          </>
-        ) : (
-          <span className="dim">분석 대기...</span>
-        )}
-      </span>
-    );
-    const getLog4Msg = () => (
-      <span>
-        <span className="k">[근거]</span> 위반 근거 연결 <span className="bar">██████████</span> <span className="ok">완료</span>
-      </span>
-    );
-    const getLog5Msg = (count: number, fileName: string) => (
-      <span>
-        <span className="k">[근거]</span> 이미지 내 위험 표현 <span className="risk">{count}건</span>{" "}
-        <span className="dim">→ {fileName}</span>
-      </span>
-    );
-    const getLog6Msg = () => (
-      <span>
-        <span className="k">[준비]</span> <span className="ok">수정 권고안 준비 완료</span> <span className="dim">→ 우측 하단 「리포트 보기」</span>
-      </span>
-    );
 
     if (reduceMotion) {
-      // 모션 감축이 켜진 경우 지연 없이 API 응답을 대기한 뒤 한 번에 출력
       try {
         const report = await apiPromise;
         setResultId(report.result_id);
 
-        const currentLogs: Array<{ ts: string; msg: React.ReactNode }> = [];
-
-        // 1번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog1Msg() });
-        // 2번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog2Msg() });
-        // 3번 로그 (API 결과 바인딩)
-        currentLogs.push({ ts: getTimestamp(), msg: getLog3Msg(report.findings.length) });
-        // 4번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog4Msg() });
-
-        // 5번 로그 (이미지가 있고 이미지 위반 건수가 있는 경우)
+        const findingsCount = report.findings.length;
         const imageFindings = report.findings.filter((f) => f.location?.tile);
-        if (isImage && imageFindings.length > 0) {
-          const firstImageFinding = imageFindings[0];
-          const fileName = firstImageFinding.location?.tile || "상세페이지";
-          currentLogs.push({
-            ts: getTimestamp(),
-            msg: getLog5Msg(imageFindings.length, fileName),
-          });
-        }
 
-        // 6번 로그
-        currentLogs.push({ ts: getTimestamp(), msg: getLog6Msg() });
-
-        setLogs(currentLogs);
+        setSteps([
+          { id: 1, label: "자료 확인", status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" },
+          { id: 2, label: "광고 문구 분석", status: "done", valueText: "완료" },
+          { id: 3, label: "규제 기준 대조", status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" },
+          { id: 4, label: "이미지 내 위험 표현 검사", status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" },
+          { id: 5, label: "수정 권고안 준비", status: "done", valueText: "준비 완료" },
+        ]);
         setInspectStatus("done");
       } catch (err) {
         console.error(err);
-        setLogs([
-          {
-            ts: getTimestamp(),
-            msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
-          },
-        ]);
+        setSteps(prev => prev.map(s => ({ ...s, status: "warn", valueText: "에러 발생" })));
         setInspectStatus(null);
       }
       return;
     }
 
-    // 모션 감축이 꺼진 경우: 애니메이션 & API 대기 동기화
-    setLogs([]); // 기존 로그 비우기
-
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
-      // 1번 로그 추가 (즉시)
-      setLogs([{ ts: getTimestamp(), msg: getLog1Msg() }]);
+      // 0단계 초기화
+      setSteps([
+        { id: 1, label: "자료 확인", status: "running" },
+        { id: 2, label: "광고 문구 분석", status: "idle" },
+        { id: 3, label: "규제 기준 대조", status: "idle" },
+        { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+        { id: 5, label: "수정 권고안 준비", status: "idle" },
+      ]);
+
+      // 1단계 애니메이션 진행 후 2단계 시작
       await delay(430);
+      setSteps(prev => prev.map(s => {
+        if (s.id === 1) return { ...s, status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" };
+        if (s.id === 2) return { ...s, status: "running" };
+        return s;
+      }));
 
-      // 2번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog2Msg() }]);
+      // 2단계 애니메이션 진행 후 3단계 시작
       await delay(430);
+      setSteps(prev => prev.map(s => {
+        if (s.id === 2) return { ...s, status: "done", valueText: "완료" };
+        if (s.id === 3) return { ...s, status: "running" };
+        return s;
+      }));
 
-      // 3번 로그 대기 상태로 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog3Msg() }]);
-
-      // API 완료 대기
+      // 3단계: 실제 API 응답 대기
       const report = await apiPromise;
       setResultId(report.result_id);
 
-      // API 완료 후 3번 로그 갱신 (결과 바인딩)
-      setLogs((prev) => {
-        const nextLogs = [...prev];
-        nextLogs[2] = { ts: nextLogs[2].ts, msg: getLog3Msg(report.findings.length) };
-        return nextLogs;
-      });
-      await delay(430);
-
-      // 4번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog4Msg() }]);
-      await delay(430);
-
-      // 5번 로그 추가 (이미지가 있고 이미지 위반 건수가 있는 경우)
+      const findingsCount = report.findings.length;
       const imageFindings = report.findings.filter((f) => f.location?.tile);
-      if (isImage && imageFindings.length > 0) {
-        const firstImageFinding = imageFindings[0];
-        const fileName = firstImageFinding.location?.tile || "상세페이지";
-        const msgNode = getLog5Msg(imageFindings.length, fileName);
-        if (msgNode) {
-          setLogs((prev) => [...prev, { ts: getTimestamp(), msg: msgNode }]);
-          await delay(430);
-        }
-      }
 
-      // 6번 로그 추가
-      setLogs((prev) => [...prev, { ts: getTimestamp(), msg: getLog6Msg() }]);
+      // 3단계 완료 처리 후 4단계 시작
+      setSteps(prev => prev.map(s => {
+        if (s.id === 3) return { ...s, status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" };
+        if (s.id === 4) return { ...s, status: "running" };
+        return s;
+      }));
+      await delay(430);
+
+      // 4단계 완료 처리 후 5단계 시작
+      setSteps(prev => prev.map(s => {
+        if (s.id === 4) return { ...s, status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" };
+        if (s.id === 5) return { ...s, status: "running" };
+        return s;
+      }));
+      await delay(430);
+
+      // 5단계 완료 처리
+      setSteps(prev => prev.map(s => {
+        if (s.id === 5) return { ...s, status: "done", valueText: "준비 완료" };
+        return s;
+      }));
       setInspectStatus("done");
     } catch (err) {
       console.error(err);
-      setLogs((prev) => [
-        ...prev,
-        {
-          ts: getTimestamp(),
-          msg: <span className="risk">[에러] 검사 도중 예외가 발생했습니다. 다시 시도해 주세요.</span>,
-        },
-      ]);
+      setSteps(prev => prev.map(s => {
+        if (s.status === "running" || s.status === "idle") {
+          return { ...s, status: "warn", valueText: "실패" };
+        }
+        return s;
+      }));
       setInspectStatus(null);
     }
   };
@@ -364,7 +310,11 @@ function InspectContent() {
           )}
         </span>
         <span className="ml-auto text-[var(--brand-ink)] inline-flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-[var(--brand)]"></span>
+          {status === "running" ? (
+            <CircleNotch size={12} className="animate-spin text-[var(--brand)]" />
+          ) : (
+            <span className="w-1.5 h-1.5 bg-[var(--brand)]"></span>
+          )}
           <span id="mstatTxt">
             {status === "idle" && "입력 대기"}
             {status === "ready" && "입력 완료"}
@@ -374,7 +324,7 @@ function InspectContent() {
         </span>
       </div>
 
-      <div className="grid grid-cols-[1.02fr_0.98fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-2 max-[900px]:grid-cols-1 border-b border-[var(--line)]">
         {/* 좌: 자료 투입 */}
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="mb-5 last:mb-0">
@@ -481,7 +431,10 @@ function InspectContent() {
               </div>
             </div>
           </div>
+        </div>
 
+        {/* 우: 제품 정보 · 참고자료 */}
+        <div className="p-[18px_20px_22px]">
           <div className="mb-5 last:mb-0">
             <div className="flex items-center gap-[11px] m-[0_0_13px]">
               <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
@@ -557,75 +510,154 @@ function InspectContent() {
               </div>
             </div>
           </div>
-
-          <div className="mb-5 last:mb-0">
-            <div className="flex gap-2.5 mt-0.5">
-              <button
-                className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                  status === "running" || status === "idle"
-                    ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
-                    : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
-                }`}
-                id="runBtn"
-                disabled={status === "running" || status === "idle"}
-                onClick={handleRun}
-              >
-                검사 실행 <span className="font-mono">→</span>
-              </button>
-              <button
-                className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                  status === "running" ? "text-[var(--ink-3)] cursor-not-allowed" : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
-                }`}
-                disabled={status === "running"}
-                onClick={handleReset}
-              >
-                초기화
-              </button>
-            </div>
-          </div>
         </div>
+      </div>
 
-        {/* 우: 실시간 검토 로그 */}
-        <div className="p-[18px_20px_22px]">
-          <div className="block" style={{ marginBottom: "14px" }}>
-            <div className="flex items-center gap-[11px] m-[0_0_13px]">
-              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">03</span>
-              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">분석 로그</h2>
-              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-              <span className="text-[var(--ink-3)] font-mono text-[10.5px]">실시간</span>
-            </div>
-            <div className="bg-[var(--surface-sub)] border border-[var(--line-2)] p-[13px_14px] min-h-[250px] font-mono text-[12px] overflow-y-auto" id="log" ref={consoleRef}>
-              {logs.map((log, index) => (
-                <div key={index} className="flex gap-2.5 p-[2.5px_0] opacity-0 translate-y-[3px] animate-[rise_0.3s_forwards]">
-                  <span className="text-[var(--ink-3)] shrink-0 pt-0.25">{log.ts}</span>
-                  <span className="break-all">{log.msg}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* 하단 컨트롤 영역 */}
+      <div className="p-[16px_20px] bg-[var(--surface-sub)] flex items-center justify-between border-b border-[var(--line)] flex-wrap gap-3">
+        <div className="flex gap-2.5">
           <button
-            className={`font-sans text-[13px] font-bold p-[11px_16px] border w-full inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-              status !== "done"
+            className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+              status === "running" || status === "idle"
                 ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
                 : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
             }`}
-            id="toReport"
-            disabled={status !== "done"}
-            onClick={() => {
-              if (status === "done" && resultId) {
-                router.push(`/report/${resultId}`);
-              }
-            }}
+            id="runBtn"
+            disabled={status === "running" || status === "idle"}
+            onClick={handleRun}
           >
-            리포트 보기 <span className="font-mono">→</span>
+            검사 실행 <span className="font-mono">→</span>
+          </button>
+          <button
+            className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
+              status === "running" ? "text-[var(--ink-3)] cursor-not-allowed" : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+            }`}
+            disabled={status === "running"}
+            onClick={handleReset}
+          >
+            초기화
           </button>
         </div>
+
+        <div className="flex gap-2.5 items-center">
+          {(status === "running" || status === "done") && (
+            <button
+              onClick={() => setIsLogModalOpen(true)}
+              className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+            >
+              분석 로그{" "}
+              {status === "running" ? (
+                <CircleNotch size={14} className="animate-spin text-[var(--brand)]" />
+              ) : (
+                <span className="w-1.5 h-1.5 bg-[var(--brand)] rounded-full"></span>
+              )}
+            </button>
+          )}
+
+          {status === "done" && (
+            <button
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              id="toReport"
+              onClick={() => {
+                if (resultId) {
+                  router.push(`/report/${resultId}`);
+                }
+              }}
+            >
+              리포트 보기 <span className="font-mono">→</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 분석 로그 모달 */}
+      <Modal
+        isOpen={isLogModalOpen}
+        title="분석 로그"
+        onClose={() => setIsLogModalOpen(false)}
+        size="md"
+        footer={
+          <div className="flex justify-between items-center w-full font-mono text-[12px]">
+            <span className="text-[var(--ink-3)]">
+              {status === "running" ? "분석이 진행 중입니다…" : "분석이 완료되었습니다."}
+            </span>
+            <div className="flex gap-2">
+              {status === "done" && (
+                <button
+                  className="font-sans text-[12px] font-bold p-[7px_14px] bg-[var(--brand)] text-white border border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] transition-colors"
+                  onClick={() => {
+                    if (resultId) {
+                      router.push(`/report/${resultId}`);
+                    }
+                  }}
+                >
+                  리포트 보기
+                </button>
+              )}
+              <button
+                className="font-sans text-[12px] font-semibold p-[7px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] transition-colors"
+                onClick={() => setIsLogModalOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div
+          className="bg-[var(--surface-sub)] border border-[var(--line-2)] min-h-[250px] font-sans text-[13px] overflow-y-auto flex flex-col justify-center py-2 w-full"
+          id="log"
+          ref={consoleRef}
+        >
+          {steps.map((step) => {
+            const isIdle = step.status === "idle";
+            const isRunning = step.status === "running";
+            const isDone = step.status === "done";
+            const isWarn = step.status === "warn";
+
+            return (
+              <div
+                key={step.id}
+                className={`flex items-center justify-between p-[12px_16px] border-b border-[var(--line)] last:border-b-0 transition-opacity duration-300 ${
+                  isIdle ? "opacity-50" : "opacity-100"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {isIdle && <Minus className="text-[var(--ink-3)]" size={16} />}
+                  {isRunning && <CircleNotch className="text-[var(--brand)] animate-spin" size={16} />}
+                  {isDone && <Check className="text-[var(--brand-ink)] font-bold" size={16} />}
+                  {isWarn && <Warning className="text-[var(--crit)]" size={16} />}
+                  
+                  <span className={`font-semibold ${isRunning ? "text-[var(--brand-ink)]" : "text-[var(--ink)]"}`}>
+                    {step.label}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isRunning && <span className="text-[var(--brand-ink)] font-mono text-[11px] uppercase tracking-wider">분석 중</span>}
+                  {isIdle && <span className="text-[var(--ink-3)] text-[11px]">대기 중</span>}
+                  {isDone && (
+                    <span className="text-[var(--ink-3)] text-[12px] font-sans">
+                      {step.valueText || "완료"}
+                    </span>
+                  )}
+                  {isWarn && (
+                    <span className="text-[var(--crit)] font-semibold text-[12px]">
+                      {step.valueText || "검토 필요"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
 
       <PageFooter />
     </>
   );
 }
+
 
 function InspectPageWrapper() {
   const searchParams = useSearchParams();
