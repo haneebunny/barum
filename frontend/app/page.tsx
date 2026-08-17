@@ -334,8 +334,8 @@ export default function LandingPage() {
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
-  // 스크럽 구간 포커스: 왼쪽 소개 컬럼이 접히고 데모 카드가 가운데로 확대된다
-  const [reportFocus, setReportFocus] = useState(false);
+  // 빨강 -> 초록 반전 구간에서만 카드를 제자리 확대(줌 인)해서 변화에 집중시킨다
+  const [reportZoom, setReportZoom] = useState(false);
   const [reportScore, setReportScore] = useState(62);
   const reportContainerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -382,8 +382,8 @@ export default function LandingPage() {
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
         // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게, 해결은 두 박자로 분산
         setReportPhase(rp >= 0.75 ? 3 : rp >= 0.5 ? 2 : rp >= 0.18 ? 1 : 0);
-        // 핀 직후 무대 점유, 끝나기 직전 원위치 (경계에서만 setState라 리렌더 비용 없음)
-        setReportFocus(rp > 0.04 && rp < 0.92);
+        // 해결 반전이 두 박자(0.5 위반 해결, 0.75 전체 해결)라 각 반전을 감싸는 구간에서만 줌
+        setReportZoom((rp > 0.46 && rp < 0.60) || (rp > 0.71 && rp < 0.85));
       }
       ticking = false;
     };
@@ -969,27 +969,14 @@ export default function LandingPage() {
               transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1), top 180ms ease-in-out, height 180ms ease-in-out"
             }}
           >
-            <div
-              className="grid items-start w-full"
-              style={{
-                gridTemplateColumns: reportFocus ? "0px 1fr" : "400px 1fr",
-                gap: reportFocus ? "0px" : "26px",
-                transition: prefersReducedMotion ? "none" : "grid-template-columns 600ms cubic-bezier(.2,.7,.2,1), gap 600ms cubic-bezier(.2,.7,.2,1)"
-              }}
-            >
-              {/* 접히는 동안 글줄이 재배치되지 않게 내부 폭 고정 + 클리핑 */}
-              <div className="overflow-hidden" style={{ opacity: reportFocus ? 0 : 1, transition: prefersReducedMotion ? "none" : "opacity 350ms ease" }}>
-                <div className="w-[400px]">
-                  <ReportIntro />
-                </div>
-              </div>
+            <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
+              <ReportIntro />
+              {/* 반전 구간에서만 제자리 줌 인: "지금 여기 색이 바뀐다" */}
               <div
-                className="mx-auto w-full"
                 style={{
-                  maxWidth: reportFocus ? "960px" : "100%",
-                  transform: reportFocus ? "scale(1.05)" : "none",
-                  transformOrigin: "center top",
-                  transition: prefersReducedMotion ? "none" : "transform 600ms cubic-bezier(.2,.7,.2,1), max-width 600ms cubic-bezier(.2,.7,.2,1)"
+                  transform: reportZoom ? "scale(1.06)" : "none",
+                  transformOrigin: "center center",
+                  transition: prefersReducedMotion ? "none" : "transform 450ms cubic-bezier(.2,.7,.2,1)"
                 }}
               >
                 <ReportDemo phase={reportPhase} score={reportScore} />
