@@ -29,24 +29,29 @@
   --nav-hover: #ffffff;
   --nav-active-bg: #e9f2ed;
 }
+/* 다크 v2 (2026-08-17): 그레이-그린 서피스 + 그린 3단 분리(네온 제거).
+   구 다크는 brand 3종이 전부 #3ee08a 단일 네온이라 형광 번짐·단조로움 문제.
+   전 값 검증 통과: 대비 contrast.mjs(본문 4.5+, 채움 글자 4.5+),
+   CVD validate_palette.js 그린 3종 x #ff5252 deutan/protan ΔE 10.4/9.4/18.9 (기준 8+).
+   다크에서 채움은 딥 그린 + 밝은 글자(on-brand가 라이트/다크에서 방향이 다름에 주의) */
 :root[data-theme="dark"] {
-  --canvas: #070b08;
-  --surface: #0b100c;
-  --surface-sub: #0e140f;
-  --line: #1c2a21;
-  --line-2: #2c4133;
-  --ink: #e8f5ec;
-  --ink-2: #b7d6c4;
-  --ink-3: #86a594;
-  --brand: #3ee08a;
-  --brand-ink: #3ee08a;
-  --brand-deep: #3ee08a;
-  --on-brand: #04140b;
+  --canvas: #101612;
+  --surface: #151c17;
+  --surface-sub: #1a221c;
+  --line: #27332b;
+  --line-2: #364439;
+  --ink: #dbe7df;
+  --ink-2: #a8c0b2;
+  --ink-3: #8aa294;
+  --brand: #196340;      /* 채움(버튼) */
+  --brand-ink: #66cb92;  /* 텍스트·커서·라인 그린 */
+  --brand-deep: #124a2d; /* 태그·인버스 블록 */
+  --on-brand: #eaf5ee;
   --crit: #ff5252;
-  --crit-bg: #241614;
-  --crit-bd: #4a2b27;
-  --nav-hover: #151e18;
-  --nav-active-bg: #1b2822;
+  --crit-bg: #2a1715;
+  --crit-bd: #553029;
+  --nav-hover: #1e2a22;
+  --nav-active-bg: #24322a;
 }
 
 * {

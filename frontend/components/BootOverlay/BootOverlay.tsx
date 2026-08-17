@@ -85,7 +85,7 @@ export function BootOverlay({ show }: { show: boolean }) {
             </div>
           ))}
         </div>
-        <span className="inline-block w-[0.6em] h-[1em] mt-[6px] bg-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true" />
+        <span className="inline-block w-[0.6em] h-[1em] mt-[6px] bg-[var(--brand-ink)] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true" />
       </div>
     </div>
   );
