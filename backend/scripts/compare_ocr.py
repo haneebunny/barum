@@ -519,7 +519,22 @@ def main():
         "--token-breakdown", action="store_true",
         help="②만, OCR·판정 토큰과 규칙/GPT 위임 비율을 나눠서 분석 (다른 실행 모드 무시)",
     )
+    ap.add_argument(
+        "--label-file", default=None,
+        help="정답셋 xlsx 경로 override(기본: label_worksheet_reviewed.xlsx). "
+             "§2 확장 재측정처럼 다른 정답셋으로 돌릴 때 씀.",
+    )
+    ap.add_argument(
+        "--answer-key", default=None,
+        help="이미지 메타 json 경로 override(기본: _llm_answer_key.json).",
+    )
     args = ap.parse_args()
+
+    global _LABEL_XLSX, _ANSWER_KEY
+    if args.label_file:
+        _LABEL_XLSX = Path(args.label_file)
+    if args.answer_key:
+        _ANSWER_KEY = Path(args.answer_key)
 
     # 정답셋 로드
     print("정답셋 로드...")
