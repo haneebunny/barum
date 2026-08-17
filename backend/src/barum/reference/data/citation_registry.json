@@ -107,10 +107,11 @@
       "law_name": "화장품 표시·광고 관리 지침 2025-01-21 개정분",
       "citation_id": null,
       "effective_date": "2025-01-21",
-      "checked_date": "2026-08-12",
+      "checked_date": "2026-08-15",
       "purpose": "신설 5건: 광고제목명도 판단대상·병원용전용류·엑소좀·니들류·피부나이 n세감소",
+      "exosome_exception": "엑소좀 단독=위반, 우유·식물 등 원료 대분류 명시=합법(우유 엑소좀·식물 엑소좀 가능). judge_rules.json 미반영 확인(2026-08-15), 베베 수정 필요",
       "source_url": null,
-      "used_by": ["reference/cosmetic_kr/prohibited_expressions.md"]
+      "used_by": ["reference/cosmetic_kr/prohibited_expressions.md", "backend/src/barum/reference/data/judge_rules.json"]
     },
     {
       "id": "kr_guideline_amend_2025_08_14b",
