@@ -55,11 +55,16 @@ def _load() -> dict:
 
 
 @lru_cache(maxsize=1)
+def _load_synonyms() -> dict[str, list[str]]:
+    """동의어 사전을 그대로 캐시(대표어 → 변형 목록)."""
+    return json.loads(_SYNONYMS_PATH.read_text(encoding="utf-8"))["synonyms"]
+
+
+@lru_cache(maxsize=1)
 def _load_reverse_synonyms() -> dict[str, str]:
     """동의어 사전을 역인덱스로 만든다: 정규화된 변형 → 대표어."""
-    data = json.loads(_SYNONYMS_PATH.read_text(encoding="utf-8"))
     reverse: dict[str, str] = {}
-    for canonical, variants in data["synonyms"].items():
+    for canonical, variants in _load_synonyms().items():
         for v in variants:
             reverse[_normalize(v)] = canonical
     return reverse
@@ -79,6 +84,28 @@ def _has_context_exception(norm: str, kw: str, rules: dict) -> bool:
     if any(_normalize(u) in norm for u in exc.get("unsafe_markers", [])):
         return False
     return any(_normalize(q) + _normalize(kw) in norm for q in exc.get("safe_qualifiers", []))
+
+
+def _match_conditional_violation(norm: str, rules: dict) -> RuleMatch | None:
+    """니들류처럼 "단어 자체"가 아니라 "단어+메커니즘 주장 동반"이 트리거인 규칙.
+
+    judge_rules.json의 conditional_violation을 본다. 대표 키워드나 그 동의어
+    변형(synonyms.json, 예: "니들"→"리들")이 있고, requires_any_context 중
+    하나라도 같이 있어야 위반이다. 메커니즘 단어 없이 단어만 있으면(예: "니들샷"
+    브랜드명) 위반이 아니다 — 규칙은 매칭하지 않고 VLM+RAG 판단에 맡긴다(None).
+    """
+    cond = rules.get("conditional_violation")
+    if not cond:
+        return None
+    variants = _load_synonyms()
+    for kw in cond.get("keywords", []):
+        present = _normalize(kw) in norm or any(_normalize(v) in norm for v in variants.get(kw, []))
+        if not present:
+            continue
+        if any(_normalize(c) in norm for c in cond.get("requires_any_context", [])):
+            vtype = ViolationType(cond["violation_type"])
+            return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+    return None
 
 
 def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
@@ -110,10 +137,11 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
 def match_rule(sentence: str) -> RuleMatch | None:
     """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
 
-    우선순위대로 스캔한다: violation > needs_review > legal_allow. 앞 갈래에서
-    먼저 걸리면 뒤는 안 본다. 이 순서가 경계표현 조합을 자연히 처리한다
-    (예: '시술'이 violation에 있어 '시술 후 진정'은 진정보다 시술이 먼저 hit).
-    대표어로 안 걸리면 동의어 사전(synonyms.json)의 변형 표현도 검사한다.
+    우선순위대로 스캔한다: violation > conditional_violation(니들류, 단어+메커니즘
+    동반 시) > needs_review > legal_allow. 앞 갈래에서 먼저 걸리면 뒤는 안 본다.
+    이 순서가 경계표현 조합을 자연히 처리한다(예: '시술'이 violation에 있어
+    '시술 후 진정'은 진정보다 시술이 먼저 hit). 대표어로 안 걸리면 동의어 사전
+    (synonyms.json)의 변형 표현도 검사한다.
     """
     norm = _normalize(sentence)
     rules = _load()
@@ -126,6 +154,10 @@ def match_rule(sentence: str) -> RuleMatch | None:
             if _has_context_exception(norm, kw, rules):
                 continue
             return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+
+    cond_match = _match_conditional_violation(norm, rules)
+    if cond_match:
+        return cond_match
 
     for type_label, keywords in rules["needs_review"].items():
         vtype = ViolationType(type_label)
