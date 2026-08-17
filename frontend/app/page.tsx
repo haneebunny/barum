@@ -73,34 +73,13 @@ function ReportIntro() {
 // 리포트 UI 데모. 진입 즉시 위반 1건이 보이는 상태에서 시작한다(빈 박스 금지).
 // phase 0 = 위반 검출 / 1 = 검토필요 추가 / 2 = 위반 카드 해결 / 3 = 전체 해결·점수 98
 // 해결을 두 박자로 나눠서 화면 전체가 한 번에 초록으로 반전되지 않게 한다.
-// 연출: 진입 시 떠오름(cardLift) / 단계 전환마다 테두리 펄스 / 해결되면 그림자가 가라앉음.
-function ReportDemo({ phase, score, active = false }: { phase: number; score: number; active?: boolean }) {
+function ReportDemo({ phase, score }: { phase: number; score: number }) {
   const showReview = phase >= 1;
   const fixedViolation = phase >= 2; // 위반 카드만 먼저 해결
   const resolved = phase >= 3;       // 검토필요·점수·상단바까지 해결
 
-  // 단계 전환 펄스: "방금 여기가 변했다" 신호
-  const [pulse, setPulse] = useState(false);
-  const prevPhaseRef = useRef(phase);
-  useEffect(() => {
-    if (phase === prevPhaseRef.current) return;
-    prevPhaseRef.current = phase;
-    setPulse(true);
-    const t = setTimeout(() => setPulse(false), 260);
-    return () => clearTimeout(t);
-  }, [phase]);
-
   return (
-    <div
-      className={`bg-[var(--surface)] border border-[var(--line-2)] overflow-hidden w-full ${active ? "animate-[cardLift_0.6s_ease-out]" : ""}`}
-      style={{
-        boxShadow: pulse
-          ? "0 0 0 2px var(--brand-ink), 0 16px 40px rgba(20,35,27,0.12)"
-          : resolved
-          ? "0 4px 14px rgba(20,35,27,0.05)"
-          : "0 10px 34px rgba(20,35,27,0.07)",
-        transition: "box-shadow 240ms ease"
-      }}>
+    <div className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)] overflow-hidden w-full">
       {/* 상단 바 */}
       <div className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface-sub)] p-[9px_14px] font-mono text-[11px] text-[var(--ink-3)]">
         <span>리포트 &gt; 글로우세럼_상세페이지</span>
@@ -355,6 +334,8 @@ export default function LandingPage() {
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
+  // 스크럽 구간 포커스: 왼쪽 소개 컬럼이 접히고 데모 카드가 가운데로 확대된다
+  const [reportFocus, setReportFocus] = useState(false);
   const [reportScore, setReportScore] = useState(62);
   const reportContainerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -401,6 +382,8 @@ export default function LandingPage() {
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
         // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게, 해결은 두 박자로 분산
         setReportPhase(rp >= 0.75 ? 3 : rp >= 0.5 ? 2 : rp >= 0.18 ? 1 : 0);
+        // 핀 직후 무대 점유, 끝나기 직전 원위치 (경계에서만 setState라 리렌더 비용 없음)
+        setReportFocus(rp > 0.04 && rp < 0.92);
       }
       ticking = false;
     };
@@ -965,7 +948,7 @@ export default function LandingPage() {
         >
           <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full max-[900px]:grid-cols-1">
             <ReportIntro />
-            <ReportDemo phase={reportPhase} score={reportScore} active={reportRevealed} />
+            <ReportDemo phase={reportPhase} score={reportScore} />
           </div>
         </div>
       ) : (
@@ -986,9 +969,31 @@ export default function LandingPage() {
               transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1), top 180ms ease-in-out, height 180ms ease-in-out"
             }}
           >
-            <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
-              <ReportIntro />
-              <ReportDemo phase={reportPhase} score={reportScore} active={reportRevealed} />
+            <div
+              className="grid items-start w-full"
+              style={{
+                gridTemplateColumns: reportFocus ? "0px 1fr" : "400px 1fr",
+                gap: reportFocus ? "0px" : "26px",
+                transition: prefersReducedMotion ? "none" : "grid-template-columns 600ms cubic-bezier(.2,.7,.2,1), gap 600ms cubic-bezier(.2,.7,.2,1)"
+              }}
+            >
+              {/* 접히는 동안 글줄이 재배치되지 않게 내부 폭 고정 + 클리핑 */}
+              <div className="overflow-hidden" style={{ opacity: reportFocus ? 0 : 1, transition: prefersReducedMotion ? "none" : "opacity 350ms ease" }}>
+                <div className="w-[400px]">
+                  <ReportIntro />
+                </div>
+              </div>
+              <div
+                className="mx-auto w-full"
+                style={{
+                  maxWidth: reportFocus ? "960px" : "100%",
+                  transform: reportFocus ? "scale(1.05)" : "none",
+                  transformOrigin: "center top",
+                  transition: prefersReducedMotion ? "none" : "transform 600ms cubic-bezier(.2,.7,.2,1), max-width 600ms cubic-bezier(.2,.7,.2,1)"
+                }}
+              >
+                <ReportDemo phase={reportPhase} score={reportScore} />
+              </div>
             </div>
           </div>
         </div>
