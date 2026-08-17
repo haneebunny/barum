@@ -113,6 +113,19 @@ html[data-nav="collapsed"] .app-side-expanded-only {
   }
 }
 
+/* 리포트 데모 카드 진입 연출: 살짝 떠올랐다 정착. "스크롤에 반응하는 무대"라는 신호 */
+@keyframes cardLift {
+  0% {
+    transform: none;
+  }
+  45% {
+    transform: perspective(900px) rotateX(1.6deg) scale(1.02);
+  }
+  100% {
+    transform: none;
+  }
+}
+
 /* 퀴즈 결과·완료 화면 등에서 쓰는 짧은 등장 모션 (기존에 참조만 있고 정의가 빠져 있었음) */
 @keyframes popIn {
   from {
