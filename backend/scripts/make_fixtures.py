@@ -25,7 +25,7 @@ from barum.models import (  # noqa: E402
     UnjudgedSentence,
     ViolationType,
 )
-from barum.reference.mapping import legal_basis_for  # noqa: E402
+from barum.reference.mapping import legal_basis_for, legal_basis_text_for  # noqa: E402
 
 OUT_DIR = ROOT / "fixtures"
 
@@ -61,6 +61,7 @@ def image_case() -> CheckReport:
             sentence="멜라닌 생성을 억제해 미백에 도움을 줍니다.",
             violation_type=ViolationType.type_2_functional_misperception,
             legal_basis=legal_basis_for(ViolationType.type_2_functional_misperception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_2_functional_misperception),
             flag=JudgmentFlag.needs_review,  # 성분 정합 미확인 상태 시연
             explanation="미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
             location=Location(
@@ -73,6 +74,7 @@ def image_case() -> CheckReport:
             sentence="아토피 피부염을 완화하고 손상된 피부를 재생합니다.",
             violation_type=ViolationType.type_1_drug_misperception,
             legal_basis=legal_basis_for(ViolationType.type_1_drug_misperception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_1_drug_misperception),
             flag=JudgmentFlag.violation,
             explanation="질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
             location=Location(
@@ -85,6 +87,7 @@ def image_case() -> CheckReport:
             sentence="시중 제품 대비 3배 빠른 흡수를 자랑합니다.",
             violation_type=ViolationType.type_5_deception,
             legal_basis=legal_basis_for(ViolationType.type_5_deception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_5_deception),
             flag=JudgmentFlag.violation,
             explanation="객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
             location=Location(
@@ -109,6 +112,7 @@ def text_case() -> CheckReport:
             sentence="매일 발라 주름을 개선하는 안티에이징 크림.",
             violation_type=ViolationType.type_2_functional_misperception,
             legal_basis=legal_basis_for(ViolationType.type_2_functional_misperception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_2_functional_misperception),
             flag=JudgmentFlag.needs_review,
             explanation="주름개선은 기능성 화장품 심사가 필요한 표현이다. (전성분 미입력, 성분 정합 확인 못 함)",
             location=Location(tile=None, order=0),
@@ -118,6 +122,7 @@ def text_case() -> CheckReport:
             sentence="트러블로 인한 염증을 가라앉히고 상처를 치료합니다.",
             violation_type=ViolationType.type_1_drug_misperception,
             legal_basis=legal_basis_for(ViolationType.type_1_drug_misperception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_1_drug_misperception),
             flag=JudgmentFlag.violation,
             explanation="염증 완화·상처 치료는 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
             location=Location(tile=None, order=1),
@@ -139,6 +144,7 @@ def unjudged_case() -> CheckReport:
             sentence="콜라겐 함유로 파워 수분 공급.",
             violation_type=ViolationType.type_5_deception,
             legal_basis=legal_basis_for(ViolationType.type_5_deception),
+            legal_basis_text=legal_basis_text_for(ViolationType.type_5_deception),
             flag=JudgmentFlag.violation,
             explanation="'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
             location=Location(
