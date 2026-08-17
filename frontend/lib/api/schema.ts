@@ -33,6 +33,8 @@ export const FindingSchema = z.object({
   sentence: z.string(),
   violation_type: ViolationTypeSchema,
   legal_basis: z.string(),
+  // 조문 원문 전체. 백엔드가 원문을 확보한 유형만 채움(없으면 null, 구버전 리포트엔 필드 자체가 없을 수 있음)
+  legal_basis_text: z.string().nullable().optional(),
   flag: FlagSchema,
   explanation: z.string(),
   location: LocationSchema,
