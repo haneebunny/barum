@@ -334,7 +334,7 @@ export default function LandingPage() {
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
-  // 빨강 -> 초록 반전 구간에서만 카드를 제자리 확대(줌 인)해서 변화에 집중시킨다
+  // 스크럽 동안 카드를 제자리에서 살짝 확대 유지(들어올 때 한 번, 나갈 때 한 번만 전환)
   const [reportZoom, setReportZoom] = useState(false);
   const [reportScore, setReportScore] = useState(62);
   const reportContainerRef = useRef<HTMLDivElement>(null);
@@ -382,8 +382,8 @@ export default function LandingPage() {
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
         // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게, 해결은 두 박자로 분산
         setReportPhase(rp >= 0.75 ? 3 : rp >= 0.5 ? 2 : rp >= 0.18 ? 1 : 0);
-        // 해결 반전이 두 박자(0.5 위반 해결, 0.75 전체 해결)라 각 반전을 감싸는 구간에서만 줌
-        setReportZoom((rp > 0.46 && rp < 0.60) || (rp > 0.71 && rp < 0.85));
+        // 핀 직후 확대 -> 유지 -> 끝나기 직전 복귀 (중간에 들썩이지 않는다)
+        setReportZoom(rp > 0.04 && rp < 0.92);
       }
       ticking = false;
     };
@@ -971,7 +971,7 @@ export default function LandingPage() {
           >
             <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
               <ReportIntro />
-              {/* 반전 구간에서만 제자리 줌 인: "지금 여기 색이 바뀐다" */}
+              {/* 스크럽 동안 제자리 확대 유지: 무대 신호는 진입/이탈 두 번만 */}
               <div
                 style={{
                   transform: reportZoom ? "scale(1.06)" : "none",
