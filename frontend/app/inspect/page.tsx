@@ -520,7 +520,7 @@ function InspectContent() {
             className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
               status === "running" || status === "idle"
                 ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
-                : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+                : "bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
             }`}
             id="runBtn"
             disabled={status === "running" || status === "idle"}
@@ -556,7 +556,7 @@ function InspectContent() {
 
           {status === "done" && (
             <button
-              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
               id="toReport"
               onClick={() => {
                 if (resultId) {
@@ -584,7 +584,7 @@ function InspectContent() {
             <div className="flex gap-2">
               {status === "done" && (
                 <button
-                  className="font-sans text-[12px] font-bold p-[7px_14px] bg-[var(--brand)] text-white border border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] transition-colors"
+                  className="font-sans text-[12px] font-bold p-[7px_14px] bg-[var(--brand)] text-[var(--on-brand)] border border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-deep)] transition-colors"
                   onClick={() => {
                     if (resultId) {
                       router.push(`/report/${resultId}`);

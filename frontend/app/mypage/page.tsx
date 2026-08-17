@@ -219,7 +219,7 @@ export default function MyPage() {
           <button 
             id="openCompare"
             ref={compare_btn_ref}
-            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]" 
+            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]" 
             onClick={() => set_is_compare_modal_open(true)}
           >
             요금제 비교 <span className="font-mono">→</span>
