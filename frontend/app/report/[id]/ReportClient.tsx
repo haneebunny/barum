@@ -16,13 +16,14 @@ const TYPE_LABEL = {
 interface FindingCardProps {
   finding: Finding;
   index: number;
+  orderIndex: number;
   num: number;
   act: "accept" | "exclude" | null;
-  onAction: (idx: number, act: "accept" | "exclude") => void;
+  onAction: (idx: number, orderIndex: number, act: "accept" | "exclude") => void;
   isHovered: boolean;
   onHover: (hover: boolean) => void;
-  onCardClick?: (idx: number) => void;
-  defaultOpen?: boolean;
+  open: boolean;
+  onToggle: () => void;
   tier: "FREE" | "PRO";
   remediationCount: number;
   onFetchRemediation: () => void;
@@ -31,13 +32,14 @@ interface FindingCardProps {
 function FindingCard({
   finding,
   index,
+  orderIndex,
   num,
   act,
   onAction,
   isHovered,
   onHover,
-  onCardClick,
-  defaultOpen,
+  open,
+  onToggle,
   tier,
   remediationCount,
   onFetchRemediation,
@@ -45,7 +47,6 @@ function FindingCard({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
-  const [open, setOpen] = useState(defaultOpen ?? false);
 
   useEffect(() => {
     setSuggestions([]);
@@ -78,7 +79,7 @@ function FindingCard({
   const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] ${
     cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
   } ${isExcluded ? "opacity-50" : ""} ${
-    isHovered ? "translate-x-0.5 border-[var(--ink-2)] bg-[var(--surface-sub)]" : ""
+    isHovered ? "translate-x-0.5" : ""
   }`;
 
   const spanStyle = cls === "violation" ? "font-bold text-[var(--crit)] border-b-2 border-[var(--crit)]" : "font-bold text-[var(--ink)] border-b-2 border-[var(--ink-3)]";
@@ -87,11 +88,7 @@ function FindingCard({
     if ((e.target as HTMLElement).closest("button")) {
       return;
     }
-    const opening = !open;
-    setOpen(opening);
-    if (opening) {
-      onCardClick?.(index);
-    }
+    onToggle();
   };
 
   return (
@@ -125,14 +122,14 @@ function FindingCard({
             {finding.flag}
           </span>
           {/* 수용 / 제외 버튼 */}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1.75">
             <button
               className={`font-sans text-[11px] p-[4px_9px] border cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
                 act === "accept"
                   ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
                   : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
               }`}
-              onClick={() => onAction(index, "accept")}
+              onClick={() => onAction(index, orderIndex, "accept")}
             >
               <Check size={11} weight="bold" />
               수용
@@ -143,7 +140,7 @@ function FindingCard({
                   ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
                   : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
               }`}
-              onClick={() => onAction(index, "exclude")}
+              onClick={() => onAction(index, orderIndex, "exclude")}
             >
               <X size={11} weight="bold" />
               제외
@@ -177,7 +174,7 @@ function FindingCard({
         <div className="p-[13px_14px_14px] border-t border-[var(--line)] flex flex-col gap-3.5">
           {/* 조문 원문 인용: citation_registry 단일 소스에서 온 값만 표시(없으면 숨김, 지어내지 않음) */}
           {finding.legal_basis_text && (
-            <blockquote className="m-0 border-l-2 border-[var(--brand-deep)] bg-[var(--surface-sub)] p-[7px_11px]">
+            <blockquote className="m-0 border-l-2 border-[var(--brand-deep)] bg-[var(--surface)] p-[7px_11px]">
               <span className="font-mono text-[9.5px] text-[var(--ink-3)] block mb-[3px]">조문 원문</span>
               <span className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">&ldquo;{finding.legal_basis_text}&rdquo;</span>
             </blockquote>
@@ -188,9 +185,11 @@ function FindingCard({
           <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[12px_14px] rounded-sm">
             <div className="flex items-center gap-1.75 mb-2">
               <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
-              <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">
-                {tier === "FREE" ? `FREE 플랜 · 1회 제한 (사용: ${remediationCount}/1)` : "PRO 플랜 · 무제한"}
-              </span>
+              {tier === "FREE" && (
+                <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">
+                  FREE 플랜 · 1회 제한 (사용: {remediationCount}/1)
+                </span>
+              )}
             </div>
             <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
               {loading ? (
@@ -223,17 +222,17 @@ function FindingCard({
                     </>
                   ) : (
                     <>
-                      <p className="text-[11px] text-[var(--ink-3)] m-0">
-                        {tier === "FREE" 
-                          ? "대체 표현 제안은 FREE 플랜에서 리포트당 1회만 제공됩니다."
-                          : "대체 표현 제안은 PRO 플랜에서 무제한으로 제공됩니다."}
-                      </p>
+                      {tier === "FREE" && (
+                        <p className="text-[11px] text-[var(--ink-3)] m-0">
+                          대체 표현 제안은 FREE 플랜에서 리포트당 1회만 제공됩니다.
+                        </p>
+                      )}
                       <div>
                         <button
                           onClick={handleFetchSuggestions}
                           className="font-sans text-[11px] font-bold p-[5px_10px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm"
                         >
-                          대체 표현 제안 보기 {tier === "FREE" ? "(무료 1회)" : "(PRO 무제한)"}
+                          대체 표현 제안 보기 {tier === "FREE" ? "(무료 1회)" : ""}
                         </button>
                       </div>
                     </>
@@ -300,9 +299,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tier, setTier] = useState<"FREE" | "PRO">("FREE");
   const [remediationCount, setRemediationCount] = useState<number>(0);
+  const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
+
+  const d = activeEnvelope.report;
+
+  const findByOrder = d.findings
+    .map((f, i) => ({ f, idx: i, num: 0 }))
+    .sort((a, b) => a.f.location.order - b.f.location.order);
+  findByOrder.forEach((item, index) => {
+    item.num = index + 1;
+  });
 
   useEffect(() => {
     setRemediationCount(0);
+    setOpenOrderIndex(0);
   }, [activeEnvelope]);
 
   const scrollToBox = (idx: number, isUj = false) => {
@@ -316,13 +326,22 @@ export function ReportClient({ envelope }: ReportClientProps) {
     }
   };
 
-  const handleAction = (idx: number, act: "accept" | "exclude") => {
+  const handleAction = (idx: number, orderIndex: number, act: "accept" | "exclude") => {
     setActions((prev) => {
       const next = { ...prev };
       if (next[idx] === act) {
         next[idx] = null;
       } else {
         next[idx] = act;
+        
+        const nextOrderIndex = orderIndex + 1;
+        if (nextOrderIndex < findByOrder.length) {
+          setOpenOrderIndex(nextOrderIndex);
+          const nextFinding = findByOrder[nextOrderIndex];
+          setTimeout(() => {
+            scrollToBox(nextFinding.idx, false);
+          }, 100);
+        }
       }
       return next;
     });
@@ -341,8 +360,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
       setLoading(false);
     }
   };
-
-  const d = activeEnvelope.report;
 
   let nViol = 0;
   let nReview = 0;
@@ -363,13 +380,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
   });
 
   const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
-
-  const findByOrder = d.findings
-    .map((f, i) => ({ f, idx: i, num: 0 }))
-    .sort((a, b) => a.f.location.order - b.f.location.order);
-  findByOrder.forEach((item, index) => {
-    item.num = index + 1;
-  });
 
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
 
@@ -838,13 +848,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 key={o.idx}
                 finding={o.f}
                 index={o.idx}
+                orderIndex={orderIndex}
                 num={o.num}
                 act={actions[o.idx] || null}
                 onAction={handleAction}
                 isHovered={hoveredIndex === o.idx}
                 onHover={(h) => setHoveredIndex(h ? o.idx : null)}
-                onCardClick={(idx) => scrollToBox(idx, false)}
-                defaultOpen={orderIndex === 0}
+                open={openOrderIndex === orderIndex}
+                onToggle={() => {
+                  const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
+                  setOpenOrderIndex(nextOpen);
+                  if (nextOpen !== null) {
+                    scrollToBox(o.idx, false);
+                  }
+                }}
                 tier={tier}
                 remediationCount={remediationCount}
                 onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
