@@ -135,3 +135,37 @@ def test_synonym_does_not_override_direct_keyword():
     assert m is not None
     assert m.span == "해독"
     assert m.outcome == RuleOutcome.violation
+
+
+# ── 문맥 예외(context_exceptions) 테스트 — 엑소좀 ──────────────────────────
+
+
+def test_exosome_alone_is_violation():
+    """'엑소좀' 단독은 여전히 위반 확정(원료 대분류 없이 그냥 엑소좀)."""
+    m = match_rule("엑소좀 앰플로 탄탄한 피부")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "엑소좀"
+
+
+def test_exosome_with_human_marker_is_violation():
+    """'인체 유래 엑소좀'처럼 인체연상 단어가 같이 있으면 안전어가 있어도 위반 유지."""
+    m = match_rule("인체 유래 엑소좀 성분이 피부 속까지")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "엑소좀"
+
+
+def test_plant_exosome_is_exception_not_ruled_violation():
+    """'식물 엑소좀'은 원료 대분류 예외 — 규칙이 위반으로 단정하지 않고 VLM에 넘긴다(None)."""
+    assert match_rule("식물 엑소좀 유래 성분 함유") is None
+
+
+def test_milk_exosome_is_exception():
+    """'우유 엑소좀'도 같은 예외."""
+    assert match_rule("우유 엑소좀으로 촉촉하게") is None
+
+
+def test_cica_exosome_is_exception():
+    """'시카 엑소좀'도 확정된 예외(2026-08-17 하니 확정, label_worksheet_expansion.xlsx)."""
+    assert match_rule("시카 엑소좀 함유 크림") is None

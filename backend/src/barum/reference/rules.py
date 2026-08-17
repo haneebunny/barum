@@ -65,6 +65,22 @@ def _load_reverse_synonyms() -> dict[str, str]:
     return reverse
 
 
+def _has_context_exception(norm: str, kw: str, rules: dict) -> bool:
+    """kw의 위반 매칭이 `context_exceptions`에 걸린 문맥 예외인지 본다.
+
+    예: "엑소좀"은 단독/인체연상 단어(인체·인체유래·줄기세포)와 같이 오면 위반
+    유지하지만, "식물 엑소좀"·"우유 엑소좀"처럼 원료 대분류 단어가 바로 앞에
+    붙으면 예외다(자동 합법 확정이 아니라 이 규칙 매칭만 건너뛰고 VLM에 위임 —
+    VLM은 이미 RAG 근거 문서에서 이 예외를 알고 있다, prohibited_expressions.md 참고).
+    """
+    exc = rules.get("context_exceptions", {}).get(kw)
+    if not exc:
+        return False
+    if any(_normalize(u) in norm for u in exc.get("unsafe_markers", [])):
+        return False
+    return any(_normalize(q) + _normalize(kw) in norm for q in exc.get("safe_qualifiers", []))
+
+
 def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
     """동의어 역인덱스로 변형 표현을 검사한다. 변형이 걸리면 대표어의 규칙을 적용."""
     reverse = _load_reverse_synonyms()
@@ -74,6 +90,8 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
         # 대표어가 어느 갈래(violation/needs_review)에 속하는지 찾는다.
         for type_label, keywords in rules["violation"].items():
             if canonical in keywords:
+                if _has_context_exception(norm, canonical, rules):
+                    continue
                 vtype = ViolationType(type_label)
                 return RuleMatch(RuleOutcome.violation, canonical, vtype, JudgmentFlag.violation)
         for type_label, keywords in rules["needs_review"].items():
@@ -103,8 +121,11 @@ def match_rule(sentence: str) -> RuleMatch | None:
     for type_label, keywords in rules["violation"].items():
         vtype = ViolationType(type_label)
         for kw in keywords:
-            if _normalize(kw) in norm:
-                return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+            if _normalize(kw) not in norm:
+                continue
+            if _has_context_exception(norm, kw, rules):
+                continue
+            return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
 
     for type_label, keywords in rules["needs_review"].items():
         vtype = ViolationType(type_label)
