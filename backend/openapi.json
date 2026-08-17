@@ -436,6 +436,17 @@
             "type": "string",
             "title": "Legal Basis"
           },
+          "legal_basis_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Basis Text"
+          },
           "flag": {
             "$ref": "#/components/schemas/JudgmentFlag"
           },

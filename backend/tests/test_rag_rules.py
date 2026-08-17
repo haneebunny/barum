@@ -135,3 +135,84 @@ def test_synonym_does_not_override_direct_keyword():
     assert m is not None
     assert m.span == "해독"
     assert m.outcome == RuleOutcome.violation
+
+
+# ── 문맥 예외(context_exceptions) 테스트 — 엑소좀 ──────────────────────────
+
+
+def test_exosome_alone_is_violation():
+    """'엑소좀' 단독은 여전히 위반 확정(원료 대분류 없이 그냥 엑소좀)."""
+    m = match_rule("엑소좀 앰플로 탄탄한 피부")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "엑소좀"
+
+
+def test_exosome_with_human_marker_is_violation():
+    """'인체 유래 엑소좀'처럼 인체연상 단어가 같이 있으면 안전어가 있어도 위반 유지."""
+    m = match_rule("인체 유래 엑소좀 성분이 피부 속까지")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "엑소좀"
+
+
+def test_plant_exosome_is_exception_not_ruled_violation():
+    """'식물 엑소좀'은 원료 대분류 예외 — 규칙이 위반으로 단정하지 않고 VLM에 넘긴다(None)."""
+    assert match_rule("식물 엑소좀 유래 성분 함유") is None
+
+
+def test_milk_exosome_is_exception():
+    """'우유 엑소좀'도 같은 예외."""
+    assert match_rule("우유 엑소좀으로 촉촉하게") is None
+
+
+def test_cica_exosome_is_exception():
+    """'시카 엑소좀'도 확정된 예외(2026-08-17 하니 확정, label_worksheet_expansion.xlsx)."""
+    assert match_rule("시카 엑소좀 함유 크림") is None
+
+
+# ── 조건부 위반(conditional_violation) 테스트 — 니들류 메커니즘 트리거 ──────
+
+
+def test_needle_brand_name_alone_is_not_matched():
+    """'니들샷'처럼 메커니즘 설명 없는 브랜드·제품명은 규칙이 위반으로 안 잡는다(None, VLM 위임)."""
+    assert match_rule("니들샷 앰플 추천") is None
+
+
+def test_needle_with_penetration_claim_is_violation():
+    """'니들'+침투 메커니즘 동반이면 위반, 위반유형은 5호(1호 아님, 매핑 정정)."""
+    m = match_rule("니들이 피부 속까지 침투해서 유효성분을 전달")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+    assert m.span == "니들"
+
+
+def test_microneedle_with_absorption_claim_is_violation():
+    """'마이크로니들'+흡수 메커니즘도 동일하게 위반(5호)."""
+    m = match_rule("마이크로니들 기술로 흡수율을 높였습니다")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+
+
+def test_fine_needle_with_penetration_claim_is_violation():
+    """실사례: '미세침이... 침투' — 위반(5호), 확정 사례(51/9439804435, 하니 합의판단)."""
+    m = match_rule("이 모공 속으로 15㎛의 미세침이 넓고 빠르게 침투")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+    assert m.span == "미세침"
+
+
+def test_needle_evasion_spelling_ridle_is_caught():
+    """회피표기 "리들"(니들의 변형)도 메커니즘 동반이면 위반으로 잡는다."""
+    m = match_rule("리들 앰플로 피부 속까지 침투하는 케어")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+
+
+def test_mts_alone_is_not_matched():
+    """MTS도 단어만으로는 위반 아님(메커니즘 동반 없음, None)."""
+    assert match_rule("MTS 전용 세럼") is None

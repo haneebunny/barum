@@ -63,6 +63,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "멜라닌 생성을 억제해 미백에 도움을 줍니다.",
         violation_type: "2호_기능성오인",
         legal_basis: "화장품법 제13조 제1항 제2호 (기능성 오인)",
+        legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
         location: {
@@ -79,6 +80,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "아토피 피부염을 완화하고 손상된 피부를 재생합니다.",
         violation_type: "1호_의약품오인",
         legal_basis: "화장품법 제13조 제1항 제1호 (의약품 오인)",
+        legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
         location: {
@@ -95,6 +97,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "시중 제품 대비 3배 빠른 흡수를 자랑합니다.",
         violation_type: "5호_거짓과장기만",
         legal_basis: "화장품법 제13조 제1항 제5호 (거짓·과장·기만, 개정법 기준)",
+        legal_basis_text: "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
         location: {
@@ -132,6 +135,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "매일 발라 주름을 개선하는 안티에이징 크림.",
         violation_type: "2호_기능성오인",
         legal_basis: "화장품법 제13조 제1항 제2호 (기능성 오인)",
+        legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "주름개선은 기능성 화장품 심사가 필요한 표현이다. (전성분 미입력, 성분 정합 확인 못 함)",
         location: {
@@ -148,6 +152,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "트러블로 인한 염증을 가라앉히고 상처를 치료합니다.",
         violation_type: "1호_의약품오인",
         legal_basis: "화장품법 제13조 제1항 제1호 (의약품 오인)",
+        legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "염증 완화·상처 치료는 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
         location: {
@@ -185,6 +190,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "콜라겐 함유로 파워 수분 공급.",
         violation_type: "5호_거짓과장기만",
         legal_basis: "화장품법 제13조 제1항 제5호 (거짓·과장·기만, 개정법 기준)",
+        legal_basis_text: "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
         location: {

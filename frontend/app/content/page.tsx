@@ -491,7 +491,7 @@ function ContentGeneratorContent() {
           <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
             <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요.</p>
             <button
-              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
               id="startGen"
               ref={startGenRef}
               onClick={() => setIsModalOpen(true)}
@@ -602,8 +602,8 @@ function ContentGeneratorContent() {
                 </button>
                 <div className="relative" id="expDd">
                   <button
-                    className={`font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed ${
-                      exportingType ? "" : "cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+                    className={`font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      exportingType ? "" : "cursor-pointer hover:bg-[var(--brand-deep)]"
                     }`}
                     id="expTrigger"
                     ref={dropdownTriggerRef}
@@ -675,7 +675,7 @@ function ContentGeneratorContent() {
               className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
                 !checks.ck1 || !checks.ck2
                   ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
-                  : "bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f]"
+                  : "bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
               }`}
               id="cmConfirm"
               disabled={!checks.ck1 || !checks.ck2}

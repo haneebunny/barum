@@ -118,18 +118,13 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="p-[30px_22px_8px]">
-        <div className="text-[var(--brand-ink)] font-mono text-[11.5px] tracking-[0.4px] mb-[11px] flex items-center gap-[7px]">
-          <span className="w-[7px] h-[7px] bg-[var(--brand)] inline-block"></span>바름 · 셀프서비스 규제 검증
-        </div>
-        <h1 className="m-[0_0_8px] text-[var(--ink)] text-[27px] font-extrabold tracking-[-0.6px] leading-[1.25]">
-          게시하기 전에, 규제부터 확인하세요
-          <span className="inline-block w-[0.14em] h-[1.02em] bg-[var(--brand-ink)] ml-1.5 align-[-3px] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true"></span>
+      {/* 랜딩에서 설득이 끝난 사람의 작업 화면: 마케팅 카피 없이 얇은 한 줄만 */}
+      <div className="p-[26px_22px_4px] flex items-baseline gap-[10px]">
+        <h1 className="m-0 text-[var(--ink)] text-[17px] font-extrabold tracking-[-0.3px]">
+          무엇을 검사할까요?
+          <span className="inline-block w-[0.14em] h-[1em] bg-[var(--brand-ink)] ml-1.5 align-[-2px] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true"></span>
         </h1>
-        <p className="m-0 text-[var(--ink-3)] text-[14px] max-w-[52ch]">
-          상세페이지와 광고 문구를 검사해 위반 위험을 조항, 근거와 함께 보여드려요. 원하면 위험을 낮춘 수정 권고안까지
-          만들어드립니다.
-        </p>
+        <span className="font-mono text-[10.5px] text-[var(--ink-3)]">이미지 · 문구 · 제품정보 중 있는 것만 넣으면 됩니다</span>
       </div>
 
       <div className="p-[18px_22px_4px]">
@@ -153,17 +148,8 @@ export default function HomePage() {
                   <path d="M16 16l5 5" />
                 </svg>
               </div>
-              <h3 className="m-[0_0_8px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">
-                국내 광고를
-                <br />
-                검증할래요
-              </h3>
-              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">상세페이지, 광고 문구, 제품 정보를 넣으면 화장품법 기준으로 위반 위험을 조항, 근거와 함께 찾아드려요.</p>
-              <div className="flex flex-wrap gap-[5px] mb-[14px]">
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">이미지</span>
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">문구</span>
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">제품정보</span>
-              </div>
+              <h3 className="m-[0_0_6px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">국내 광고 검증</h3>
+              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">화장품법 기준으로 위반 위험과 조항 근거를 찾아드려요.</p>
               <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[13px] flex items-center justify-between">
                 <span>국내 검증 시작</span>
                 <span className="font-mono">→</span>
@@ -190,12 +176,8 @@ export default function HomePage() {
                   <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
                 </svg>
               </div>
-              <h3 className="m-[0_0_8px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">
-                해외 수출용으로
-                <br />
-                검증할래요
-              </h3>
-              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">같은 자료에 대상국만 고르면 미국 수출 기준으로 먼저 검증해드려요. 다른 국가는 순차 지원 예정입니다.</p>
+              <h3 className="m-[0_0_6px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">해외 수출용 검증</h3>
+              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">같은 자료를 대상국 기준으로 다시 검사해요.</p>
               <div className="flex items-center gap-2 mb-3 text-[12px] text-[var(--ink-3)]">
                 대상국{" "}
                 <span
@@ -210,11 +192,6 @@ export default function HomePage() {
                 >
                   {selectedRegion} ▾
                 </span>
-              </div>
-              <div className="flex flex-wrap gap-[5px] mb-[14px]">
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">이미지</span>
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">문구</span>
-                <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--brand-ink)] bg-[var(--surface-sub)]">제품정보</span>
               </div>
               <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[13px] flex items-center justify-between">
                 <span>해외 검증 시작</span>

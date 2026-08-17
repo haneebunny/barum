@@ -77,6 +77,7 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
   const showReview = phase >= 1;
   const fixedViolation = phase >= 2; // 위반 카드만 먼저 해결
   const resolved = phase >= 3;       // 검토필요·점수·상단바까지 해결
+
   return (
     <div className="bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_34px_rgba(20,35,27,0.07)] overflow-hidden w-full">
       {/* 상단 바 */}
@@ -202,7 +203,7 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
                 {/* 배지는 절대배치 대신 필 옆 인라인으로 (겹침 방지) */}
                 <span className="flex items-center gap-[6px]">
                   {!fixedViolation && (
-                    <span className="bg-[var(--crit)] text-white text-[9px] font-bold px-1.5 py-0.5">위험!</span>
+                    <span className="bg-[var(--crit)] text-[var(--surface)] text-[9px] font-bold px-1.5 py-0.5">위험!</span>
                   )}
                   <span
                     className="font-mono text-[9px] font-bold px-[6px] py-[2px] transition-colors duration-300"
@@ -333,6 +334,8 @@ export default function LandingPage() {
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
+  // 스크럽 동안 카드를 제자리에서 살짝 확대 유지(들어올 때 한 번, 나갈 때 한 번만 전환)
+  const [reportZoom, setReportZoom] = useState(false);
   const [reportScore, setReportScore] = useState(62);
   const reportContainerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -379,6 +382,8 @@ export default function LandingPage() {
         const rp = denom > 0 ? Math.max(0, Math.min(1, -rect.top / denom)) : 0;
         // 임계값을 앞당겨서 스크롤 시작하자마자 변화가 보이게, 해결은 두 박자로 분산
         setReportPhase(rp >= 0.75 ? 3 : rp >= 0.5 ? 2 : rp >= 0.18 ? 1 : 0);
+        // 핀 직후 확대 -> 유지 -> 끝나기 직전 복귀 (중간에 들썩이지 않는다)
+        setReportZoom(rp > 0.04 && rp < 0.92);
       }
       ticking = false;
     };
@@ -607,7 +612,7 @@ export default function LandingPage() {
             <Link
               href="/home"
               onClick={enterConsole}
-              className="inline-flex items-center gap-2 no-underline text-[var(--on-brand)] bg-[var(--brand)] hover:bg-[var(--brand-ink)] cursor-pointer p-[10px_18px] text-[13px] font-bold"
+              className="inline-flex items-center gap-2 no-underline text-[var(--on-brand)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] cursor-pointer p-[10px_18px] text-[13px] font-bold"
             >
               {returning ? "내 콘솔로" : "무료 검사 시작"} <span className="font-mono">→</span>
             </Link>
@@ -623,7 +628,7 @@ export default function LandingPage() {
             left: 0,
             width: "100%",
             height: "2px",
-            backgroundColor: "var(--brand)",
+            backgroundColor: "var(--brand-ink)",
             transform: "scaleX(0)",
             transformOrigin: "left",
             transition: prefersReducedMotion ? "none" : "transform 60ms linear",
@@ -662,12 +667,12 @@ export default function LandingPage() {
         {/* 좌 */}
         <div className="border-r border-[var(--line)] p-[62px_44px_56px] flex flex-col justify-center">
           <div className="flex items-center gap-2 mb-[18px] text-[11.5px] font-mono tracking-[0.4px] text-[var(--brand-ink)]">
-            <span className="inline-block w-[7px] h-[7px] bg-[var(--brand)]" />
+            <span className="inline-block w-[7px] h-[7px] bg-[var(--brand-ink)]" />
             바름 · 올리기 전에 검사하는 광고 컴플라이언스
           </div>
           <h1 className="m-0 mb-[18px] text-[var(--ink)] text-[52px] font-extrabold leading-[1.22] tracking-[-1.4px] break-keep">
             걸리고 나서 알면,<br />이미 늦었으니까
-            <span className="inline-block w-[0.14em] h-[0.95em] ml-2 align-[-4px] bg-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]" />
+            <span className="inline-block w-[0.14em] h-[0.95em] ml-2 align-[-4px] bg-[var(--brand-ink)] animate-[blink_1.1s_steps(1)_infinite]" />
           </h1>
           <p className="m-0 mb-[30px] text-[var(--ink-3)] text-[16px] leading-[1.7] max-w-[44ch] break-keep">
             광고를 올리기 전 3분. 위반 위험이 있는 문구를 찾아 어떤 조항에 걸리는지 보여드리고, 안전하게 고친 문구까지 제안해 드려요.
@@ -676,7 +681,7 @@ export default function LandingPage() {
             <Link
               href="/home"
               onClick={enterConsole}
-              className="inline-flex items-center gap-2 no-underline text-[var(--on-brand)] bg-[var(--brand)] hover:bg-[var(--brand-ink)] cursor-pointer p-[13px_22px] text-[14.5px] font-bold"
+              className="inline-flex items-center gap-2 no-underline text-[var(--on-brand)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] cursor-pointer p-[13px_22px] text-[14.5px] font-bold"
             >
               무료로 검사 시작 <span className="font-mono">→</span>
             </Link>
@@ -709,7 +714,7 @@ export default function LandingPage() {
             {/* 문구 박스 */}
             <div className="text-[var(--ink)] bg-[var(--surface)] border border-[var(--line-2)] min-h-[76px] p-[13px_14px] text-[18px] font-semibold leading-[1.55] break-keep">
               {rd.text.slice(0, hqCi)}
-              <span className="inline-block w-[0.14em] h-[1em] ml-[2px] align-[-2px] bg-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]" />
+              <span className="inline-block w-[0.14em] h-[1em] ml-[2px] align-[-2px] bg-[var(--brand-ink)] animate-[blink_1.1s_steps(1)_infinite]" />
             </div>
 
             {/* O/X 버튼 */}
@@ -762,7 +767,7 @@ export default function LandingPage() {
                 </div>
                 <span
                   onClick={nextRound}
-                  className="flex items-center justify-center gap-[7px] mt-[12px] bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] py-3 text-[13.5px] font-bold"
+                  className="flex items-center justify-center gap-[7px] mt-[12px] bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-deep)] py-3 text-[13.5px] font-bold"
                 >
                   {nextLabel}
                 </span>
@@ -778,7 +783,7 @@ export default function LandingPage() {
                 <Link
                   href="/home"
                   onClick={enterConsole}
-                  className="flex items-center justify-center gap-[7px] bg-[var(--brand)] text-[var(--on-brand)] no-underline hover:bg-[var(--brand-ink)] py-3.5 text-[14px] font-bold"
+                  className="flex items-center justify-center gap-[7px] bg-[var(--brand)] text-[var(--on-brand)] no-underline hover:bg-[var(--brand-deep)] py-3.5 text-[14px] font-bold"
                 >
                   내 광고 문구 검사하기 - 무료 <span className="font-mono">→</span>
                 </Link>
@@ -966,7 +971,16 @@ export default function LandingPage() {
           >
             <div className="grid grid-cols-[400px_1fr] gap-[26px] items-start w-full">
               <ReportIntro />
-              <ReportDemo phase={reportPhase} score={reportScore} />
+              {/* 스크럽 동안 제자리 확대 유지: 무대 신호는 진입/이탈 두 번만 */}
+              <div
+                style={{
+                  transform: reportZoom ? "scale(1.06)" : "none",
+                  transformOrigin: "center center",
+                  transition: prefersReducedMotion ? "none" : "transform 450ms cubic-bezier(.2,.7,.2,1)"
+                }}
+              >
+                <ReportDemo phase={reportPhase} score={reportScore} />
+              </div>
             </div>
           </div>
         </div>
@@ -1041,7 +1055,7 @@ export default function LandingPage() {
               }}
             >
               <span 
-                className="font-bold text-white px-[6px] py-[1px]"
+                className="font-bold text-[var(--surface)] px-[6px] py-[1px]"
                 style={{
                   backgroundColor: exportActive ? "var(--crit)" : "var(--ink-3)",
                   transition: prefersReducedMotion ? "none" : "background-color 300ms ease-out 200ms"
@@ -1171,7 +1185,7 @@ export default function LandingPage() {
                 국내 검사 무제한<br />Basic 전체 포함<br /><b className="text-[var(--brand-ink)]">상세페이지 초안 제작 월 5회</b><br />전체 검사 현황 대시보드<br />수출 검사 애드온 구매 가능
               </div>
               <div className="p-[0_20px_20px]">
-                <Link href="/home" onClick={enterConsole} className="flex items-center justify-center gap-[7px] no-underline bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-ink)] cursor-pointer py-[11px] text-[13.5px] font-bold">Pro 시작 <span className="font-mono">→</span></Link>
+                <Link href="/home" onClick={enterConsole} className="flex items-center justify-center gap-[7px] no-underline bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer py-[11px] text-[13.5px] font-bold">Pro 시작 <span className="font-mono">→</span></Link>
               </div>
             </div>
           </div>
@@ -1276,7 +1290,7 @@ export default function LandingPage() {
             <div className="text-[var(--on-brand)] mb-[8px] text-[30px] font-extrabold leading-[1.3] tracking-[-0.8px] break-keep">
               지금 광고 문구를 붙여넣으세요.<br />3분 뒤 조항까지 나옵니다.
             </div>
-            <div className="font-mono text-[12px] text-[var(--brand)]">
+            <div className="font-mono text-[12px] text-[var(--on-brand)] opacity-80">
               가입 없이 월 3건 무료 · 신용카드 불필요 ▊
             </div>
           </div>

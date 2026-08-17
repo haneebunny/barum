@@ -110,6 +110,13 @@ function FindingCard({ finding, index, num, act, onAction, isHovered, onHover, o
           }}
         />
         <p className="font-mono text-[11px] text-[var(--brand-ink)] m-[0_0_8px]">{finding.legal_basis}</p>
+        {/* 조문 원문 인용: citation_registry 단일 소스에서 온 값만 표시(없으면 숨김, 지어내지 않음) */}
+        {finding.legal_basis_text && (
+          <blockquote className="m-[0_0_10px] border-l-2 border-[var(--brand-deep)] bg-[var(--surface-sub)] p-[7px_11px]">
+            <span className="font-mono text-[9.5px] text-[var(--ink-3)] block mb-[3px]">조문 원문</span>
+            <span className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">&ldquo;{finding.legal_basis_text}&rdquo;</span>
+          </blockquote>
+        )}
         <p className="text-[12.5px] text-[var(--ink-3)] leading-1.6 m-[0_0_12px]">{finding.explanation}</p>
         <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[10px_11px] m-[0_0_12px]">
           <div className="flex items-center gap-1.75 mb-1.5">
@@ -773,7 +780,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
         <Link
           href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-white border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-ink)] dark:hover:bg-[#63e89f] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
         >
           이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
         </Link>
