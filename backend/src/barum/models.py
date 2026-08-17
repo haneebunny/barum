@@ -80,6 +80,7 @@ class Finding(BaseModel):
     sentence: str  # span이 속한 원문 문장
     violation_type: ViolationType
     legal_basis: str  # 근거 조항(예: "화장품법 제13조 제1항 제2호")
+    legal_basis_text: str | None = None  # 그 조항의 원문 전체(없으면 None, 지어내지 않음)
     flag: JudgmentFlag  # 위반(근거 확인) | 검토필요(근거 약함·불명)
     explanation: str  # 왜 위반인지 사람이 읽는 설명
     location: Location

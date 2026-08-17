@@ -28,7 +28,7 @@ from barum.reference.ingredients import (
     infer_category,
     match_ingredient,
 )
-from barum.reference.mapping import legal_basis_for
+from barum.reference.mapping import legal_basis_for, legal_basis_text_for
 from barum.reference.rules import RuleOutcome, match_rule
 from barum.vlm import VLM
 
@@ -132,6 +132,7 @@ class StubJudge:
                             sentence=text,
                             violation_type=vtype,
                             legal_basis=legal_basis_for(vtype),
+                            legal_basis_text=legal_basis_text_for(vtype),
                             flag=JudgmentFlag.violation,  # 데모용, 근거 인프라 없음
                             explanation=f"(더미 판정) '{keyword}' 표현이 {vtype.value}에 해당할 소지가 있다.",
                             location=_loc(s),
@@ -316,6 +317,7 @@ class PromptJudge:
                         sentence=s["text"],
                         violation_type=vtype,
                         legal_basis=legal_basis_for(vtype),
+                        legal_basis_text=legal_basis_text_for(vtype),
                         flag=flag,
                         explanation=explanation,
                         location=_loc(s),
@@ -457,6 +459,7 @@ class RagJudge:
                     sentence=s["text"],
                     violation_type=match.violation_type,
                     legal_basis=legal_basis_for(match.violation_type),
+                    legal_basis_text=legal_basis_text_for(match.violation_type),
                     flag=match.flag,
                     explanation=_rule_explanation(
                         match.outcome, match.span, match.violation_type

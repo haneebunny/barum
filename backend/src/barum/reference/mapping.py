@@ -36,7 +36,7 @@ NOT_A_JUDGMENT_LABEL: dict[str, str] = {
 }
 
 # ViolationType → 근거 조항 문자열. judge(PromptJudge)의 legal_basis가 여기서 나온다.
-# 화장품법 제13조 제1항 체계(개정법 기준, 2026.11.27 시행 이후 번호).
+# 화장품법 제13조 제1항 체계(개정법 기준, 2026.11.26 시행 이후 번호).
 _LEGAL_BASIS: dict[ViolationType, str] = {
     ViolationType.type_1_drug_misperception: "화장품법 제13조 제1항 제1호 (의약품 오인)",
     ViolationType.type_2_functional_misperception: "화장품법 제13조 제1항 제2호 (기능성 오인)",
@@ -50,3 +50,28 @@ def legal_basis_for(vtype: ViolationType) -> str:
     합법·대상외는 근거 조항이 없다(위반이 아니므로) — 호출하면 KeyError.
     """
     return _LEGAL_BASIS[vtype]
+
+
+# ViolationType → 조문 원문 전체. 사용자가 리포트에서 "왜 위반인지"를 우리 설명
+# 말고 실제 법조문으로도 확인할 수 있게 한다(2026-08-15, 하니 지시). 원문은
+# `reference/cosmetic_kr/statute/law_article_13.md`에서 WebFetch로 재검증한 것과
+# 동일 문자열(단일 출처 원칙, `citation_registry.md` id: kr_law_art13).
+_LEGAL_BASIS_TEXT: dict[ViolationType, str] = {
+    ViolationType.type_1_drug_misperception: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
+    ViolationType.type_2_functional_misperception: (
+        "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 "
+        "기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고"
+    ),
+    ViolationType.type_5_deception: (
+        "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 "
+        "표시 또는 광고"
+    ),
+}
+
+
+def legal_basis_text_for(vtype: ViolationType) -> str | None:
+    """위반유형에 대응하는 조문 원문 전체를 낸다.
+
+    원문을 아직 못 채운 유형은 None(있는 만큼만 노출, 없는 걸 지어내지 않는다).
+    """
+    return _LEGAL_BASIS_TEXT.get(vtype)

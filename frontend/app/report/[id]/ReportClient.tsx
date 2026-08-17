@@ -175,6 +175,13 @@ function FindingCard({
       {/* 토글 바디: 설명 + 대체표현 */}
       {open && (
         <div className="p-[13px_14px_14px] border-t border-[var(--line)] flex flex-col gap-3.5">
+          {/* 조문 원문 인용: citation_registry 단일 소스에서 온 값만 표시(없으면 숨김, 지어내지 않음) */}
+          {finding.legal_basis_text && (
+            <blockquote className="m-0 border-l-2 border-[var(--brand-deep)] bg-[var(--surface-sub)] p-[7px_11px]">
+              <span className="font-mono text-[9.5px] text-[var(--ink-3)] block mb-[3px]">조문 원문</span>
+              <span className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">&ldquo;{finding.legal_basis_text}&rdquo;</span>
+            </blockquote>
+          )}
           <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
             {finding.explanation}
           </p>
