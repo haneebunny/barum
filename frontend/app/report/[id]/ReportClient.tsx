@@ -110,6 +110,13 @@ function FindingCard({ finding, index, num, act, onAction, isHovered, onHover, o
           }}
         />
         <p className="font-mono text-[11px] text-[var(--brand-ink)] m-[0_0_8px]">{finding.legal_basis}</p>
+        {/* 조문 원문 인용: citation_registry 단일 소스에서 온 값만 표시(없으면 숨김, 지어내지 않음) */}
+        {finding.legal_basis_text && (
+          <blockquote className="m-[0_0_10px] border-l-2 border-[var(--brand-deep)] bg-[var(--surface-sub)] p-[7px_11px]">
+            <span className="font-mono text-[9.5px] text-[var(--ink-3)] block mb-[3px]">조문 원문</span>
+            <span className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">&ldquo;{finding.legal_basis_text}&rdquo;</span>
+          </blockquote>
+        )}
         <p className="text-[12.5px] text-[var(--ink-3)] leading-1.6 m-[0_0_12px]">{finding.explanation}</p>
         <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[10px_11px] m-[0_0_12px]">
           <div className="flex items-center gap-1.75 mb-1.5">
