@@ -10,7 +10,6 @@ export default function HomePage() {
   const router = useRouter();
   const [selectedRegion, setSelectedRegion] = useState("미국 FDA·FTC");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [needCount, setNeedCount] = useState(2);
 
   const triggerRef = useRef<HTMLSpanElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -88,35 +87,6 @@ export default function HomePage() {
 
   return (
     <>
-      {/* 알림 바: 대기 건수 0이면 자동 숨김. data-count로 제어 */}
-      {needCount > 0 && (
-        <div className="flex items-center gap-2.5 p-[10px_20px] border-b border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)] text-[13px]" id="needbar" data-count={needCount}>
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-            <path d="M12 3 2 20h20L12 3z" />
-            <path d="M12 10v4M12 17v.5" />
-          </svg>
-          <span>
-            <b className="font-bold">확인 안 한 항목 {needCount}건.</b> 게시 전 검토해 주세요.
-          </span>
-          <span
-            className="ml-auto text-[var(--crit)] font-bold cursor-pointer inline-flex items-center gap-1 text-[12.5px]"
-            role="button"
-            tabIndex={0}
-            onClick={() => router.push("/report/demo-id-1")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                router.push("/report/demo-id-1");
-              }
-            }}
-          >
-            보기
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </span>
-        </div>
-      )}
 
       {/* 랜딩에서 설득이 끝난 사람의 작업 화면: 마케팅 카피 없이 얇은 한 줄만 */}
       <div className="p-[26px_22px_4px] flex items-baseline gap-[10px]">
