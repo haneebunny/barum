@@ -178,6 +178,16 @@ export const ImageGenRequestSchema = z.object({
 });
 export type ImageGenRequest = z.infer<typeof ImageGenRequestSchema>;
 
+// create 모드 전용: 사업자 입력 실증자료. barum은 진위를 검증하지 않는다(하니·PM 확정).
+export const ClinicalEvidenceSchema = z.object({
+  claim: z.string(),
+  value: z.string(),
+  institution: z.string().nullable().optional(),
+  period: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+});
+export type ClinicalEvidence = z.infer<typeof ClinicalEvidenceSchema>;
+
 export const GenerateRequestSchema = z.object({
   mode: z.enum(["improve", "create"]).default("improve"),
   content: z.string().nullable().optional(),
@@ -186,6 +196,7 @@ export const GenerateRequestSchema = z.object({
   ingredients: z.string().nullable().optional(),
   ingredient_amounts: z.array(IngredientAmountSchema).nullable().optional(),
   certifications: z.array(z.string()).default([]),
+  clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
   notes: z.string().nullable().optional(),
   image_generation: ImageGenRequestSchema.nullable().optional(),
 });
@@ -197,6 +208,21 @@ export const SkippedClaimSchema = z.object({
 });
 export type SkippedClaim = z.infer<typeof SkippedClaimSchema>;
 
+// create 모드 상세페이지 모듈 구성 계획(플래너 산출물)
+export const LayoutModuleSchema = z.object({
+  kind: z.string(),
+  purpose: z.string(),
+  has_claim_risk: z.boolean().default(false),
+});
+export type LayoutModule = z.infer<typeof LayoutModuleSchema>;
+
+export const LayoutPlanSchema = z.object({
+  modules: z.array(LayoutModuleSchema).default([]),
+  product_type: z.string().nullable().optional(),
+  source: z.string().default("fallback"),
+});
+export type LayoutPlan = z.infer<typeof LayoutPlanSchema>;
+
 export const GenerateResponseSchema = z.object({
   sections: z.array(SectionSchema),
   replacements: z.array(ReplacementSchema),
@@ -204,6 +230,8 @@ export const GenerateResponseSchema = z.object({
   pii_removed: z.array(z.string()).default([]),
   risk_confirmations: z.array(RiskConfirmationSchema).default([]),
   skipped_claims: z.array(SkippedClaimSchema).default([]),
+  // create 모드 전용 모듈 구성 계획. improve 모드는 null
+  layout_plan: LayoutPlanSchema.nullable().optional(),
   recheck: RecheckSummarySchema,
   disclaimer: z.string(),
 });
