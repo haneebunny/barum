@@ -20,6 +20,11 @@ export type Flag = z.infer<typeof FlagSchema>;
 export const LocationSchema = z.object({
   tile: z.string().nullable(),
   order: z.number(),
+  y_start: z.number().nullable().optional(),
+  y_end: z.number().nullable().optional(),
+  source_h: z.number().nullable().optional(),
+  source_w: z.number().nullable().optional(),
+  source: z.string().nullable().optional(),
 });
 export type Location = z.infer<typeof LocationSchema>;
 
@@ -28,6 +33,8 @@ export const FindingSchema = z.object({
   sentence: z.string(),
   violation_type: ViolationTypeSchema,
   legal_basis: z.string(),
+  // 조문 원문 전체. 백엔드가 원문을 확보한 유형만 채움(없으면 null, 구버전 리포트엔 필드 자체가 없을 수 있음)
+  legal_basis_text: z.string().nullable().optional(),
   flag: FlagSchema,
   explanation: z.string(),
   location: LocationSchema,
@@ -51,11 +58,29 @@ export const SummarySchema = z.object({
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
+// 규제 근거 인용 (citation_registry 단일 소스에서 옴. 프론트 하드코딩 금지)
+export const BasisCitationSchema = z.object({
+  id: z.string(),
+  law_name: z.string(),
+  citation_id: z.string().nullable(),
+  effective_date: z.string().nullable(),
+  source_url: z.string().nullable(),
+});
+export type BasisCitation = z.infer<typeof BasisCitationSchema>;
+
+export const RegulatoryBasisSchema = z.object({
+  jurisdiction: RegionSchema,
+  citations: z.array(BasisCitationSchema),
+});
+export type RegulatoryBasis = z.infer<typeof RegulatoryBasisSchema>;
+
 export const CheckReportSchema = z.object({
   findings: z.array(FindingSchema),
   unjudged: z.array(UnjudgedSchema),
   summary: SummarySchema,
   result_id: z.string().nullable(),
+  // 검사 시점에 적용된 기준 스냅샷. 구버전 저장 리포트엔 없을 수 있어 optional
+  basis: RegulatoryBasisSchema.nullable().optional(),
 });
 export type CheckReport = z.infer<typeof CheckReportSchema>;
 
@@ -68,3 +93,179 @@ export const ReportEnvelopeSchema = z.object({
   report: CheckReportSchema,
 });
 export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;
+
+// POST /remediate 요청/응답
+export const RemediationRequestSchema = z.object({
+  sentence: z.string(),
+  violation_type: ViolationTypeSchema,
+  span: z.string().nullable().optional(),
+});
+export type RemediationRequest = z.infer<typeof RemediationRequestSchema>;
+
+export const RemediationResponseSchema = z.object({
+  sentence: z.string(),
+  violation_type: ViolationTypeSchema,
+  span: z.string(),
+  suggestions: z.array(z.string()),
+  disclaimer: z.string(),
+});
+export type RemediationResponse = z.infer<typeof RemediationResponseSchema>;
+
+// POST /generate 관련
+export const SectionSchema = z.object({
+  kind: z.string(),
+  text: z.string(),
+  source: z.string(),
+});
+export type Section = z.infer<typeof SectionSchema>;
+
+export const ReplacementSchema = z.object({
+  original: z.string(),
+  replaced: z.string(),
+  violation_type: ViolationTypeSchema,
+  basis: z.string(),
+});
+export type Replacement = z.infer<typeof ReplacementSchema>;
+
+export const PlacedImageSchema = z.object({
+  slot: z.string(),
+  image_url: z.string(),
+});
+export type PlacedImage = z.infer<typeof PlacedImageSchema>;
+
+export const ImageGenResultSchema = z.object({
+  requested: z.boolean().default(false),
+  allowed: z.boolean().nullable().optional(),
+  reason: z.string().nullable().optional(),
+  ai_labeled: z.boolean().default(false),
+});
+export type ImageGenResult = z.infer<typeof ImageGenResultSchema>;
+
+export const ImagePlanSchema = z.object({
+  placed: z.array(PlacedImageSchema).default([]),
+  generation: ImageGenResultSchema.default({
+    requested: false,
+    ai_labeled: false,
+  }),
+});
+export type ImagePlan = z.infer<typeof ImagePlanSchema>;
+
+export const RiskConfirmationSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  reason: z.string(),
+  requires_confirmation: z.boolean().default(true),
+});
+export type RiskConfirmation = z.infer<typeof RiskConfirmationSchema>;
+
+export const RecheckSummarySchema = z.object({
+  safe: z.boolean(),
+  n_findings: z.number(),
+  n_violation: z.number().default(0),
+  n_needs_review: z.number().default(0),
+});
+export type RecheckSummary = z.infer<typeof RecheckSummarySchema>;
+
+export const IngredientAmountSchema = z.object({
+  name: z.string(),
+  amount: z.string(),
+});
+export type IngredientAmount = z.infer<typeof IngredientAmountSchema>;
+
+export const ImageGenRequestSchema = z.object({
+  requested: z.boolean().default(false),
+  prompt: z.string().nullable().optional(),
+});
+export type ImageGenRequest = z.infer<typeof ImageGenRequestSchema>;
+
+// create 모드 전용: 사업자 입력 실증자료. barum은 진위를 검증하지 않는다(하니·PM 확정).
+export const ClinicalEvidenceSchema = z.object({
+  claim: z.string(),
+  value: z.string(),
+  institution: z.string().nullable().optional(),
+  period: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+});
+export type ClinicalEvidence = z.infer<typeof ClinicalEvidenceSchema>;
+
+export const GenerateRequestSchema = z.object({
+  mode: z.enum(["improve", "create"]).default("improve"),
+  content: z.string().nullable().optional(),
+  result_id: z.string().nullable().optional(),
+  product_name: z.string().nullable().optional(),
+  ingredients: z.string().nullable().optional(),
+  ingredient_amounts: z.array(IngredientAmountSchema).nullable().optional(),
+  certifications: z.array(z.string()).default([]),
+  clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
+  notes: z.string().nullable().optional(),
+  image_generation: ImageGenRequestSchema.nullable().optional(),
+});
+export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+
+export const SkippedClaimSchema = z.object({
+  category: z.string(),
+  reason: z.string(),
+});
+export type SkippedClaim = z.infer<typeof SkippedClaimSchema>;
+
+// create 모드 상세페이지 모듈 구성 계획(플래너 산출물)
+export const LayoutModuleSchema = z.object({
+  kind: z.string(),
+  purpose: z.string(),
+  has_claim_risk: z.boolean().default(false),
+});
+export type LayoutModule = z.infer<typeof LayoutModuleSchema>;
+
+export const LayoutPlanSchema = z.object({
+  modules: z.array(LayoutModuleSchema).default([]),
+  product_type: z.string().nullable().optional(),
+  source: z.string().default("fallback"),
+});
+export type LayoutPlan = z.infer<typeof LayoutPlanSchema>;
+
+export const GenerateResponseSchema = z.object({
+  sections: z.array(SectionSchema),
+  replacements: z.array(ReplacementSchema),
+  image_plan: ImagePlanSchema,
+  pii_removed: z.array(z.string()).default([]),
+  risk_confirmations: z.array(RiskConfirmationSchema).default([]),
+  skipped_claims: z.array(SkippedClaimSchema).default([]),
+  // create 모드 전용 모듈 구성 계획. improve 모드는 null
+  layout_plan: LayoutPlanSchema.nullable().optional(),
+  recheck: RecheckSummarySchema,
+  disclaimer: z.string(),
+});
+export type GenerateResponse = z.infer<typeof GenerateResponseSchema>;
+
+// ── 미국 프리플라이트 (POST /check/us-sunscreen) ──────────────────────────
+
+export const USPreflightCategorySchema = z.enum([
+  "OTC의약품_분류전환",
+  "미국_미승인_성분",
+  "성분정보_확인불가",
+]);
+export type USPreflightCategory = z.infer<typeof USPreflightCategorySchema>;
+
+export const USPreflightFindingSchema = z.object({
+  span: z.string(),
+  sentence: z.string(),
+  category: USPreflightCategorySchema,
+  explanation: z.string(),
+  location: LocationSchema,
+});
+export type USPreflightFinding = z.infer<typeof USPreflightFindingSchema>;
+
+export const USPreflightSummarySchema = z.object({
+  n_sentences: z.number(),
+  n_findings: z.number(),
+  counts_by_category: z.record(z.string(), z.number()),
+});
+export type USPreflightSummary = z.infer<typeof USPreflightSummarySchema>;
+
+export const USPreflightReportSchema = z.object({
+  findings: z.array(USPreflightFindingSchema),
+  summary: USPreflightSummarySchema,
+  result_id: z.string().nullable().optional(),
+  disclaimer: z.string(),
+});
+export type USPreflightReport = z.infer<typeof USPreflightReportSchema>;

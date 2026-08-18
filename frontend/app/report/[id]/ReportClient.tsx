@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Warning, MagnifyingGlass, Check, X, Clock } from "@phosphor-icons/react";
-import type { ReportEnvelope } from "@/lib/api/schema";
-import { getReport } from "@/lib/api/client";
+import { useState, useEffect } from "react";
+import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@phosphor-icons/react";
+import type { ReportEnvelope, Finding } from "@/lib/api/schema";
+import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
+import { PageFooter } from "@/components/PageFooter/PageFooter";
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -12,11 +13,277 @@ const TYPE_LABEL = {
   "5호_거짓과장기만": "5호 · 거짓·과장·기만",
 };
 
-const ALT_POOL = [
-  "성분·효과 근거를 확인한 뒤, 개인차가 있을 수 있다는 표현으로 순화하는 안을 검토해보세요.",
-  "단정적 효능 표현 대신 “도움을 줄 수 있어요”처럼 가능성을 시사하는 톤으로 조정해보세요.",
-  "비교·수치 표현은 근거 자료(시험성적서 등)를 확보했을 때만 남기는 걸 권장해요."
-];
+interface FindingCardProps {
+  finding: Finding;
+  index: number;
+  orderIndex: number;
+  num: number;
+  act: "accept" | "exclude" | null;
+  onAction: (idx: number, orderIndex: number, act: "accept" | "exclude") => void;
+  isHovered: boolean;
+  onHover: (hover: boolean) => void;
+  open: boolean;
+  onToggle: () => void;
+  tier: "FREE" | "BASIC" | "PRO";
+  remediationCount: number;
+  onFetchRemediation: () => void;
+}
+
+function getRemediationText(violationType: string, suggestionsNode: React.ReactNode) {
+  if (violationType === "1호_의약품오인") {
+    return (
+      <>
+        의학적 효능 표현 대신 {suggestionsNode} 과 같은 화장품 범주 보습 및 케어 표현으로 다듬어 보세요.
+      </>
+    );
+  }
+  if (violationType === "2호_기능성오인") {
+    return (
+      <>
+        기능성 오인 표현 대신 {suggestionsNode} 과 같은 안전하고 허용된 기능성 표현으로 다듬어 보세요.
+      </>
+    );
+  }
+  return (
+    <>
+      위반 우려가 있는 표현 대신 {suggestionsNode} 과 같은 권장 표현으로 다듬어 보세요.
+    </>
+  );
+}
+
+function FindingCard({
+  finding,
+  index,
+  orderIndex,
+  num,
+  act,
+  onAction,
+  isHovered,
+  onHover,
+  open,
+  onToggle,
+  tier,
+  remediationCount,
+  onFetchRemediation,
+}: FindingCardProps) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
+
+  useEffect(() => {
+    setSuggestions([]);
+    setLoading(false);
+    setHasFetched(false);
+    setShowSuggestionsArea(false);
+  }, [finding]);
+
+  const handleFetchSuggestions = () => {
+    setLoading(true);
+    getRemediation({
+      sentence: finding.sentence,
+      violation_type: finding.violation_type,
+      span: finding.span,
+    })
+      .then((res) => {
+        setSuggestions(res.suggestions);
+        setHasFetched(true);
+        setLoading(false);
+        onFetchRemediation();
+      })
+      .catch((err) => {
+        console.error("Failed to fetch remediation suggestion", err);
+        setLoading(false);
+      });
+  };
+
+  const handleShowAndFetchSuggestions = () => {
+    setShowSuggestionsArea(true);
+    handleFetchSuggestions();
+  };
+
+  const cls = finding.flag === "위반" ? "violation" : "review";
+  const isExcluded = act === "exclude";
+
+  // 호버 translate 제거 및 피그마 디자인 규격 적용 (rounded, overflow, flex-col)
+  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${
+    cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
+  } ${isExcluded ? "opacity-50" : ""}`;
+
+  // 텍스트 글자색은 유지하고 테두리와 배경으로만 하이라이트
+  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${
+    cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
+  }`;
+
+  const handleHeaderClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) {
+      return;
+    }
+    onToggle();
+  };
+
+  return (
+    <div
+      className={cardCls}
+      data-i={index}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+    >
+      {/* 토글 고정 헤더 (상시 노출) */}
+      <div
+        className="cursor-pointer border-b border-[var(--line)] bg-[var(--surface-sub)] p-[8px_12px_8px]"
+        onClick={handleHeaderClick}
+      >
+        <div className="flex gap-2.5">
+          {/* 사각형 번호 배지 */}
+          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${
+            cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
+          }`}>{num}</span>
+
+          {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
+          <div className="flex-1 min-w-0">
+            {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
+            <div className="flex items-center justify-between gap-2">
+              <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>{finding.span}</span>
+              
+              <div className="flex items-center gap-1.5 ml-auto">
+                {tier === "FREE" ? (
+                  <span className="text-[10px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
+                    유료 요금제 전용
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
+                        act === "accept"
+                          ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                      }`}
+                      onClick={() => onAction(index, orderIndex, "accept")}
+                    >
+                      <Check size={11} weight="bold" />
+                      수용
+                    </button>
+                    <button
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
+                        act === "exclude"
+                          ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                      }`}
+                      onClick={() => onAction(index, orderIndex, "exclude")}
+                    >
+                      <X size={11} weight="bold" />
+                      제외
+                    </button>
+                  </>
+                )}
+                {/* 토글 chevron */}
+                <span
+                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${
+                    open ? "rotate-180" : ""
+                  }`}
+                >
+                  <CaretDown size={14} weight="bold" />
+                </span>
+              </div>
+            </div>
+
+            {/* 2행: 위반 유형 */}
+            <div className="text-[11px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
+              위반 유형 {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 아코디언 바디 wrapper */}
+      <div className={`accordion-wrapper ${open ? "open" : ""}`}>
+        <div className="accordion-content">
+          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex flex-col gap-3.5">
+            
+            {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
+            {(tier !== "FREE" || num === 1) ? (
+              !showSuggestionsArea && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleShowAndFetchSuggestions}
+                    className="font-sans text-[11.5px] font-bold p-[6px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm shadow-sm"
+                  >
+                    대체 표현 제안 보기 {tier === "FREE" ? "(체험 1회)" : ""}
+                  </button>
+                </div>
+              )
+            ) : (
+              <div className="text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] p-2.5 border border-[var(--line-2)] rounded-sm">
+                대체 표현 제안 조회를 더 이용하려면 유료 요금제로 업그레이드해주세요.
+              </div>
+            )}
+
+            {/* 조문 원문 인용 (화장품법 조항 및 조문 원문을 흰색 상자 안에 표기) */}
+            {(finding.legal_basis || finding.legal_basis_text) && (
+              <blockquote className="m-0 border border-[var(--line-2)] bg-[var(--surface)] p-[8px_12px] rounded-sm">
+                {tier === "FREE" && num > 1 ? (
+                  <span className="text-[12px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
+                ) : (
+                  <>
+                    {finding.legal_basis && (
+                      <div className="font-mono text-[11px] text-[var(--brand-ink)] font-semibold mb-1">
+                        {finding.legal_basis}
+                      </div>
+                    )}
+                    {finding.legal_basis_text && (
+                      <div className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">
+                        {finding.legal_basis_text}
+                      </div>
+                    )}
+                  </>
+                )}
+              </blockquote>
+            )}
+
+            <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
+              {finding.explanation}
+            </p>
+
+            {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
+            {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
+              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm transition-all duration-300">
+                <div className="flex items-center gap-1.75 mb-2">
+                  <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
+                  {tier === "FREE" && (
+                    <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px] ml-2">
+                      FREE 요금제 체험 (1/1)
+                    </span>
+                  )}
+                </div>
+                <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
+                  {loading ? (
+                    <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12px]">
+                      <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
+                      대체 표현 제안을 불러오는 중...
+                    </div>
+                  ) : hasFetched ? (
+                    suggestions.length > 0 ? (
+                      getRemediationText(
+                        finding.violation_type,
+                        <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                          {suggestions.join(", ")}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-[var(--ink-3)]">대체 표현 없음</span>
+                    )
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface ReportClientProps {
   envelope: ReportEnvelope;
@@ -37,10 +304,21 @@ function markSentence(
     const needle = escapeHtml(it.span);
     if (out.indexOf(needle) === -1) return;
     const isExcluded = actions[it.idx] === "exclude";
-    const stCls = isExcluded ? " st-exclude" : "";
+    const isViolation = it.cls === "violation";
+    
+    let spanCls = "relative px-1 rounded-sm cursor-default border inline ";
+    if (isExcluded) {
+      spanCls += "opacity-50 line-through ";
+    }
+    if (isViolation) {
+      spanCls += "border-[var(--crit)] bg-[var(--crit-bg)] font-semibold";
+    } else {
+      spanCls += "border-[var(--line-2)] bg-[var(--surface-sub)]";
+    }
+    
     out = out.replace(
       needle,
-      `<span class="hlspan ${it.cls}${stCls}"><span class="tag">${it.badge}</span>${needle}</span>`
+      `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
     );
   });
   return out;
@@ -54,15 +332,54 @@ export function ReportClient({ envelope }: ReportClientProps) {
     return "image";
   });
   const [loading, setLoading] = useState(false);
-  const [actions, setActions] = useState<Record<number, "accept" | "exclude" | "hold" | null>>({});
+  const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
+  const [remediationCount, setRemediationCount] = useState<number>(0);
+  const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
 
-  const handleAction = (idx: number, act: "accept" | "exclude" | "hold") => {
+  const d = activeEnvelope.report;
+
+  const findByOrder = d.findings
+    .map((f, i) => ({ f, idx: i, num: 0 }))
+    .sort((a, b) => a.f.location.order - b.f.location.order);
+  findByOrder.forEach((item, index) => {
+    item.num = index + 1;
+  });
+
+  useEffect(() => {
+    setRemediationCount(0);
+    setOpenOrderIndex(0);
+  }, [activeEnvelope]);
+
+  const scrollToBox = (idx: number, isUj = false) => {
+    const id = isUj ? `highlight-box-uj-${idx}` : `highlight-box-${idx}`;
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  };
+
+  const handleAction = (idx: number, orderIndex: number, act: "accept" | "exclude") => {
     setActions((prev) => {
       const next = { ...prev };
       if (next[idx] === act) {
         next[idx] = null;
       } else {
         next[idx] = act;
+        
+        const nextOrderIndex = orderIndex + 1;
+        if (nextOrderIndex < findByOrder.length) {
+          setOpenOrderIndex(nextOrderIndex);
+          const nextFinding = findByOrder[nextOrderIndex];
+          setTimeout(() => {
+            scrollToBox(nextFinding.idx, false);
+          }, 220);
+        }
       }
       return next;
     });
@@ -82,9 +399,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     }
   };
 
-  const d = activeEnvelope.report;
-
-  // 10단계에서 제외(exclude) 처리 시 수치 실시간 계산을 위한 바인딩 연동
   let nViol = 0;
   let nReview = 0;
 
@@ -105,15 +419,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
-  // findings의 order 기준으로 순서(num: 1, 2, 3...) 매기기
-  const findByOrder = d.findings
-    .map((f, i) => ({ f, idx: i, num: 0 }))
-    .sort((a, b) => a.f.location.order - b.f.location.order);
-  findByOrder.forEach((item, index) => {
-    item.num = index + 1;
-  });
-
-  // unjudged의 order 기준으로 정렬
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
 
   const hasInteracted = Object.keys(actions).length > 0;
@@ -129,89 +434,121 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: styles }} />
-      <div className="metastrip">
-        <span className="crumb">
-          <Link href="/" className="home">
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
+        <span className="text-[var(--ink-2)]">
+          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
             홈
           </Link>{" "}
-          <span className="sep">›</span>{" "}
+          <span className="text-[var(--ink-3)]">›</span>{" "}
           {activeEnvelope.region === "US" ? (
             <>
-              해외 수출 검증 <span className="sep">›</span> 미국{" "}
+              해외 수출 검증 <span className="text-[var(--ink-3)]">›</span> 미국{" "}
             </>
           ) : (
             <>국내 광고 검증</>
           )}
-          <span className="sep">›</span> 리포트
+          <span className="text-[var(--ink-3)]">›</span> 리포트
         </span>
-        <div className="modeswitch">
-          <span className="msl devnote">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="msbtns" id="fixtureSwitch" role="group" aria-label="fixture 전환">
+        <div className="ml-auto flex items-center gap-1.75 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
+          <span className="text-[var(--ink-3)] text-[10px]">목업 전용 · 실제 화면엔 없음:</span>
+          <div className="flex border border-[var(--line-2)]" id="fixtureSwitch" role="group" aria-label="fixture 전환">
             <button
               onClick={() => handleFixtureChange("image")}
-              className={activeFixture === "image" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "image" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               이미지 예시
             </button>
             <button
               onClick={() => handleFixtureChange("text")}
-              className={activeFixture === "text" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "text" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               텍스트 예시
             </button>
             <button
               onClick={() => handleFixtureChange("unjudged")}
-              className={activeFixture === "unjudged" ? "on" : ""}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                activeFixture === "unjudged" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
               disabled={loading}
             >
               미판정 포함
+            </button>
+          </div>
+          <span className="text-[var(--ink-3)] text-[10px] ml-1.5">요금제:</span>
+          <div className="flex border border-[var(--line-2)]" id="tierSwitch" role="group" aria-label="요금제 전환">
+            <button
+              onClick={() => setTier("FREE")}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                tier === "FREE" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
+            >
+              FREE (체험)
+            </button>
+            <button
+              onClick={() => setTier("BASIC")}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                tier === "BASIC" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
+            >
+              BASIC (수정안 제공)
+            </button>
+            <button
+              onClick={() => setTier("PRO")}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                tier === "PRO" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
+            >
+              PRO (무제한+제작)
             </button>
           </div>
         </div>
       </div>
 
       {/* 요약 상단바 */}
-      <div className="statbar">
-        <p className="headline">
-          <span className="nviol">위반 <span className="num">{nViol}</span>건</span>
-          <span className="sep2">·</span>
-          검토필요 <span className="num">{nReview}</span>건
-          <span className="sep2">·</span>
-          미판정 <span className="num">{d.unjudged.length}</span>건
+      <div className="p-[18px_20px] border-b border-[var(--line)]">
+        <p className="m-[0_0_12px] text-[16px] font-bold text-[var(--ink)] tracking-[-0.2px]">
+          <span className="text-[var(--crit)]">위반 <span className="font-mono">{nViol}</span>건</span>
+          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
+          검토필요 <span className="font-mono">{nReview}</span>건
+          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
+          미판정 <span className="font-mono">{d.unjudged.length}</span>건
         </p>
-        <div className="typechips">
+        <div className="flex flex-wrap gap-1.5">
           {Object.entries(typeCounts).map(([type, count]) => {
             if (count === 0) return null;
             const label = TYPE_LABEL[type as keyof typeof TYPE_LABEL] || type;
             return (
-              <span key={type} className="typechip">
-                {label} <span className="cnt num">{count}</span>
+              <span key={type} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[3px_9px] inline-flex items-center gap-1.5">
+                {label} <span className="text-[var(--ink-3)] font-mono">{count}</span>
               </span>
             );
           })}
           {Object.keys(typeCounts).length === 0 && (
-            <span className="typechip devnote">제외 처리 후 남은 지적 없음</span>
+            <span className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[3px_9px] inline-flex items-center gap-1.5">제외 처리 후 남은 지적 없음</span>
           )}
         </div>
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="reportgrid">
-        <div className="repcol left">
-          <div className="seclabel">
-            <span className="n">01</span>
-            <h2>원문 하이라이트</h2>
-            <span className="rule" />
-            <span className="hint">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+        <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
               {isImageMode ? "이미지 모드 · 타일 오버레이" : "텍스트 모드 · 스팬 밑줄"}
             </span>
           </div>
           <div id="origPanel">
             {loading ? (
-              <p className="devnote" style={{ padding: "12px" }}>
+              <p className="text-[var(--ink-3)] p-3">
                 로딩 중...
               </p>
             ) : isImageMode ? (
@@ -242,6 +579,168 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 const tiles = Object.keys(byTile).sort();
 
+                const sampleLoc = findByOrder[0]?.f.location || ujByOrder[0]?.location;
+                const srcW = sampleLoc?.source_w;
+                const srcH = sampleLoc?.source_h;
+
+                const hasCoords =
+                  typeof srcW === "number" &&
+                  typeof srcH === "number" &&
+                  srcW > 0 &&
+                  srcH > 0;
+
+                const isMockId =
+                  activeEnvelope.result_id === "demo-image-id" ||
+                  activeEnvelope.result_id === "image" ||
+                  activeEnvelope.result_id === "demo-id-1" ||
+                  activeEnvelope.result_id === "demo-id-3" ||
+                  activeEnvelope.result_id === "demo-id-5";
+
+                const showRealImage = hasCoords && !isMockId && !imageErrors.global;
+                const imageUrl = getReportImageUrl(activeEnvelope.result_id);
+
+                if (showRealImage) {
+                  return (
+                    <div className="border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
+                      <div className="font-mono text-[10.5px] text-[var(--ink-3)] mb-1">
+                        원본 광고 검증 이미지 ({srcW}x{srcH} px)
+                      </div>
+                      <div
+                        className="relative w-full"
+                        style={{
+                          aspectRatio: `${srcW} / ${srcH}`,
+                          overflow: "hidden",
+                          backgroundColor: "var(--surface)",
+                        }}
+                      >
+                        <img
+                          src={imageUrl}
+                          alt="원본 광고"
+                          onError={() => {
+                            setImageErrors((prev) => ({ ...prev, global: true }));
+                          }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "block",
+                          }}
+                        />
+
+                            {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
+                            <div className="absolute inset-0 z-10 pointer-events-none">
+                              {findByOrder.map((o) => {
+                                const loc = o.f.location;
+                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+                                const isExcluded = actions[o.idx] === "exclude";
+                                if (isExcluded) return null;
+
+                                const topPct = (loc.y_start / srcH) * 100;
+                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const isViolation = o.f.flag === "위반";
+                                const isHovered = hoveredIndex === o.idx;
+
+                                return (
+                                  <div
+                                    id={`highlight-box-${o.idx}`}
+                                    key={`find-${o.idx}`}
+                                    style={{
+                                  position: "absolute",
+                                  left: 0,
+                                  right: 0,
+                                  top: `${topPct}%`,
+                                  height: `${heightPct}%`,
+                                  border: isViolation
+                                    ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.4)"}`
+                                    : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.3)"}`,
+                                  backgroundColor: isViolation
+                                    ? (isHovered ? "rgba(239, 68, 68, 0.12)" : "rgba(239, 68, 68, 0.04)")
+                                    : (isHovered ? "rgba(100, 116, 139, 0.12)" : "rgba(100, 116, 139, 0.02)"),
+                                  pointerEvents: "auto",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease-in-out",
+                                }}
+                                onMouseEnter={() => setHoveredIndex(o.idx)}
+                                onMouseLeave={() => setHoveredIndex(null)}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    left: "6px",
+                                    top: "6px",
+                                    width: "19px",
+                                    height: "19px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontFamily: "monospace",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    borderRadius: "50%",
+                                    border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
+                                    color: isViolation ? "var(--crit)" : "var(--ink-3)",
+                                    backgroundColor: "var(--surface)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                  }}
+                                >
+                                  {o.num}
+                                </span>
+                              </div>
+                            );
+                          })}
+
+                              {ujByOrder.map((u, i) => {
+                                const loc = u.location;
+                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+
+                                const topPct = (loc.y_start / srcH) * 100;
+                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const letter = String.fromCharCode(65 + i);
+
+                                return (
+                                  <div
+                                    id={`highlight-box-uj-${i}`}
+                                    key={`uj-${i}`}
+                                    style={{
+                                  position: "absolute",
+                                  left: 0,
+                                  right: 0,
+                                  top: `${topPct}%`,
+                                  height: `${heightPct}%`,
+                                  border: "2px dashed rgba(100, 116, 139, 0.2)",
+                                  backgroundColor: "rgba(100, 116, 139, 0.01)",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    right: "6px",
+                                    top: "6px",
+                                    width: "19px",
+                                    height: "19px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontFamily: "monospace",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    borderRadius: "50%",
+                                    border: "1px dashed var(--ink-3)",
+                                    color: "var(--ink-3)",
+                                    backgroundColor: "var(--surface)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                  }}
+                                >
+                                  {letter}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <>
                     {tiles.map((t) => {
@@ -249,25 +748,44 @@ export function ReportClient({ envelope }: ReportClientProps) {
                         (a, b) => a.item.location.order - b.item.location.order
                       );
                       return (
-                        <div className="tileblock" key={t}>
-                          <div className="tilehead">{t}</div>
-                          <div className="tilebg">
+                        <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
+                          <div className="font-mono text-[10.5px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
+                          <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
                             {rows.map((r, ri) => {
                               if (r.type === "find") {
                                 const isExcluded = actions[r.idx] === "exclude";
-                                const stCls = isExcluded ? " st-exclude" : "";
                                 const cls = r.item.flag === "위반" ? "violation" : "review";
+                                const isRowHovered = hoveredIndex === r.idx;
                                 return (
-                                  <div className={`hlband ${cls}${stCls}`} key={ri}>
-                                    <span className="hlbadge">{r.num}</span>
-                                    <span className="hltxt">{r.item.span}</span>
+                                  <div
+                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
+                                      isExcluded
+                                        ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                                        : cls === "violation"
+                                          ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
+                                          : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
+                                    }`}
+                                    onMouseEnter={() => setHoveredIndex(r.idx)}
+                                    onMouseLeave={() => setHoveredIndex(null)}
+                                    key={ri}
+                                  >
+                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${
+                                      isExcluded
+                                        ? "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                        : cls === "violation"
+                                          ? "text-[var(--crit)] border-[var(--crit)]"
+                                          : "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                    }`}>{r.num}</span>
+                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${
+                                      cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
+                                    }`}>{r.item.span}</span>
                                   </div>
                                 );
                               } else {
                                 return (
-                                  <div className="hlband unjudged" key={ri}>
-                                    <span className="hlbadge">{r.letter}</span>
-                                    <span className="hltxt">{r.item.sentence}</span>
+                                  <div className="relative flex items-center gap-2 p-[7px_9px] text-[12px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
+                                    <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
+                                    <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
                                   </div>
                                 );
                               }
@@ -276,7 +794,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                         </div>
                       );
                     })}
-                    <p className="devnote" style={{ marginTop: "8px" }}>
+                    <p className="text-[var(--ink-3)] text-[10px] mt-2">
                       실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
                     </p>
                   </>
@@ -284,8 +802,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
               })()
             ) : (
               (() => {
-                // 텍스트 모드: findings 및 unjudged 문장들을 통합하여 order 순으로 렌더링
-                // 1. findings 문장 분류
                 const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
                 const sentenceOrders: Record<string, number> = {};
 
@@ -303,7 +819,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   });
                 });
 
-                // 2. unjudged 문장 분류
                 const unjudgedSentences: Array<{ sentence: string; letter: string; order: number }> = [];
                 ujByOrder.forEach((u, i) => {
                   unjudgedSentences.push({
@@ -313,14 +828,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   });
                 });
 
-                // 3. 모든 문장 목록 구성 및 order 순 정렬
                 interface TextSentenceNode {
                   type: "find" | "uj";
                   sentence: string;
                   order: number;
-                  // find type extra
                   hlItems?: Array<{ span: string; cls: string; badge: number; idx: number }>;
-                  // uj type extra
                   letter?: string;
                 }
 
@@ -346,13 +858,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 allSentences.sort((a, b) => a.order - b.order);
 
-                // 4. HTML 생성
                 const htmlContent = allSentences
                   .map((node) => {
                     if (node.type === "find" && node.hlItems) {
                       return markSentence(node.sentence, node.hlItems, actions);
                     } else if (node.type === "uj" && node.letter) {
-                      return `<span class="hlspan unjudged"><span class="tag">${node.letter}</span>${escapeHtml(
+                      return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
                         node.sentence
                       )}</span>`;
                     }
@@ -362,7 +873,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 return (
                   <div
-                    className="textpanel"
+                    className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[14px] text-[var(--ink)] leading-[2]"
                     dangerouslySetInnerHTML={{ __html: htmlContent }}
                   />
                 );
@@ -370,98 +881,57 @@ export function ReportClient({ envelope }: ReportClientProps) {
             )}
           </div>
         </div>
-        <div className="repcol right">
-          <div className="seclabel">
-            <span className="n">02</span>
-            <h2>지적 카드</h2>
-            <span className="rule" />
-            <span className="hint"><span className="num">{d.findings.length}</span>건</span>
+        <div className="p-[18px_20px_22px]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">지적 카드</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]"><span className="font-mono">{d.findings.length}</span>건</span>
           </div>
-          <div className="findlist">
-            {findByOrder.map((o) => {
-              const f = o.f;
-              const i = o.idx;
-              const cls = f.flag === "위반" ? "violation" : "review";
-              const act = actions[i];
-              const stCls = act ? ` st-${act}` : "";
-
-              return (
-                <div className={`fcard ${cls}${stCls}`} key={i} data-i={i}>
-                  <div className="fhead">
-                    <span className="fbadge">{o.num}</span>
-                    <span className="ftype">
-                      {TYPE_LABEL[f.violation_type as keyof typeof TYPE_LABEL] || f.violation_type}
-                    </span>
-                    <span className="fflag">
-                      {cls === "violation" ? (
-                        <Warning size={14} weight="bold" />
-                      ) : (
-                        <MagnifyingGlass size={14} weight="bold" />
-                      )}
-                      {f.flag}
-                    </span>
-                  </div>
-                  <div className="fbody">
-                    <p
-                      className="fsent"
-                      dangerouslySetInnerHTML={{
-                        __html: escapeHtml(f.sentence).replace(
-                          escapeHtml(f.span),
-                          `<span class="fspan">${escapeHtml(f.span)}</span>`
-                        ),
-                      }}
-                    />
-                    <p className="fbasis">{f.legal_basis}</p>
-                    <p className="fexpl">{f.explanation}</p>
-                    <div className="falt">
-                      <div className="faltlabel">
-                        <b>대체 표현 제안</b>
-                        <span className="faltflag">권고안 · 확정 아님</span>
-                      </div>
-                      <div className="falttext">{ALT_POOL[i % ALT_POOL.length]}</div>
-                    </div>
-                    <div className="factions">
-                      <button
-                        className={`fabtn accept${act === "accept" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "accept")}
-                      >
-                        <Check size={13} weight="bold" />
-                        수용
-                      </button>
-                      <button
-                        className={`fabtn exclude${act === "exclude" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "exclude")}
-                      >
-                        <X size={13} weight="bold" />
-                        제외
-                      </button>
-                      <button
-                        className={`fabtn hold${act === "hold" ? " on" : ""}`}
-                        onClick={() => handleAction(i, "hold")}
-                      >
-                        <Clock size={13} weight="bold" />
-                        보류
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-3">
+            {findByOrder.map((o, orderIndex) => (
+              <FindingCard
+                key={o.idx}
+                finding={o.f}
+                index={o.idx}
+                orderIndex={orderIndex}
+                num={o.num}
+                act={actions[o.idx] || null}
+                onAction={handleAction}
+                isHovered={hoveredIndex === o.idx}
+                onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                open={openOrderIndex === orderIndex}
+                onToggle={() => {
+                  const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
+                  setOpenOrderIndex(nextOpen);
+                  if (nextOpen !== null) {
+                    scrollToBox(o.idx, false);
+                  }
+                }}
+                tier={tier}
+                remediationCount={remediationCount}
+                onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
+              />
+            ))}
           </div>
           {d.unjudged.length > 0 && (
-            <div className="ujwrap">
-              <div className="seclabel">
-                <span className="n">?</span>
-                <h2>재검사 필요</h2>
-                <span className="rule" />
-                <span className="hint">판정 실패 · 미판정</span>
+            <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
+              <div className="flex items-center gap-[11px] m-[0_0_13px]">
+                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">?</span>
+                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
+                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">판정 실패 · 미판정</span>
               </div>
-              <div className="ujlist">
+              <div className="flex flex-col gap-1.5">
                 {ujByOrder.map((u, i) => (
-                  <div className="ujrow" key={i}>
-                    <span className="ujbadge">{String.fromCharCode(65 + i)}</span>
-                    <span className="ujsent">{u.sentence}</span>
-                    <span className="ujloc">
+                  <div
+                    className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px] cursor-pointer hover:bg-[var(--surface)] transition-all duration-[120ms]"
+                    onClick={() => scrollToBox(i, true)}
+                    key={i}
+                  >
+                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
+                    <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
                       {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
                     </span>
                   </div>
@@ -473,643 +943,29 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 하단 브릿지 */}
-      <div className="bridge">
-        <p>지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        <Link
-          href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-          className="btn primary"
-        >
-          이 수정안대로 상세페이지 만들기 <span className="mono">→</span>
-        </Link>
+      <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
+        <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
+        {tier === "PRO" ? (
+          <Link
+            href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+          >
+            이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
+            <span className="text-[11px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
+            <button
+              disabled
+              className="font-sans text-[12.5px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center justify-center gap-1.5 rounded-sm"
+            >
+              상세페이지 만들기 잠김 🔒
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="compliance">
-        바름은 사전 스크리너이며 최종 법적 판단이 아닙니다. 위험 후보를 넓게 잡아(미탐 최소화) &apos;통과&apos;가
-        100% 안전을 보장하진 않습니다. 최종 게시 판단과 책임은 사업자에게 있습니다.{" "}
-        <b>적용 기준: 화장품법 · 고시 2025-79호</b>
-      </div>
-      <div className="statusbar">
-        <span className="seg inv">바름</span>
-        <span className="seg">glowskin</span>
-        <span className="seg grow">국내 광고 검증 · 리포트</span>
-        <span className="seg">^R 다시 검사</span>
-      </div>
+      <PageFooter basis={envelope.report.basis ?? null} snapshot />
     </>
   );
 }
-
-const styles = `
-  .metastrip {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 9px 20px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-3);
-    flex-wrap: wrap;
-  }
-  .metastrip .crumb {
-    color: var(--ink-2);
-  }
-  .metastrip .crumb .home {
-    color: var(--ink-3);
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .metastrip .crumb .home:hover {
-    color: var(--ink);
-  }
-  .metastrip .sep {
-    color: var(--ink-3);
-  }
-
-  .modeswitch {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .modeswitch .msl {
-    color: var(--ink-3);
-  }
-  .modeswitch .msbtns {
-    display: flex;
-    border: 1px solid var(--line-2);
-  }
-  .modeswitch button {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    padding: 4px 9px;
-    border: 0;
-    border-right: 1px solid var(--line-2);
-    background: transparent;
-    color: var(--ink-3);
-    cursor: pointer;
-  }
-  .modeswitch button:last-child {
-    border-right: 0;
-  }
-  .modeswitch button:hover {
-    color: var(--ink);
-    background: var(--nav-hover);
-  }
-  .modeswitch button.on {
-    background: var(--brand-deep);
-    color: var(--on-brand);
-    font-weight: 700;
-  }
-  .devnote {
-    color: var(--ink-3);
-    font-size: 10px;
-  }
-
-  .statbar {
-    padding: 18px 20px;
-    border-bottom: 1px solid var(--line);
-  }
-  .statbar .headline {
-    margin: 0 0 12px;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--ink);
-    letter-spacing: -0.2px;
-  }
-  .statbar .headline .nviol {
-    color: var(--crit);
-  }
-  .statbar .headline .sep2 {
-    color: var(--ink-3);
-    font-weight: 400;
-    margin: 0 3px;
-  }
-  .typechips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .typechip {
-    font-family: var(--mono);
-    font-size: 11px;
-    border: 1px solid var(--line-2);
-    background: var(--surface-sub);
-    color: var(--ink-2);
-    padding: 3px 9px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .typechip .cnt {
-    color: var(--ink-3);
-  }
-
-  .reportgrid {
-    display: grid;
-    grid-template-columns: 0.86fr 1.14fr;
-  }
-  .repcol {
-    padding: 18px 20px 22px;
-  }
-  .repcol.left {
-    border-right: 1px solid var(--line);
-  }
-  .seclabel {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    margin: 0 0 13px;
-  }
-  .seclabel .n {
-    color: var(--on-brand);
-    background: var(--brand-deep);
-    font-family: var(--mono);
-    font-weight: 700;
-    font-size: 11px;
-    padding: 2px 7px;
-  }
-  .seclabel h2 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink);
-    letter-spacing: -0.2px;
-  }
-  .seclabel .rule {
-    flex: 1;
-    height: 0;
-    border-top: 1px dashed var(--line-2);
-  }
-  .seclabel .hint {
-    color: var(--ink-3);
-    font-family: var(--mono);
-    font-size: 10.5px;
-  }
-
-  .tileblock {
-    border: 1px solid var(--line-2);
-    margin-bottom: 14px;
-  }
-  .tileblock:last-child {
-    margin-bottom: 0;
-  }
-  .tilehead {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    color: var(--ink-3);
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-  }
-  .tilebg {
-    position: relative;
-    aspect-ratio: 4 / 5;
-    background: repeating-linear-gradient(135deg, var(--surface-sub) 0 10px, var(--surface) 10px 20px);
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .hlband {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 9px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    font-size: 12px;
-    color: var(--ink-2);
-  }
-  .hlband.violation {
-    border-color: var(--crit-bd);
-    background: var(--crit-bg);
-  }
-  .hlband.review {
-    border-style: solid;
-  }
-  .hlband.unjudged {
-    border-style: dashed;
-  }
-  .hlbadge {
-    flex: 0 0 auto;
-    width: 19px;
-    height: 19px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    font-weight: 700;
-    border-radius: 50%;
-    border: 1.5px solid currentColor;
-  }
-  .hlband.violation .hlbadge {
-    color: var(--crit);
-    border-color: var(--crit);
-  }
-  .hlband.review .hlbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-  }
-  .hlband.unjudged .hlbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-    border-style: dashed;
-  }
-  .hlband .hltxt {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .hlband.violation .hltxt {
-    color: var(--crit);
-  }
-
-  .textpanel {
-    border: 1px solid var(--line-2);
-    background: var(--surface-sub);
-    padding: 16px 15px;
-    font-size: 14px;
-    color: var(--ink);
-    line-height: 2;
-  }
-  .hlspan {
-    position: relative;
-    padding: 0 1px;
-    cursor: default;
-  }
-  .hlspan.violation {
-    border-bottom: 2px solid var(--crit);
-    color: var(--crit);
-    font-weight: 600;
-  }
-  .hlspan.review {
-    border-bottom: 2px solid var(--ink-3);
-  }
-  .hlspan.unjudged {
-    border-bottom: 2px dashed var(--ink-3);
-  }
-  .hlspan .tag {
-    position: absolute;
-    top: -9px;
-    left: -2px;
-    font-family: var(--mono);
-    font-size: 9px;
-    font-weight: 700;
-    color: inherit;
-  }
-
-  .findlist {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .fcard {
-    border: 1px solid var(--line-2);
-    background: var(--surface);
-  }
-  .fcard.violation {
-    border-left: 3px solid var(--crit);
-  }
-  .fcard.review {
-    border-left: 3px solid var(--ink-3);
-  }
-  .fhead {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 9px 12px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface-sub);
-  }
-  .fhead .fbadge {
-    flex: 0 0 auto;
-    width: 20px;
-    height: 20px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 50%;
-    border: 1.5px solid currentColor;
-  }
-  .fcard.violation .fbadge {
-    color: var(--crit);
-    border-color: var(--crit);
-  }
-  .fcard.review .fbadge {
-    color: var(--ink-3);
-    border-color: var(--ink-3);
-  }
-  .fhead .ftype {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-2);
-    font-weight: 600;
-  }
-  .fhead .fflag {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11.5px;
-    font-weight: 700;
-  }
-  .fhead .fflag svg {
-    width: 14px;
-    height: 14px;
-  }
-  .fcard.violation .fflag {
-    color: var(--crit);
-  }
-  .fcard.review .fflag {
-    color: var(--ink-3);
-  }
-  .fbody {
-    padding: 13px 14px 14px;
-  }
-  .fsent {
-    margin: 0 0 8px;
-    font-size: 14px;
-    color: var(--ink);
-    line-height: 1.65;
-  }
-  .fsent .fspan {
-    font-weight: 700;
-  }
-  .fcard.violation .fsent .fspan {
-    color: var(--crit);
-    border-bottom: 2px solid var(--crit);
-  }
-  .fcard.review .fsent .fspan {
-    color: var(--ink);
-    border-bottom: 2px solid var(--ink-3);
-  }
-  .fbasis {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--brand-ink);
-    margin: 0 0 8px;
-  }
-  .fexpl {
-    font-size: 12.5px;
-    color: var(--ink-3);
-    line-height: 1.6;
-    margin: 0 0 12px;
-  }
-  .falt {
-    border: 1px dashed var(--line-2);
-    background: var(--surface-sub);
-    padding: 10px 11px;
-    margin: 0 0 12px;
-  }
-  .falt .faltlabel {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-bottom: 6px;
-  }
-  .falt .faltlabel b {
-    font-size: 11.5px;
-    color: var(--ink-2);
-    font-weight: 700;
-  }
-  .falt .faltlabel .faltflag {
-    font-family: var(--mono);
-    font-size: 9.5px;
-    color: var(--ink-3);
-    border: 1px solid var(--line-2);
-    padding: 1px 6px;
-  }
-  .falt .falttext {
-    font-size: 13px;
-    color: var(--ink-2);
-    line-height: 1.6;
-  }
-  .factions {
-    display: flex;
-    gap: 6px;
-  }
-  .fabtn {
-    font-family: var(--sans);
-    font-size: 11.5px;
-    font-weight: 600;
-    padding: 6px 11px;
-    border: 1px solid var(--line-2);
-    background: transparent;
-    color: var(--ink-3);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-  }
-  .fabtn svg {
-    width: 13px;
-    height: 13px;
-  }
-  .fabtn:hover {
-    color: var(--ink);
-    background: var(--nav-hover);
-  }
-  .fabtn.on {
-    color: var(--ink);
-    font-weight: 700;
-  }
-  .fabtn.accept.on {
-    border-color: var(--ink-2);
-    background: var(--nav-active-bg);
-  }
-  .fabtn.exclude.on {
-    border-color: var(--ink-3);
-    background: var(--surface-sub);
-  }
-  .fabtn.hold.on {
-    border-color: var(--ink-3);
-    background: var(--surface-sub);
-  }
-  .fcard.st-exclude {
-    opacity: 0.5;
-  }
-  .fcard.st-exclude .fsent {
-    text-decoration: line-through;
-    text-decoration-color: var(--ink-3);
-  }
-  .fcard.st-hold {
-    position: relative;
-  }
-  .fcard.st-hold::after {
-    content: "보류 중";
-    position: absolute;
-    top: 9px;
-    right: 12px;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--ink-3);
-  }
-
-  .ujwrap {
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--line-2);
-  }
-  .ujwrap .seclabel .n {
-    background: var(--surface-sub);
-    color: var(--ink-3);
-    border: 1px solid var(--line-2);
-  }
-  .ujlist {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .ujrow {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    border: 1px dashed var(--line-2);
-    background: var(--surface-sub);
-    padding: 8px 10px;
-  }
-  .ujrow .ujbadge {
-    flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--ink-3);
-    border: 1.5px dashed var(--ink-3);
-    border-radius: 50%;
-  }
-  .ujrow .ujsent {
-    flex: 1;
-    font-size: 12.5px;
-    color: var(--ink-2);
-  }
-  .ujrow .ujloc {
-    flex: 0 0 auto;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--ink-3);
-  }
-
-  .bridge {
-    padding: 18px 20px;
-    border-top: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  .bridge p {
-    margin: 0;
-    font-size: 12px;
-    color: var(--ink-3);
-    max-width: 56ch;
-  }
-  .btn {
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 700;
-    padding: 11px 16px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    transition: background 0.12s, color 0.12s;
-    text-decoration: none;
-  }
-  .btn.primary {
-    background: var(--brand);
-    color: #fff;
-    border-color: var(--brand);
-  }
-  :root[data-theme="dark"] .btn.primary {
-    color: var(--on-brand);
-  }
-  .btn.primary:hover {
-    background: var(--brand-ink);
-  }
-  :root[data-theme="dark"] .btn.primary:hover {
-    background: #63e89f;
-  }
-
-  .compliance {
-    padding: 10px 20px;
-    border-top: 1px solid var(--line);
-    background: var(--surface-sub);
-    font-size: 11px;
-    color: var(--ink-3);
-    line-height: 1.65;
-  }
-  .compliance b {
-    color: var(--brand-ink);
-    font-weight: 600;
-  }
-  .statusbar {
-    display: flex;
-    border-top: 1px solid var(--line-2);
-    font-family: var(--mono);
-    font-size: 11px;
-    background: var(--surface-sub);
-  }
-  .statusbar .seg {
-    padding: 7px 13px;
-    border-right: 1px solid var(--line);
-    color: var(--ink-3);
-  }
-  .statusbar .seg.inv {
-    background: var(--brand-deep);
-    color: var(--on-brand);
-    font-weight: 700;
-  }
-  .statusbar .seg.grow {
-    flex: 1;
-    border-right: none;
-    color: var(--ink-3);
-  }
-
-  @media (max-width: 900px) {
-    .reportgrid {
-      grid-template-columns: 1fr;
-    }
-    .repcol.left {
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
-    }
-    .statusbar .seg.grow {
-      display: none;
-    }
-    .modeswitch {
-      margin-left: 0;
-      width: 100%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      transition: none !important;
-      animation: none !important;
-    }
-  }
-
-  .hlband.st-exclude {
-    opacity: 0.5;
-  }
-  .hlspan.st-exclude {
-    opacity: 0.5;
-    text-decoration: line-through;
-  }
-`;

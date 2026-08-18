@@ -12,8 +12,10 @@ from pathlib import Path
 from PIL import Image
 
 from barum.judge.cosmetic import CosmeticJudge
-from barum.models import CheckReport, JudgmentFlag, Region, Summary
+from barum.judge.us_sunscreen import DISCLAIMER, USSunscreenJudge
+from barum.models import CheckReport, JudgmentFlag, Region, Summary, USPreflightReport, USPreflightSummary
 from barum.preprocess.ocr import extract_product_sentences
+from barum.reference.citations import build_regulatory_basis
 from barum.vlm import VLM
 
 # 문장 분리: 줄바꿈과 문장부호(한/영) 기준. 광고 카피라 완벽한 분리보다 단순·안정을 택한다.
@@ -167,4 +169,66 @@ def run_check(
         n_unjudged=len(result.unjudged),
         counts_by_type=counts,
     )
-    return CheckReport(findings=findings, unjudged=result.unjudged, summary=summary)
+    return CheckReport(
+        findings=findings,
+        unjudged=result.unjudged,
+        summary=summary,
+        basis=build_regulatory_basis(region),
+    )
+
+
+def run_us_sunscreen_check(
+    ad_text: str | None,
+    image_bytes: bytes | None,
+    image_filename: str | None,
+    vlm: VLM | None,
+    judge: USSunscreenJudge,
+    ingredients: str | None = None,
+    product_name: str | None = None,
+    verbose: bool = False,
+) -> USPreflightReport:
+    """미국 프리플라이트(자외선차단 최소보장) 검사 한 건을 처리해 USPreflightReport를 만든다.
+
+    국내 run_check()와 입력·OCR 흐름은 같지만(이미지 타일분할·OCR은 국가 무관 공용 로직),
+    ingredient_amounts는 안 받는다 — 성분 대조가 함량이 아니라 "미국 승인 목록에 있나
+    없나"만 보므로(`sunscreen_otc_classification.md` §1②). 판정기(judge)는 VLM을
+    안 쓰지만, 이미지 OCR 자체는 여전히 VLM이 필요해 vlm 인자는 그대로 받는다.
+    """
+    sentences: list[dict] = []
+
+    if product_name and product_name.strip():
+        sentences.append({
+            "order": 0,
+            "tile": None,
+            "text": product_name.strip(),
+            "source": "product_name",
+        })
+
+    if image_bytes:
+        base = len(sentences)
+        for s in _ocr_image(image_bytes, image_filename, vlm, verbose=verbose):
+            sentences.append({**s, "order": base + s.get("order", 0)})
+
+    if ad_text:
+        base = len(sentences)
+        for s in _split_text_to_sentences(ad_text, source="ad_text"):
+            sentences.append({**s, "order": base + s["order"]})
+
+    ingredient_list = _split_ingredients(ingredients) if ingredients else None
+    findings = judge.judge(sentences, ingredients=ingredient_list)
+
+    counts: dict[str, int] = {}
+    for f in findings:
+        key = f.category.value
+        counts[key] = counts.get(key, 0) + 1
+
+    summary = USPreflightSummary(
+        n_sentences=len(sentences),
+        n_findings=len(findings),
+        counts_by_category=counts,
+    )
+    return USPreflightReport(
+        findings=findings,
+        summary=summary,
+        disclaimer=DISCLAIMER,
+    )

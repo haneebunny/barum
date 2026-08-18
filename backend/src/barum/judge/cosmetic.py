@@ -28,7 +28,7 @@ from barum.reference.ingredients import (
     infer_category,
     match_ingredient,
 )
-from barum.reference.mapping import legal_basis_for
+from barum.reference.mapping import legal_basis_for, legal_basis_text_for
 from barum.reference.rules import RuleOutcome, match_rule
 from barum.vlm import VLM
 
@@ -132,6 +132,7 @@ class StubJudge:
                             sentence=text,
                             violation_type=vtype,
                             legal_basis=legal_basis_for(vtype),
+                            legal_basis_text=legal_basis_text_for(vtype),
                             flag=JudgmentFlag.violation,  # 데모용, 근거 인프라 없음
                             explanation=f"(더미 판정) '{keyword}' 표현이 {vtype.value}에 해당할 소지가 있다.",
                             location=_loc(s),
@@ -316,6 +317,7 @@ class PromptJudge:
                         sentence=s["text"],
                         violation_type=vtype,
                         legal_basis=legal_basis_for(vtype),
+                        legal_basis_text=legal_basis_text_for(vtype),
                         flag=flag,
                         explanation=explanation,
                         location=_loc(s),
@@ -324,7 +326,23 @@ class PromptJudge:
         return result
 
 
-# ── RagJudge (규칙집 우선 + VLM fallback) ──────────────────────────────────
+# ── 1차 필터: 효능/효과 주장 여부 사전분류 ─────────────────────────────────
+
+PRESCREEN_PROMPT = """아래 문장 각각이 화장품의 효능/효과를 주장하는지 판단하라.
+
+효능/효과 주장 = 피부·모발·체형에 대한 변화, 개선, 치료, 예방을 표방하는 문구.
+비효능 = 성분명 나열, 브랜드명, 용량/가격, 거래·배송 안내, 인증서 표시, 단순 제품정보, 사용법 설명.
+
+애매하면 YES로 판단하라(미탐 방지).
+
+문장:
+{items}
+
+JSON으로만 답하라: {{"results": [{{"n": 1, "claim": true/false}}]}}
+claim = true(효능/효과 주장이다), false(아니다)."""
+
+
+# ── RagJudge (규칙집 우선 + 1차 필터 + VLM fallback) ─────────────────────
 
 
 def _rule_explanation(outcome: RuleOutcome, span: str, vtype: ViolationType) -> str:
@@ -374,6 +392,49 @@ class RagJudge:
         reg = build_regulation_context()
         return f"{reg}\n\n{cases_block}" if cases_block else reg
 
+    def _prescreen(self, sentences: list[dict]) -> list[dict]:
+        """1차 필터: 효능/효과 주장인 문장만 골라낸다 (RAG 없는 싼 VLM 호출).
+
+        VLM이 "이 문장이 효능/효과를 주장하는가?"만 이진 분류한다.
+        NO(비효능)인 문장은 대상외로 버리고, YES인 문장만 리턴한다.
+        실패 시 안전하게 전부 YES로 간주한다(미탐 방지).
+        """
+        claims: list[dict] = []
+        for start in range(0, len(sentences), self._batch_size):
+            batch = sentences[start : start + self._batch_size]
+            numbered = "\n".join(
+                f"{start + j}. {s['text']}" for j, s in enumerate(batch)
+            )
+            try:
+                res = self._vlm.generate_json(
+                    PRESCREEN_PROMPT.format(items=numbered), []
+                )
+                raw = res.get("results", [])
+            except Exception as e:
+                print(
+                    f"    [prescreen skip] 배치 {start}~{start + len(batch) - 1}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                claims.extend(batch)
+                continue
+
+            by_n: dict[int, dict] = {}
+            for item in raw:
+                try:
+                    by_n[int(item["n"])] = item
+                except (KeyError, ValueError, TypeError):
+                    continue
+
+            for j, s in enumerate(batch):
+                item = by_n.get(start + j)
+                if item is None and len(raw) == len(batch):
+                    item = raw[j]
+                is_claim = (item or {}).get("claim")
+                if is_claim is not False:
+                    claims.append(s)
+
+        return claims
+
     def judge(
         self,
         sentences: list[dict],
@@ -382,22 +443,23 @@ class RagJudge:
         ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         result = JudgeResult()
-        remaining: list[dict] = []  # 규칙 미확정 → VLM에 넘길 문장
+        remaining: list[dict] = []  # 규칙 미확정 → 1차 필터로 넘길 문장
 
         for s in sentences:
             match = match_rule(s["text"])
             if match is None:
                 remaining.append(s)
                 continue
-            if match.outcome == RuleOutcome.legal_allow:
-                # 합법 확정. finding도 없고 VLM에도 안 넘긴다(과잉판정 차단).
+            if match.outcome in (RuleOutcome.legal_allow, RuleOutcome.out_of_scope):
+                # 합법 확정 또는 대상외. finding도 없고 VLM에도 안 넘긴다.
                 continue
             result.findings.append(
                 Finding(
-                    span=match.span,  # 규칙은 걸린 키워드가 span
+                    span=match.span,
                     sentence=s["text"],
                     violation_type=match.violation_type,
                     legal_basis=legal_basis_for(match.violation_type),
+                    legal_basis_text=legal_basis_text_for(match.violation_type),
                     flag=match.flag,
                     explanation=_rule_explanation(
                         match.outcome, match.span, match.violation_type
@@ -406,14 +468,21 @@ class RagJudge:
                 )
             )
 
-        # 규칙 미확정분만 VLM 위임(2호 성분정합 등은 PromptJudge가 그대로 처리).
-        # context는 판정할 문장(remaining)에 따라 달라지므로 여기서 구성한다.
         if remaining:
-            prompt_judge = PromptJudge(
-                self._vlm, self._batch_size, context=self._context_for(remaining)
-            )
-            vlm_result = prompt_judge.judge(remaining, region, ingredients, ingredient_amounts)
-            result.findings.extend(vlm_result.findings)
-            result.unjudged.extend(vlm_result.unjudged)
+            # 1차 필터: 효능/효과 주장인 문장만 골라낸다(RAG 없는 싼 VLM 호출).
+            efficacy_claims = self._prescreen(remaining)
+
+            if efficacy_claims:
+                # 2차 판정: 효능 주장인 것만 RAG + VLM으로 판정.
+                prompt_judge = PromptJudge(
+                    self._vlm,
+                    self._batch_size,
+                    context=self._context_for(efficacy_claims),
+                )
+                vlm_result = prompt_judge.judge(
+                    efficacy_claims, region, ingredients, ingredient_amounts
+                )
+                result.findings.extend(vlm_result.findings)
+                result.unjudged.extend(vlm_result.unjudged)
 
         return result

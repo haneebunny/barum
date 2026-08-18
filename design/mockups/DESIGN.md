@@ -125,7 +125,26 @@ grep -c "—" design/mockups/barum.html   # 0 이어야 함
 --nav-hover:#FFFFFF; --nav-active-bg:#E9F2ED;           /* 사이드바 hover/선택 (옅은 틴트, Notion식 고스트) */
 ```
 
-### 다크 `:root[data-theme="dark"]`
+### 다크 v2 `:root[data-theme="dark"]` (2026-08-17 개정, 현행. 진실 소스 = frontend/app/globals.css)
+> 개정 이유(하니 지시): v1은 brand 3종이 전부 #3EE08A 단일 네온이라 형광 번짐 + 단조로움 + 순검정 배경의 과대비 피로.
+> v2 = 그레이-그린 서피스로 상향 + 그린 3단 분리 + 다크에서 채움은 "딥 그린 + 밝은 글자"로 반전(on-brand 방향이 라이트와 다름).
+```
+--canvas:#101612; --surface:#151C17; --surface-sub:#1A221C;
+--line:#27332B; --line-2:#364439;
+--ink:#DBE7DF; --ink-2:#A8C0B2; --ink-3:#8AA294;        /* 순백 대신 눌러진 잉크(피로 완화) */
+--brand:#196340;       /* 채움(버튼). on-brand와 6.48 */
+--brand-ink:#66CB92;   /* 텍스트·커서·진행선 그린. surface와 8.69 */
+--brand-deep:#124A2D;  /* 태그·인버스. on-brand와 9.20 */
+--on-brand:#EAF5EE;    /* 다크에선 밝은 글자 (라이트는 흰색 유지) */
+--crit:#FF5252; --crit-bg:#2A1715; --crit-bd:#553029;
+--nav-hover:#1E2A22; --nav-active-bg:#24322A;
+```
+**v2 검증 기록(2026-08-17):** 본문 3계층 x 서피스 3종 전부 5.95~14.41 PASS ·
+그린 3종 x #FF5252 CVD ΔE = brand 10.4(protan) / brand-ink 9.4(deutan) / brand-deep 18.9(protan), 기준 ≥8 전부 PASS ·
+crit on crit-bg 5.34 PASS. 동반 마크업 규칙: hover는 어두워지는 방향(hover:bg=brand-deep),
+crit 채움 위 글자는 text-white 금지 → var(--surface)(라이트 6.2 / 다크 5.4).
+
+### (폐기) 다크 v1 - 2026-08-17 이전. 기록 보존용, 사용 금지
 ```
 --canvas:#070B08; --surface:#0B100C; --surface-sub:#0E140F;
 --line:#1C2A21; --line-2:#2C4133;

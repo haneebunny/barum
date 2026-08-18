@@ -24,8 +24,10 @@ def _default_client():
     if not key:
         raise RuntimeError("OPENAI_API_KEY가 없다. backend/.env를 확인할 것.")
     from openai import OpenAI
+    from langsmith import wrappers
 
-    return OpenAI(api_key=key)
+    raw_client = OpenAI(api_key=key)
+    return wrappers.wrap_openai(raw_client)
 
 
 def embed_texts(texts: list[str], client=None, model: str = EMBED_MODEL) -> list[list[float]]:

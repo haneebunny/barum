@@ -1,0 +1,16 @@
+{
+  "source": {
+    "brand": "라로슈포제",
+    "goods_no": "A000000206904",
+    "url": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000206904",
+    "note": "상세페이지가 세로로 매우 긴 단일 이미지(다른 5건과 CMS 구조 자체가 다름). 히어로만 확인, 하단부 미확인 — modules 배열이 완결이 아님"
+  },
+  "product_type": "크림",
+  "modules": [
+    {
+      "kind": "hero_claim",
+      "purpose": "즉각 효과 시간 단정 + 브랜드 순위 주장",
+      "has_claim_risk": true
+    }
+  ]
+}

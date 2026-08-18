@@ -1,14 +1,61 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Region, CheckReport, ReportEnvelope } from "./schema";
+import { z } from "zod";
+import { RegulatoryBasisSchema } from "./schema";
+import type {
+  Region,
+  CheckReport,
+  ReportEnvelope,
+  RegulatoryBasis,
+  RemediationRequest,
+  RemediationResponse,
+  GenerateRequest,
+  GenerateResponse,
+  USPreflightReport,
+} from "./schema";
 
 export interface CheckAdInput {
   region: Region;
   adText?: string;
   image?: File;
   ingredients?: string;
+  productName?: string;
 }
 
-// 픽스처 데이터 정의 (CheckReport 타입 캐스팅 활용)
+function getApiUrl(): string {
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+}
+
+export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
+  const url = `${getApiUrl()}/check`;
+  const formData = new FormData();
+  formData.append("region", input.region);
+  
+  if (input.adText) {
+    formData.append("ad_text", input.adText);
+  }
+  if (input.image) {
+    formData.append("image", input.image);
+  }
+  if (input.ingredients) {
+    formData.append("ingredients", input.ingredients);
+  }
+  if (input.productName) {
+    formData.append("product_name", input.productName);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`API check failed: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const MOCK_REPORTS: Record<string, CheckReport> = {
   image: {
     findings: [
@@ -17,6 +64,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "멜라닌 생성을 억제해 미백에 도움을 줍니다.",
         violation_type: "2호_기능성오인",
         legal_basis: "화장품법 제13조 제1항 제2호 (기능성 오인)",
+        legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
         location: {
@@ -33,6 +81,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "아토피 피부염을 완화하고 손상된 피부를 재생합니다.",
         violation_type: "1호_의약품오인",
         legal_basis: "화장품법 제13조 제1항 제1호 (의약품 오인)",
+        legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
         location: {
@@ -49,6 +98,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "시중 제품 대비 3배 빠른 흡수를 자랑합니다.",
         violation_type: "5호_거짓과장기만",
         legal_basis: "화장품법 제13조 제1항 제5호 (거짓·과장·기만, 개정법 기준)",
+        legal_basis_text: "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
         location: {
@@ -86,6 +136,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "매일 발라 주름을 개선하는 안티에이징 크림.",
         violation_type: "2호_기능성오인",
         legal_basis: "화장품법 제13조 제1항 제2호 (기능성 오인)",
+        legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "주름개선은 기능성 화장품 심사가 필요한 표현이다. (전성분 미입력, 성분 정합 확인 못 함)",
         location: {
@@ -102,6 +153,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "트러블로 인한 염증을 가라앉히고 상처를 치료합니다.",
         violation_type: "1호_의약품오인",
         legal_basis: "화장품법 제13조 제1항 제1호 (의약품 오인)",
+        legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "염증 완화·상처 치료는 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
         location: {
@@ -139,6 +191,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         sentence: "콜라겐 함유로 파워 수분 공급.",
         violation_type: "5호_거짓과장기만",
         legal_basis: "화장품법 제13조 제1항 제5호 (거짓·과장·기만, 개정법 기준)",
+        legal_basis_text: "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "'파워'는 근거 없는 과장 수식으로 볼 소지가 있다.",
         location: {
@@ -194,72 +247,151 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
   },
 };
 
-export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const isUnjudged =
-        input.adText?.toLowerCase().includes("unjudged") ||
-        input.image?.name.toLowerCase().includes("unjudged");
-
-      let report: CheckReport;
-      if (isUnjudged) {
-        report = JSON.parse(JSON.stringify(MOCK_REPORTS.unjudged));
-      } else if (input.image) {
-        report = JSON.parse(JSON.stringify(MOCK_REPORTS.image));
-      } else {
-        report = JSON.parse(JSON.stringify(MOCK_REPORTS.text));
-      }
-
-      // region 바인딩
-      report.summary.region = input.region;
-      resolve(report);
-    }, 1500);
-  });
-}
-
 export async function getReport(resultId: string): Promise<ReportEnvelope> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      let report: CheckReport | undefined;
+  const isMock =
+    resultId === "demo-image-id" ||
+    resultId === "image" ||
+    resultId === "demo-id-1" ||
+    resultId === "demo-id-3" ||
+    resultId === "demo-text-id" ||
+    resultId === "text" ||
+    resultId === "demo-id-2" ||
+    resultId === "demo-id-4" ||
+    resultId === "demo-unjudged-id" ||
+    resultId === "unjudged" ||
+    resultId === "a3Fk9mdemo" ||
+    resultId === "demo-id-5";
 
-      if (resultId === "demo-image-id" || resultId === "image" || resultId === "demo-id-1") {
-        report = MOCK_REPORTS.image;
-      } else if (resultId === "demo-text-id" || resultId === "text" || resultId === "demo-id-2") {
-        report = MOCK_REPORTS.text;
-      } else if (resultId === "demo-unjudged-id" || resultId === "unjudged" || resultId === "a3Fk9mdemo") {
-        report = MOCK_REPORTS.unjudged;
-      }
+  if (isMock) {
+    let report: CheckReport;
+    if (resultId.includes("text") || resultId === "text" || resultId === "demo-id-2" || resultId === "demo-id-4") {
+      report = MOCK_REPORTS.text;
+    } else if (resultId.includes("unjudged") || resultId === "unjudged" || resultId === "a3Fk9mdemo" || resultId === "demo-id-5") {
+      report = MOCK_REPORTS.unjudged;
+    } else {
+      report = MOCK_REPORTS.image;
+    }
+    return {
+      result_id: resultId,
+      created_at: new Date().toISOString(),
+      region: resultId === "demo-id-1" ? "US" : report.summary.region,
+      image_available:
+        resultId.includes("image") ||
+        resultId.includes("unjudged") ||
+        resultId === "a3Fk9mdemo" ||
+        resultId === "image" ||
+        resultId === "demo-id-1" ||
+        resultId === "demo-id-3" ||
+        resultId === "demo-id-5",
+      report,
+    };
+  }
 
-      if (!report) {
-        reject(new Error(`Report not found (resultId=${resultId})`));
-        return;
-      }
+  const url = `${getApiUrl()}/reports/${resultId}`;
+  const response = await fetch(url);
 
-      resolve({
-        result_id: resultId,
-        created_at: new Date().toISOString(),
-        region: resultId === "demo-id-1" ? "US" : report.summary.region,
-        image_available:
-          resultId.includes("image") ||
-          resultId.includes("unjudged") ||
-          resultId === "a3Fk9mdemo" ||
-          resultId === "image" ||
-          resultId === "demo-id-1",
-        report,
-      });
-    }, 800);
-  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to fetch report (id=${resultId}): ${response.status} - ${errText}`);
+  }
+
+  return response.json();
 }
 
 export function getReportImageUrl(resultId: string): string {
-  // 실제 백엔드 API 명세 규격에 맞추어 이미지 proxy URL을 리턴
-  return `http://localhost:8000/reports/${resultId}/image`;
+  return `${getApiUrl()}/reports/${resultId}/image`;
+}
+
+// 지금 시점 적용 기준 (푸터 등 검사 이력 없는 화면용). 리포트 화면은 report.basis(검사 시점 스냅샷)를 쓴다
+export async function getReferenceBasis(): Promise<Record<string, RegulatoryBasis>> {
+  const url = `${getApiUrl()}/reference/basis`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Reference basis fetch failed: ${response.status}`);
+  }
+  const data = await response.json();
+  return z.record(z.string(), RegulatoryBasisSchema).parse(data);
 }
 
 export async function health(): Promise<{ status: string }> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ status: "ok" });
-    }, 100);
+  const url = `${getApiUrl()}/health`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Health check failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getRemediation(req: RemediationRequest): Promise<RemediationResponse> {
+  const url = `${getApiUrl()}/remediate`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(req),
   });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to remediate: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
+}
+
+export interface CheckUSPreflightInput {
+  adText?: string;
+  image?: File;
+  ingredients?: string;
+  productName?: string;
+}
+
+export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<USPreflightReport> {
+  const url = `${getApiUrl()}/check/us-sunscreen`;
+  const formData = new FormData();
+  formData.append("country", "US");
+
+  if (input.adText) {
+    formData.append("ad_text", input.adText);
+  }
+  if (input.image) {
+    formData.append("image", input.image);
+  }
+  if (input.ingredients) {
+    formData.append("ingredients", input.ingredients);
+  }
+  if (input.productName) {
+    formData.append("product_name", input.productName);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`US preflight check failed: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
+}
+
+export async function generateContent(req: GenerateRequest): Promise<GenerateResponse> {
+  const url = `${getApiUrl()}/generate`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to generate content: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
 }

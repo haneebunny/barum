@@ -277,3 +277,38 @@ def test_ingredient_amount_not_given_keeps_existing_needs_review_message():
     assert f.flag == JudgmentFlag.needs_review
     assert "나이아신아마이드 확인됨" in f.explanation
     assert "등록 여부도 불명" in f.explanation
+
+
+# ── 1호 의약품오인 규칙 보강 (2026-08-18, §2-1-5 못 잡은 위반 대응) ──
+
+
+def test_치유_표현을_위반으로_잡는다():
+    """`치유`는 동의어 사전에 `치료`의 변형으로 있었지만 실전에서 안 걸렸다.
+
+    동의어는 legal_allow보다 뒤에 검사돼서, "예민한 피부를 치유하는"처럼 합법 단어가
+    같이 있으면 legal_allow가 먼저 반환돼 가려졌다(2026-08-18 실측). 대표어로 직접
+    넣어 순서와 무관하게 잡히게 했다.
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    m = match_rule("예민한 피부를 치유하는 힘을 가진 제주산 천연 병풀추출물이 80% 함유되어")
+    assert m is not None
+    assert m.outcome is RuleOutcome.violation
+
+
+def test_약국_입점_표현을_위반으로_잡는다():
+    """`약국용`·`약국전용`은 있었는데 `약국 입점`이 없어 놓쳤다. 같은 갈래 변형 확장."""
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for s in ["약국 입점 화장품", "약국 판매 제품", "약국 납품 화장품"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome is RuleOutcome.violation, s
+
+
+def test_공백이_있어도_약국_변형이_잡힌다():
+    """정규화가 공백을 지우므로 띄어쓰기가 달라도 걸려야 한다."""
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for s in ["약국입점 화장품", "약국  입점 화장품"]:
+        assert match_rule(s).outcome is RuleOutcome.violation, s

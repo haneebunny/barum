@@ -1,0 +1,47 @@
+{
+  "source": "us_sunscreen_ingredients.json(예정) 성분명의 INCI명 ↔ CFR 공식명 동의어 사전",
+  "note": "대표어 = 21 CFR 352.10 공식 화학명(법조문 표기, us_sunscreen_ingredients.json의 키와 일치해야 함). 변형 = INCI명(화장품 전성분표 실제 표기). 국내 synonyms.json과 같은 역인덱스 방식(정규화 후 포함 검사)으로 쓴다. CFR명과 INCI명이 사실상 같은 성분(예: Titanium dioxide, Zinc oxide, Cinoxate, Homosalate, Octocrylene, Trolamine salicylate, Bemotrizinol)은 변형이 없어 항목 자체를 생략했다.",
+  "confidence_note": "verified=2026-08-18에 1차 출처(Wikipedia 화합물 문서)로 재대조 완료. unverified=일반 상식 수준, 코드에 반영 전 INCI 공식 사전(PCPC INCI Dictionary)이나 CosIng(EU)으로 재확인 권장.",
+  "synonyms": {
+    "Octyl methoxycinnamate": {
+      "variants": ["Octinoxate", "Ethylhexyl methoxycinnamate"],
+      "confidence": "unverified"
+    },
+    "Octyl salicylate": {
+      "variants": ["Octisalate", "Ethylhexyl salicylate"],
+      "confidence": "unverified"
+    },
+    "Phenylbenzimidazole sulfonic acid": {
+      "variants": ["Ensulizole"],
+      "confidence": "unverified"
+    },
+    "Menthyl anthranilate": {
+      "variants": ["Meradimate"],
+      "confidence": "unverified"
+    },
+    "Padimate O": {
+      "variants": ["Octyldimethyl PABA", "OD-PABA", "2-Ethylhexyl 4-dimethylaminobenzoate", "Escalol 507"],
+      "confidence": "verified"
+    },
+    "Sulisobenzone": {
+      "variants": ["Benzophenone-4"],
+      "confidence": "verified"
+    },
+    "Dioxybenzone": {
+      "variants": ["Benzophenone-8"],
+      "confidence": "unverified"
+    },
+    "Oxybenzone": {
+      "variants": ["Benzophenone-3"],
+      "confidence": "unverified"
+    },
+    "Avobenzone": {
+      "variants": ["Butyl Methoxydibenzoylmethane"],
+      "confidence": "unverified"
+    },
+    "Aminobenzoic acid": {
+      "variants": ["PABA", "Para-aminobenzoic acid"],
+      "confidence": "verified"
+    }
+  }
+}

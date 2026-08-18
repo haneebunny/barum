@@ -26,6 +26,29 @@
         }
       }
     },
+    "/reference/basis": {
+      "get": {
+        "summary": "Get Reference Basis",
+        "description": "지금 시점 적용 기준(프론트 푸터용). `{\"kr\": ..., \"us\": ...}`.\n\n`CheckReport.basis`와 같은 소스(citation_registry.json)에서 읽지만, 이건 항상\n\"지금\" 기준이고 검사 시점 스냅샷이 아니다. 리포트 화면은 `report.basis`를 쓰고,\n검사와 무관한 화면(홈·검사 시작 전)은 이 엔드포인트를 쓴다.",
+        "operationId": "get_reference_basis_reference_basis_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/RegulatoryBasis"
+                  },
+                  "type": "object",
+                  "title": "Response Get Reference Basis Reference Basis Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/reports/{result_id}": {
       "get": {
         "summary": "Get Report",
@@ -224,6 +247,58 @@
   },
   "components": {
     "schemas": {
+      "BasisCitation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "law_name": {
+            "type": "string",
+            "title": "Law Name"
+          },
+          "citation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Id"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "law_name"
+        ],
+        "title": "BasisCitation",
+        "description": "규제 근거 인용 하나. `citation_registry.json` 항목을 API 응답용으로 축약한다.\n\n2026-08-13 프론트 푸터가 화장품과 무관한 식품 도메인 고시번호(\"2025-79호\")를\n하드코딩해 표시한 사고가 있었다. 그 뒤로 규제 근거 문자열은 어디서도 하드코딩\n하지 않고 전부 이 레지스트리(`citation_registry.json`)에서 읽는다."
+      },
       "Body_check_check_post": {
         "properties": {
           "region": {
@@ -324,6 +399,16 @@
               }
             ],
             "title": "Result Id"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegulatoryBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -332,7 +417,7 @@
           "summary"
         ],
         "title": "CheckReport",
-        "description": "`POST /check` 응답. findings + unjudged + summary.\n\nresult_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면\n(JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다."
+        "description": "`POST /check` 응답. findings + unjudged + summary.\n\nresult_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면\n(JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다.\nbasis: 검사 시점에 실제 적용된 규제 근거 스냅샷. 나중에 레지스트리가 갱신돼도\n이 리포트를 다시 볼 때는 검사 당시 값 그대로 보여야 해서 결과에 박아 보낸다."
       },
       "Finding": {
         "properties": {
@@ -350,6 +435,17 @@
           "legal_basis": {
             "type": "string",
             "title": "Legal Basis"
+          },
+          "legal_basis_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Basis Text"
           },
           "flag": {
             "$ref": "#/components/schemas/JudgmentFlag"
@@ -798,6 +894,27 @@
         ],
         "title": "Region",
         "description": "검사 대상 국가. 지금은 국내(KR)만 실동작, 미국(US)은 2단계."
+      },
+      "RegulatoryBasis": {
+        "properties": {
+          "jurisdiction": {
+            "$ref": "#/components/schemas/Region"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/BasisCitation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jurisdiction",
+          "citations"
+        ],
+        "title": "RegulatoryBasis",
+        "description": "한 관할(jurisdiction)의 적용 기준. `GET /reference/basis`와 `CheckReport.basis`가 같이 쓴다."
       },
       "RemediationRequest": {
         "properties": {

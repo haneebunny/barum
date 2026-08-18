@@ -10,18 +10,22 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
+from barum.judge.us_sunscreen import USSunscreenJudge
 from barum.models import (
     CheckReport,
     GenerateRequest,
     GenerateResponse,
     Region,
+    RegulatoryBasis,
     RemediationRequest,
     RemediationResponse,
     StoredCheck,
+    USPreflightReport,
 )
 from barum.generate.content import generate_content
+from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
-from barum.pipeline import run_check
+from barum.pipeline import run_check, run_us_sunscreen_check
 from barum.storage.checks_store import (
     build_check_row,
     download_image,
@@ -137,12 +141,26 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/reference/basis", response_model=dict[str, RegulatoryBasis])
+def get_reference_basis() -> dict[str, RegulatoryBasis]:
+    """지금 시점 적용 기준(프론트 푸터용). `{"kr": ..., "us": ...}`.
+
+    `CheckReport.basis`와 같은 소스(citation_registry.json)에서 읽지만, 이건 항상
+    "지금" 기준이고 검사 시점 스냅샷이 아니다. 리포트 화면은 `report.basis`를 쓰고,
+    검사와 무관한 화면(홈·검사 시작 전)은 이 엔드포인트를 쓴다.
+    """
+    return {
+        "kr": build_regulatory_basis("KR"),
+        "us": build_regulatory_basis("US"),
+    }
+
+
 @app.get("/reports/{result_id}", response_model=StoredCheck)
 def get_report(result_id: str) -> StoredCheck:
     """저장된 검사를 다시 본다. 추측불가 result_id가 접근권이라 못 찾으면 404."""
     row = get_check(_checks_client(), result_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="해당 검사를 찾을 수 없다.")
+        raise HTTPException(status_code=404, detail="해당 검사 이력을 찾을 수 없습니다.")
     return StoredCheck(
         result_id=row["id"],
         created_at=str(row["created_at"]),
@@ -158,7 +176,7 @@ def get_report_image(result_id: str) -> Response:
     """저장된 원본 이미지를 백엔드가 그대로 스트리밍(버킷 private, 서명 URL 없음)."""
     row = get_check(_checks_client(), result_id)
     if row is None or not row.get("image_path"):
-        raise HTTPException(status_code=404, detail="이미지가 없다.")
+        raise HTTPException(status_code=404, detail="해당 검사에 첨부된 원본 이미지가 없습니다.")
     path = row["image_path"]
     data = download_image(_checks_client(), path)
     ext = path[path.rfind(".") :] if "." in path else ""
@@ -190,7 +208,8 @@ async def check(
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
         raise HTTPException(
-            status_code=422, detail="ad_text 또는 image 중 최소 하나는 필요하다."
+            status_code=422,
+            detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
@@ -213,6 +232,52 @@ async def check(
         product_name=product_name,
     )
     return report
+
+
+@app.post("/check/us-sunscreen", response_model=USPreflightReport)
+async def check_us_sunscreen(
+    country: str = Form(
+        "US", description="대상국. 1차 대상국은 미국만 지원(팀 확정). 다른 값은 400."
+    ),
+    ad_text: str | None = Form(None),
+    image: UploadFile | None = File(None),
+    ingredients: str | None = Form(
+        None, description="전성분(콤마 구분). 있으면 미국 승인 자외선차단 성분 대조가 붙는다."
+    ),
+    product_name: str | None = Form(
+        None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
+    ),
+) -> USPreflightReport:
+    """미국 프리플라이트(자외선차단 최소보장) 검사. 국내 `/check`와 별도 엔드포인트(팀 확정).
+
+    위반/합법 판정이 아니라 "화장품→OTC의약품 분류전환" 안내다(USPreflightCategory 참조).
+    country는 프론트가 넘기되 지금은 미국만 실동작(`sunscreen_otc_classification.md` 스코프).
+    이미지·글 중 최소 하나는 있어야 한다.
+    """
+    if country != "US":
+        raise HTTPException(
+            status_code=400,
+            detail=f"현재는 미국(US) 프리플라이트만 지원합니다. 받은 값: {country!r}",
+        )
+
+    image_bytes = await image.read() if image is not None else None
+    if not ad_text and not image_bytes:
+        raise HTTPException(
+            status_code=422,
+            detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
+        )
+
+    ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
+
+    return run_us_sunscreen_check(
+        ad_text=ad_text,
+        image_bytes=image_bytes,
+        image_filename=image.filename if image is not None else None,
+        vlm=ocr_vlm,
+        judge=USSunscreenJudge(),
+        ingredients=ingredients,
+        product_name=product_name,
+    )
 
 
 @app.post("/remediate", response_model=RemediationResponse)
