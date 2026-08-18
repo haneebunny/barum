@@ -1,0 +1,55 @@
+{
+  "source": {
+    "brand": "아누아",
+    "goods_no": "A000000222698",
+    "url": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000222698"
+  },
+  "product_type": "세럼",
+  "modules": [
+    {
+      "kind": "hero_intro",
+      "purpose": "문제 제기로 시작하는 도입부",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "value_prop",
+      "purpose": "제품 핵심가치를 한 줄로 요약",
+      "has_claim_risk": true
+    },
+    {
+      "kind": "ingredient_highlight",
+      "purpose": "핵심 성분 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "시험 그래픽으로 근거 제시(침투력 비교)",
+      "has_claim_risk": true
+    },
+    {
+      "kind": "clinical_stat",
+      "purpose": "사용 전후 수치 변화 강조",
+      "has_claim_risk": true
+    },
+    {
+      "kind": "texture",
+      "purpose": "제형·발림성 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "safety_formula",
+      "purpose": "무자극·무첨가 등 안전 처방 강조",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "target_audience",
+      "purpose": "추천 대상 리스트",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "caution",
+      "purpose": "사용 시 주의사항",
+      "has_claim_risk": false
+    }
+  ]
+}
