@@ -7,6 +7,7 @@ create: 원본 없이 인증서-인정문구 매칭으로 광고문구 조립(�
 judge·vlm을 주입받아 유닛테스트는 오프라인.
 """
 
+from barum.generate.images import generate_module_images
 from barum.generate.layout import (
     clinical_sections_text,
     filter_risky_modules,
@@ -19,6 +20,8 @@ from barum.models import (
     ImageGenResult,
     ImagePlan,
     LayoutModule,
+    LayoutPlan,
+    ModuleImage,
     PlacedImage,
     RecheckSummary,
     RiskConfirmation,
@@ -140,8 +143,21 @@ def generate_module_sections(
     return _template_sections(req)
 
 
-def build_image_plan(req: GenerateRequest) -> ImagePlan:
-    """업로드 이미지 배치 + 생성요청 사칭 가드레일(FR-13). 실제 생성은 안 함."""
+def build_image_plan(
+    req: GenerateRequest,
+    plan: LayoutPlan | None = None,
+    image_generator=None,
+    image_sink=None,
+) -> ImagePlan:
+    """업로드 이미지 배치 + 생성요청 사칭 가드레일(FR-13).
+
+    plan·image_generator를 주면 계획된 모듈마다 배경 이미지도 만든다(create 모드).
+    안 주면 기존 동작 그대로다(배치·가드레일만, improve 모드 회귀 없음).
+
+    image_sink: `(모듈kind, PNG바이트) -> 이미지 URL | None`. 저장은 여기서 하지 않고
+    주입받는다(`content.py`는 저장소를 몰라야 오프라인 테스트가 된다. 실제 저장은
+    `api/app.py`가 `storage/checks_store.py`로 한다).
+    """
     placed: list[PlacedImage] = []
     if req.result_id:
         placed.append(PlacedImage(slot="hero", image_url=f"/reports/{req.result_id}/image"))
@@ -151,7 +167,33 @@ def build_image_plan(req: GenerateRequest) -> ImagePlan:
     if ig and ig.requested:
         allowed, reason = check_impersonation(ig.prompt or "")
         gen = ImageGenResult(requested=True, allowed=allowed, reason=reason, ai_labeled=False)
-    return ImagePlan(placed=placed, generation=gen)
+
+    module_images: list[ModuleImage] = []
+    if plan is not None and image_generator is not None:
+        module_images, blobs = generate_module_images(plan, req, image_generator)
+        _store_module_images(module_images, blobs, image_sink)
+    return ImagePlan(placed=placed, generation=gen, module_images=module_images)
+
+
+def _store_module_images(module_images: list[ModuleImage], blobs: dict, image_sink) -> None:
+    """생성된 이미지를 싱크에 넘기고 URL을 채운다.
+
+    싱크가 없거나 저장에 실패하면 그 사실을 남긴다. 과금해서 만든 이미지를 조용히
+    버리면 "생성됐다"는 결과만 보고 실제로는 못 쓰는 상태가 된다.
+    """
+    for image in module_images:
+        blob = blobs.get(image.module_kind)
+        if image.status != "generated" or blob is None:
+            continue
+        if image_sink is None:
+            image.reason = "저장소가 없어 생성된 이미지를 보관하지 못했습니다"
+            continue
+        try:
+            image.image_url = image_sink(image.module_kind, blob)
+        except Exception as e:
+            print(f"    [skip] 이미지 저장 실패({image.module_kind}): {type(e).__name__}: {e}")
+        if not image.image_url:
+            image.reason = "이미지 저장에 실패해 보관되지 않았습니다"
 
 
 def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
@@ -243,7 +285,9 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
     )
 
 
-def _generate_create_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
+def _generate_create_content(
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+) -> GenerateResponse:
     """신규 생성(create) 모드 오케스트레이션. 원본 검사 없음, replacements 항상 빈 배열.
 
     레이아웃 레퍼런스를 퓨샷으로 모듈 구성을 계획한 뒤, 모듈 종류에 따라 내용을 채운다.
@@ -276,8 +320,8 @@ def _generate_create_content(req: GenerateRequest, *, judge, vlm) -> GenerateRes
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
-    # 5. 이미지 배치·가드레일
-    image_plan = build_image_plan(req)
+    # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
+    image_plan = build_image_plan(req, plan, image_generator, image_sink)
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
     # 7. 실증자료는 미검증이라 사용자 확인 항목으로 남긴다
@@ -305,8 +349,16 @@ def _generate_create_content(req: GenerateRequest, *, judge, vlm) -> GenerateRes
     )
 
 
-def generate_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
-    """`POST /generate` 오케스트레이션. `req.mode`로 improve/create 분기."""
+def generate_content(
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+) -> GenerateResponse:
+    """`POST /generate` 오케스트레이션. `req.mode`로 improve/create 분기.
+
+    image_generator·image_sink는 create 모드에서만 쓴다. 안 주면 이미지 생성을
+    건너뛴다(모델 확정 전까지 기본 비활성).
+    """
     if req.mode == "create":
-        return _generate_create_content(req, judge=judge, vlm=vlm)
+        return _generate_create_content(
+            req, judge=judge, vlm=vlm, image_generator=image_generator, image_sink=image_sink
+        )
     return _generate_improve_content(req, judge=judge, vlm=vlm)

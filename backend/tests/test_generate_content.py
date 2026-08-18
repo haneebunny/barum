@@ -247,3 +247,89 @@ def test_계획에_남은_모듈은_전부_채울_내용이_있다():
             assert has_claim, f"{module.kind}를 채울 인정문구 섹션이 없다"
         else:
             assert module.kind in section_kinds, f"{module.kind}를 채울 서술이 없다"
+
+
+# ── 모듈별 이미지 생성 연결 (FR-13 확장) ──
+
+
+class FakeImageGenerator:
+    def __init__(self, *results):
+        self._results = list(results)
+
+    def generate_image(self, prompt, images):
+        r = self._results.pop(0) if self._results else b"PNG"
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+def test_생성기를_안_주면_이미지를_안_만든다():
+    """모델 확정 전까지 기본 비활성이라, 안 주면 과금 호출이 아예 없어야 한다."""
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+    assert resp.image_plan.module_images == []
+
+
+def test_생성기를_주면_모듈마다_이미지를_만들고_URL을_채운다():
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    saved = {}
+
+    def sink(kind, data):
+        saved[kind] = data
+        return f"/generated/{kind}.png"
+
+    resp = generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=SequenceVLM(_PLAN, _MODULE_TEXT),
+        image_generator=FakeImageGenerator(b"A", b"B"),
+        image_sink=sink,
+    )
+    images = resp.image_plan.module_images
+    assert [i.status for i in images] == ["generated", "generated"]
+    assert all(i.image_url for i in images)
+    assert saved  # 바이트가 싱크로 실제 전달됐다
+
+
+def test_싱크가_없으면_보관못했다는_사실을_남긴다():
+    """과금해서 만든 이미지를 조용히 버리면 '생성됨'만 보고 못 쓰는 상태가 된다."""
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    resp = generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=SequenceVLM(_PLAN, _MODULE_TEXT),
+        image_generator=FakeImageGenerator(b"A", b"B"),
+        image_sink=None,
+    )
+    images = resp.image_plan.module_images
+    assert all(i.image_url is None for i in images)
+    assert all("보관하지 못했" in (i.reason or "") for i in images)
+
+
+def test_싱크가_터져도_응답은_살아있다():
+    def broken_sink(kind, data):
+        raise RuntimeError("storage down")
+
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    resp = generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=SequenceVLM(_PLAN, _MODULE_TEXT),
+        image_generator=FakeImageGenerator(b"A", b"B"),
+        image_sink=broken_sink,
+    )
+    images = resp.image_plan.module_images
+    assert all(i.image_url is None for i in images)
+    assert all("저장에 실패" in (i.reason or "") for i in images)
+    assert resp.sections  # 콘텐츠 자체는 정상적으로 나온다
+
+
+def test_improve_모드는_이미지_생성을_안_한다():
+    req = GenerateRequest(mode="improve", content="촉촉한 크림", product_name="테스트크림")
+    resp = generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=FakeVLM({"제품개요": "담백", "사용법": "펴 바르기", "주의사항": "이상 시 중단"}),
+        image_generator=FakeImageGenerator(b"A"),
+    )
+    assert resp.image_plan.module_images == []
