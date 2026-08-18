@@ -1,0 +1,70 @@
+{
+  "source": {
+    "brand": "제로이드",
+    "goods_no": "A000000231589",
+    "url": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000231589"
+  },
+  "product_type": "크림",
+  "modules": [
+    {
+      "kind": "notice_banner",
+      "purpose": "공지·프로모션 배너",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "hero_intro",
+      "purpose": "히어로 비주얼 + 제품 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "review_highlight",
+      "purpose": "실사용 후기 강조",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "efficacy_explain",
+      "purpose": "효능 설명(1부)",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "ingredient_highlight",
+      "purpose": "특허·핵심 성분 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "임상시험 그래프(다중, 각주 포함)",
+      "has_claim_risk": true
+    },
+    {
+      "kind": "efficacy_explain",
+      "purpose": "효능 설명(2부)",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "how_to_use",
+      "purpose": "사용법 안내",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "recommend_reason",
+      "purpose": "추천 이유 요약",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "lineup",
+      "purpose": "브랜드 라인업 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "slogan",
+      "purpose": "브랜드 슬로건",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "faq",
+      "purpose": "자주 묻는 질문",
+      "has_claim_risk": false
+    }
+  ]
+}

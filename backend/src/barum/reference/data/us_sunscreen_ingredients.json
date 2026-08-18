@@ -1,0 +1,30 @@
+{
+  "source": "reference/cosmetic_us/sunscreen_active_ingredients.md",
+  "citation": "FDA OTC Monograph M020 (Final Order OTC000006, 2020) + Final Order OTC000039 (2026, 베모트리지놀 추가)",
+  "checked_date": "2026-08-18",
+  "categories": {
+    "자외선차단": [
+      {"성분명": "Aminobenzoic acid (PABA)", "최대 함량": "15%", "근거오더": "OTC000006"},
+      {"성분명": "Avobenzone", "최대 함량": "3%", "근거오더": "OTC000006"},
+      {"성분명": "Cinoxate", "최대 함량": "3%", "근거오더": "OTC000006"},
+      {"성분명": "Dioxybenzone", "최대 함량": "3%", "근거오더": "OTC000006"},
+      {"성분명": "Homosalate", "최대 함량": "15%", "근거오더": "OTC000006"},
+      {"성분명": "Menthyl anthranilate", "최대 함량": "5%", "근거오더": "OTC000006"},
+      {"성분명": "Octocrylene", "최대 함량": "10%", "근거오더": "OTC000006"},
+      {"성분명": "Octyl methoxycinnamate", "최대 함량": "7.5%", "근거오더": "OTC000006"},
+      {"성분명": "Octyl salicylate", "최대 함량": "5%", "근거오더": "OTC000006"},
+      {"성분명": "Oxybenzone", "최대 함량": "6%", "근거오더": "OTC000006"},
+      {"성분명": "Padimate O", "최대 함량": "8%", "근거오더": "OTC000006"},
+      {"성분명": "Phenylbenzimidazole sulfonic acid", "최대 함량": "4%", "근거오더": "OTC000006"},
+      {"성분명": "Sulisobenzone", "최대 함량": "10%", "근거오더": "OTC000006"},
+      {"성분명": "Titanium dioxide", "최대 함량": "25%", "근거오더": "OTC000006"},
+      {"성분명": "Trolamine salicylate", "최대 함량": "12%", "근거오더": "OTC000006"},
+      {"성분명": "Zinc oxide", "최대 함량": "25%", "근거오더": "OTC000006"},
+      {"성분명": "Bemotrizinol", "최대 함량": "6%", "근거오더": "OTC000039"}
+    ]
+  },
+  "pending_risk": {
+    "order": "OTC000008 (2021-09-27 제안, 2026-08-18 기준 미최종화)",
+    "note": "베이스라인 16종 중 12종(PABA·Titanium dioxide·Trolamine salicylate·Zinc oxide 제외 전부)의 GRASE 미인정을 제안. 미반영 상태이나 통과 시 목록 축소 가능. 상세는 sunscreen_active_ingredients.md §3"
+  }
+}

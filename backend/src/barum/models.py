@@ -153,6 +153,53 @@ class CheckReport(BaseModel):
     basis: RegulatoryBasis | None = None
 
 
+# ── 미국 프리플라이트 (자외선차단 최소보장, 기획서 v1.6) ──────────────────────
+
+
+class USPreflightCategory(str, Enum):
+    """미국 프리플라이트 지적 갈래. 국내 ViolationType/JudgmentFlag와 다른 개념이다 —
+    법 위반이 아니라 화장품→OTC의약품 규제 카테고리 전환 안내다(팀 확정 2026-08-18,
+    reference/cosmetic_us/sunscreen_otc_classification.md §0).
+    """
+
+    otc_reclassification = "OTC의약품_분류전환"  # SPF/자외선차단 표현 자체가 트리거
+    unapproved_ingredient = "미국_미승인_성분"  # 성분이 미국 승인 목록에 없음
+    ingredient_info_missing = "성분정보_확인불가"  # 전성분 정보가 없어 성분 대조를 못함
+
+
+class USPreflightFinding(BaseModel):
+    """미국 프리플라이트 지적 하나. 국내 Finding과 필드는 비슷하지만 violation_type/flag
+    대신 category를 쓴다(위반이 아니므로). 국내 Finding과 절대 섞지 않는다.
+    """
+
+    span: str  # 지목된 표현(SPF 문구) 또는 성분명
+    sentence: str  # span이 속한 원문 문장. 성분 트리거는 전성분 원문 표기 그대로
+    category: USPreflightCategory
+    explanation: str  # 왜 이 카테고리로 잡혔는지 사람이 읽는 설명
+    location: Location
+
+
+class USPreflightSummary(BaseModel):
+    """미국 프리플라이트 리포트 상단 요약."""
+
+    n_sentences: int
+    n_findings: int
+    counts_by_category: dict[str, int] = Field(default_factory=dict)
+
+
+class USPreflightReport(BaseModel):
+    """미국 프리플라이트 검사 응답. 국내 CheckReport와 별도 엔드포인트·별도 스키마(팀 확정).
+
+    disclaimer: 리포트 하단 각주. 확정 안 된 규제 변경 리스크(OTC000008 등)는 개별
+    finding으로 안 만들고 여기 각주로만 담기로 확정함(sunscreen_otc_classification.md §4).
+    """
+
+    findings: list[USPreflightFinding]
+    summary: USPreflightSummary
+    result_id: str | None = None
+    disclaimer: str
+
+
 class StoredCheck(BaseModel):
     """`GET /reports/{result_id}` 응답 (다시 보기).
 
@@ -227,11 +274,27 @@ class ImageGenResult(BaseModel):
     ai_labeled: bool = False
 
 
+class ModuleImage(BaseModel):
+    """계획된 모듈 하나에 대한 이미지 생성 결과.
+
+    텍스트는 굽지 않는다. 배경·연출만 만들고 문구는 프론트가 위에 얹는다.
+    실패·거부도 조용히 빠지지 않게 status와 reason으로 남긴다.
+    """
+
+    module_kind: str
+    status: str  # generated(생성됨) | skipped(실패·거부·한도초과)
+    reason: str | None = None
+    image_url: str | None = None
+
+
 class ImagePlan(BaseModel):
     """이미지 배치 + 생성 가드레일 결과(FR-13)."""
 
     placed: list[PlacedImage] = Field(default_factory=list)
     generation: ImageGenResult = Field(default_factory=ImageGenResult)
+    module_images: list[ModuleImage] = Field(
+        default_factory=list, description="create 모드 모듈별 이미지 생성 결과"
+    )
 
 
 class RiskConfirmation(BaseModel):
@@ -270,6 +333,41 @@ class IngredientAmount(BaseModel):
     amount: str = Field(..., description='함량 원문 표기, 예: "2%", "2~5%", "2,500 IU/g"')
 
 
+class ClinicalEvidence(BaseModel):
+    """create 모드 전용: 사업자가 직접 입력한 실증자료(인체적용시험 결과 등).
+
+    **barum은 이 자료의 진위를 검증하지 않는다.** 기능성 인증서(`certifications`)와
+    달리 대조할 레퍼런스팩이 없어서, 사업자 입력을 그대로 신뢰하고 그대로 싣는다.
+    그래서 ① 응답 안내문구에 미검증임을 명시하고 ② `risk_confirmations`에 진위
+    확인 항목을 넣는다(하니·PM 확정, 2026-08-18).
+
+    이 값이 하나라도 있으면 임상 계열 모듈(clinical_result 등)이 계획에 허용된다.
+    수치는 LLM이 쓰지 않고 여기 입력값을 그대로 쓴다(지어낼 여지를 없앤다).
+    """
+
+    claim: str = Field(..., description='무엇을 개선했는지, 예: "다크스팟 개선"')
+    value: str = Field(..., description='결과 수치 원문 표기, 예: "87%", "4주 후 2.1배"')
+    institution: str | None = Field(None, description="시험기관명")
+    period: str | None = Field(None, description='시험기간, 예: "4주", "8주"')
+    note: str | None = Field(None, description="피험자 수·조건 등 부연")
+
+
+class LayoutModule(BaseModel):
+    """상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."""
+
+    kind: str  # hero_intro | ingredient_highlight | clinical_result | texture 등
+    purpose: str
+    has_claim_risk: bool = False
+
+
+class LayoutPlan(BaseModel):
+    """이번 상품 상세페이지의 모듈 구성·순서(플래너 산출물)."""
+
+    modules: list[LayoutModule] = Field(default_factory=list)
+    product_type: str | None = Field(None, description="추측된 상품 종류. None이면 레퍼런스 없이 폴백")
+    source: str = Field("fallback", description="planner(LLM 계획) | fallback(고정 플랜)")
+
+
 class GenerateRequest(BaseModel):
     """`POST /generate` 요청. `mode`로 improve(개선)/create(신규 생성) 분기.
 
@@ -289,6 +387,10 @@ class GenerateRequest(BaseModel):
         None, description="성분명+함량(create 모드 전용, 인정문구 함량기준 대조에 씀)"
     )
     certifications: list[str] = Field(default_factory=list)
+    clinical_evidence: list[ClinicalEvidence] | None = Field(
+        None,
+        description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
+    )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
     image_generation: ImageGenRequest | None = None
 
@@ -315,5 +417,8 @@ class GenerateResponse(BaseModel):
     pii_removed: list[str] = Field(default_factory=list)
     risk_confirmations: list[RiskConfirmation] = Field(default_factory=list)
     skipped_claims: list[SkippedClaim] = Field(default_factory=list)
+    layout_plan: LayoutPlan | None = Field(
+        None, description="create 모드 모듈 구성·순서. improve 모드는 None"
+    )
     recheck: RecheckSummary
     disclaimer: str

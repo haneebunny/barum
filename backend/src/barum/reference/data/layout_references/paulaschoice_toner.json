@@ -1,0 +1,41 @@
+{
+  "source": {
+    "brand": "폴라초이스",
+    "goods_no": "A000000245794",
+    "url": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000245794",
+    "note": "엑스폴리언트(각질제거 리퀴드), 토너 인접 카테고리"
+  },
+  "product_type": "토너",
+  "modules": [
+    {
+      "kind": "promo_banner",
+      "purpose": "구매 혜택 배너",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "hero_intro",
+      "purpose": "히어로 비주얼 + 제품 소개",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "사용 전후 수치 변화 그래프(각주 포함)",
+      "has_claim_risk": true
+    },
+    {
+      "kind": "how_to_use",
+      "purpose": "사용법 안내",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "bundle_suggestion",
+      "purpose": "타 제품과 조합 제안",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "research_citation",
+      "purpose": "참고 논문 인용 + 전성분 표기",
+      "has_claim_risk": true
+    }
+  ]
+}
