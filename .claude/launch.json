@@ -18,6 +18,13 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": ["/Users/hani/Desktop/project/barum/frontend/scripts/dev.sh"],
       "port": 3000
+    },
+    {
+      "name": "frontend-win",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

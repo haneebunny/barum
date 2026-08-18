@@ -90,24 +90,24 @@ export default function HomePage() {
 
       {/* 랜딩에서 설득이 끝난 사람의 작업 화면: 마케팅 카피 없이 얇은 한 줄만 */}
       <div className="p-[26px_22px_4px] flex items-baseline gap-[10px]">
-        <h1 className="m-0 text-[var(--ink)] text-[17px] font-extrabold tracking-[-0.3px]">
+        <h1 className="m-0 text-[var(--ink)] text-[22px] font-extrabold tracking-[-0.3px]">
           무엇을 검사할까요?
           <span className="inline-block w-[0.14em] h-[1em] bg-[var(--brand-ink)] ml-1.5 align-[-2px] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true"></span>
         </h1>
-        <span className="font-mono text-[10.5px] text-[var(--ink-3)]">이미지 · 문구 · 제품정보 중 있는 것만 넣으면 됩니다</span>
+        <span className="font-mono text-[13px] text-[var(--ink-3)]">이미지 · 문구 · 제품정보 중 있는 것만 넣으면 됩니다</span>
       </div>
 
       <div className="p-[18px_22px_4px]">
         <div className="grid grid-cols-2 gap-[13px]">
           <div
-            className="border border-[var(--line-2)] bg-[var(--surface)] flex flex-col cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)] hover:shadow-[inset_0_0_0_1px_var(--brand)]"
+            className="border border-[var(--line-2)] bg-[var(--surface)] flex flex-col cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]"
             role="button"
             tabIndex={0}
             onClick={handleDomesticClick}
             onKeyDown={handleDomesticKeyDown}
             aria-label="국내 광고 검증 시작"
           >
-            <div className="flex items-center gap-2 p-[8px_13px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[10.5px] text-[var(--ink-3)] tracking-[0.3px]">
+            <div className="flex items-center gap-2 p-[8px_13px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11.5px] text-[var(--ink-3)] tracking-[0.3px]">
               <span className="bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold p-[1px_6px]">KR</span>
               <span>국내 · 화장품법 기준</span>
             </div>
@@ -118,9 +118,9 @@ export default function HomePage() {
                   <path d="M16 16l5 5" />
                 </svg>
               </div>
-              <h3 className="m-[0_0_6px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">국내 광고 검증</h3>
-              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">화장품법 기준으로 위반 위험과 조항 근거를 찾아드려요.</p>
-              <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[13px] flex items-center justify-between">
+              <h3 className="m-[0_0_6px] text-[19px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">국내 광고 검증</h3>
+              <p className="m-[0_0_14px] text-[14px] text-[var(--ink-3)] leading-[1.6] flex-1">화장품법 기준으로 위반 위험과 조항 근거를 찾아드려요.</p>
+              <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[14px] flex items-center justify-between">
                 <span>국내 검증 시작</span>
                 <span className="font-mono">→</span>
               </div>
@@ -128,14 +128,14 @@ export default function HomePage() {
           </div>
 
           <div
-            className="border border-[var(--line-2)] bg-[var(--surface)] flex flex-col cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)] hover:shadow-[inset_0_0_0_1px_var(--brand)]"
+            className="border border-[var(--line-2)] bg-[var(--surface)] flex flex-col cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]"
             role="button"
             tabIndex={0}
             onClick={handleOverseasClick}
             onKeyDown={handleOverseasKeyDown}
             aria-label="해외 수출용 광고 검증 시작"
           >
-            <div className="flex items-center gap-2 p-[8px_13px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[10.5px] text-[var(--ink-3)] tracking-[0.3px]">
+            <div className="flex items-center gap-2 p-[8px_13px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11.5px] text-[var(--ink-3)] tracking-[0.3px]">
               <span className="bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold p-[1px_6px]">EX</span>
               <span>해외 · 수출 대상국 기준</span>
             </div>
@@ -146,8 +146,8 @@ export default function HomePage() {
                   <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
                 </svg>
               </div>
-              <h3 className="m-[0_0_6px] text-[17px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">해외 수출용 검증</h3>
-              <p className="m-[0_0_14px] text-[12.5px] text-[var(--ink-3)] leading-1.6 flex-1">같은 자료를 대상국 기준으로 다시 검사해요.</p>
+              <h3 className="m-[0_0_6px] text-[19px] text-[var(--ink)] font-bold leading-[1.35] tracking-[-0.3px]">해외 수출용 검증</h3>
+              <p className="m-[0_0_14px] text-[14px] text-[var(--ink-3)] leading-[1.6] flex-1">같은 자료를 대상국 기준으로 다시 검사해요.</p>
               <div className="flex items-center gap-2 mb-3 text-[12px] text-[var(--ink-3)]">
                 대상국{" "}
                 <span
@@ -163,7 +163,7 @@ export default function HomePage() {
                   {selectedRegion} ▾
                 </span>
               </div>
-              <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[13px] flex items-center justify-between">
+              <div className="border-t border-dashed border-[var(--line-2)] pt-3 text-[var(--brand-ink)] font-bold text-[14px] flex items-center justify-between">
                 <span>해외 검증 시작</span>
                 <span className="font-mono">→</span>
               </div>
@@ -180,50 +180,44 @@ export default function HomePage() {
               <path d="M3 3v5h5" />
             </svg>
           </span>
-          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">이어서 하기</h2>
+          <h2 className="m-0 text-[15px] font-bold text-[var(--ink)] tracking-[-0.2px]">이어서 하기</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">최근 프로젝트 3</span>
+          <span className="text-[var(--ink-3)] font-mono text-[12px]">최근 프로젝트 3</span>
         </div>
 
-        <Link href="/report/demo-id-1" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-          <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">글로우 세럼 · 미국 상세페이지</span>
-          <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국</span>
-          <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--crit)] border-[var(--crit-bd)] bg-[var(--crit-bg)] font-semibold">
-            <svg className="w-3.25 h-3.25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+        <Link href="/report/demo-id-1" className="grid grid-cols-[1fr_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
+          <span className="text-[var(--ink)] font-semibold text-[15px] truncate min-w-0">글로우 세럼 · 미국 상세페이지</span>
+          <span className="inline-flex items-center gap-[5px] text-[12.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--crit)] border-[var(--crit-bd)] bg-[var(--crit-bg)] font-semibold">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
               <path d="M12 3 2 20h20L12 3z" />
               <path d="M12 10v4M12 17v.5" />
             </svg>
             검토 필요
           </span>
-          <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">방금</span>
+          <span className="text-[var(--ink-3)] font-mono text-[12px] whitespace-nowrap">방금</span>
         </Link>
 
-        <Link href="/report/demo-id-2" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-          <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">수분 크림 리뉴얼 상세페이지</span>
-          <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">국내</span>
-          <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] border-[var(--line-2)]">
-            <svg className="w-3.25 h-3.25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+        <Link href="/report/demo-id-2" className="grid grid-cols-[1fr_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
+          <span className="text-[var(--ink)] font-semibold text-[15px] truncate min-w-0">수분 크림 리뉴얼 상세페이지</span>
+          <span className="inline-flex items-center gap-[5px] text-[12.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] border-[var(--line-2)]">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
               <path d="M4 12l5 5L20 6" />
             </svg>
             검사 완료
           </span>
-          <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">2일 전</span>
+          <span className="text-[var(--ink-3)] font-mono text-[12px] whitespace-nowrap">2일 전</span>
         </Link>
 
-        <Link href="/inspect?id=demo-id-3" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-          <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">선크림 SPF50 신제품</span>
-          <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국·EU</span>
-          <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-3)]">
-            <svg className="w-3.25 h-3.25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="square">
+        <Link href="/inspect?id=demo-id-3" className="grid grid-cols-[1fr_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
+          <span className="text-[var(--ink)] font-semibold text-[15px] truncate min-w-0">선크림 SPF50 신제품</span>
+          <span className="inline-flex items-center gap-[5px] text-[12.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-3)]">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="square">
               <path d="M12 20h9" />
               <path d="M14 4l6 6L8 22H2v-6L14 4z" />
             </svg>
             작성중
           </span>
-          <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">이어서 작성</span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">어제</span>
+          <span className="text-[var(--ink-3)] font-mono text-[12px] whitespace-nowrap">어제</span>
         </Link>
       </div>
 
