@@ -1,9 +1,9 @@
 # OCR 비교 실험 보고서: 파이프라인(OCR->판정) vs 원샷(VLM 직접 판정)
 
 > 과제: 가이드북 C-4/C-5
-> 실험일: 2026-08-13 (1차, 잠정 정답셋) / 2026-08-13 재측정 (§2, 검수 완료 정답셋) / 2026-08-15 원샷·원샷+RAG 최신 재측정 (§2-1-2)
+> 실험일: 2026-08-13 (1차, 잠정 정답셋) / 2026-08-13 재측정 (§2, 검수 완료 정답셋) / 2026-08-15 원샷·원샷+RAG 최신 재측정 (§2-1-2) / 2026-08-17 표본 확장(1,075문장) 재측정 (§2-1-3)
 > 실험 스크립트: `backend/scripts/compare_ocr.py`
-> 정답셋: §3~§5는 `label_worksheet.xlsx`(잠정, 검수 전) 기준. **§2는 `label_worksheet_reviewed.xlsx`(하니 검수 완료, L열 "비비_최종판단" 반영) 기준으로 재측정한 최종 수치.**
+> 정답셋: §3~§5는 `label_worksheet.xlsx`(잠정, 검수 전) 기준. §2-1~2-1-2는 `label_worksheet_reviewed.xlsx`(240문장) 기준. **§2-1-3은 `label_worksheet_combined.xlsx`(기존240+확장835=1,075문장) 기준 — 다음 고도화의 "전" 스냅샷.**
 > 성격: 실험 결과 + 원인 분석 + 개선 방향. §3~§5(토큰 분석·원인·개선방향)는 잠정 정답셋 시절 분석이라 방향성 참고용, §2가 확정 채점 결과.
 
 ---
@@ -129,6 +129,55 @@
 - **결론**: 지금 표본 크기로는 "파이프라인이 확실히 낫다"고 단정하기보다, "파이프라인이
   대체로 비슷하거나 소폭 우세하고, 토큰·오탐 면에서 더 안정적"이라는 정도로 보수적으로
   말하는 게 정확하다. 표본을 늘리지 않는 한 이 결론 이상으로 강하게 주장하지 않는다.
+
+### 2-1-3. 표본 확장(1,075문장) 재측정 — 다음 고도화의 "전" 스냅샷 (2026-08-17)
+
+§2-1-2까지는 표본 14장/위반+검토필요 23건이라 실행마다 몇 %p씩 흔들렸다(문장 1건=±4.3%p,
+2026-08-15_3way_수치차이_원인분석.md 참고). 신규 상품 21개(기존 8개와 중복 없음, 실전형
+분포로 크롤)를 더해 **53장/1,075문장(위반+검토필요 181건)**으로 표본을 8배 늘려 재측정했다.
+이 수치가 다음 판정로직 고도화의 **"고도화 전" 기준선**이 된다.
+
+이번 재측정 시점 코드에는 §2-1-1의 3축① 키워드에 더해, 같은 날 반영한 **엑소좀 문맥예외
+버그 수정**과 **니들·마이크로니들 단어매칭→메커니즘 트리거 재설계**도 포함돼 있다(둘 다
+`judge_rules.json` 변경, PR 대기 목록 참고).
+
+| 항목 | 파이프라인 | 원샷 (RAG 없음) | 원샷 +RAG |
+|---|---|---|---|
+| 정탐 | 112 | 44 | 66 |
+| 미탐 | 69 | 137 | 115 |
+| 오탐 | 44 | 22 | 29 |
+| **탐지율** | **61.9%** | 24.3% | 36.5% |
+| 토큰 (53장 합) | 1,166,111 | 240,411 | 1,139,104 |
+| 소요시간 | 2612.5초 | 1584.9초 | 2069.4초 |
+
+**실행 로그·산출물 (근거)**: `backend/11st_probe_cosmetic/read_test/_run_log_combined_pipeline_oneshot.txt` +
+`ocr_comparison_result_combined_pipeline_oneshot.xlsx`(②+③no-RAG), `_run_log_combined_oneshot_rag.txt` +
+`ocr_comparison_result_combined_oneshot_rag.xlsx`(③+RAG). 전부 gitignore 대상 로컬 파일.
+
+**해석.**
+- **탐지율이 §2-1-2(82.6%/56.5%/82.6%)보다 세 방식 다 큰 폭으로 낮아졌다.** 이건 회귀나
+  버그가 아니라 **표본이 훨씬 현실적으로 바뀐 효과**로 본다. 기존 14장은 "기능성화장품"
+  검색어로만 모아 위반 밀도가 비정상적으로 높았다(§4 원인분석의 92.5% 대상외+합법 비율도
+  이 편향의 증거). 신규 21개는 스킨로션·바디워시·선크림 등 실전형으로 모아 정상적인 화장품
+  분포에 가깝고, 그만큼 규칙집·프롬프트가 아직 못 잡는 다양한 위반 패턴(새 브랜드·새 표현)이
+  드러났다. **파이프라인이 여전히 세 방식 중 제일 낫다**(61.9% > 36.5% > 24.3%, 순위는 §2-1-2와
+  동일)는 점은 유지된다.
+- **파이프라인 오탐(44건)이 §2-1-2 대비 비율로 늘었다** — 규칙집이 새 상품군의 합법·대상외
+  패턴을 아직 다 못 배웠다는 뜻으로, 다음 고도화(대상외·legal_allow 키워드 확장)의 근거 자료다.
+- **48/49번 이미지(9510249834·9510249747, 비비가 위조 증빙 서류 재사용을 발견한 그 두 상품)에서
+  원샷 계열이 문장을 거의 못 읽었다.** 정상이면 30문장 안팎(OCR 전용 추출 시 각 86·74문장)인데,
+  원샷은 두 실행(RAG 없음/RAG) 다 "읽은 문장 1개"로 나왔다(RAG 실행에선 LangSmith 트레이스
+  업로드 타임아웃도 같이 떴는데, 실제 VLM 응답 자체는 왔다 — 트레이싱 인프라 문제와는 별개
+  현상으로 보임). 이 두 이미지가 유독 텍스트·인증서 이미지가 밀도 높게 들어있어 원샷 프롬프트가
+  힘들어했을 가능성이 있다. 파이프라인(타일 분할 OCR)은 이 두 이미지에서도 정상적으로 15건·
+  12건을 탐지해, 타일 분할 구조의 강건성을 보여주는 사례로 볼 수 있다.
+- **토큰**: 파이프라인(1,166,111)이 원샷(240,411) 대비 4.9배. 원샷+RAG(1,139,104)는 파이프라인과
+  거의 같다(-2.3%) — §2-1-2에서 봤던 "원샷+RAG가 정확도 이득 없이 비용만 크다"는 경향이 표본을
+  키워도 그대로 유지된다.
+- **한계**: 이제 표본은 53장/1,075문장으로 커졌지만, 여전히 단일 실행이다. VLM 비결정성은 여전히
+  존재하므로(§2-1-2에서 확인) 이 수치도 "그 시점의 한 실행값"이지 절대치는 아니다. 다음 고도화
+  작업 후 재측정할 때 이 표를 기준선으로 비교한다.
+
 ### 2-2. 1차 실험 (잠정 정답셋, 참고용. 아래 §3~§5의 분석 대상)
 
 `label_worksheet.xlsx`(검수 전) 기준. §3~§5의 토큰 분석·원인 분석·개선방향 논의는 이 실험 결과를 대상으로 한다. **2-1의 최종 수치로 대체됨.**
@@ -231,5 +280,8 @@
 - `backend/11st_probe_cosmetic/read_test/_run_log_pipeline.txt` / `_run_log_oneshot.txt` / `_run_log_oneshot_rag.txt`: §2-1 실행 로그(원본 근거)
 - `backend/11st_probe_cosmetic/read_test/ocr_comparison_result_pipeline_v2_keywords.xlsx` / `_run_log_pipeline_v2_keywords.txt`: §2-1-1 키워드 추가 후 재측정 산출물/로그
 - `backend/11st_probe_cosmetic/read_test/ocr_comparison_result_oneshot_v2.xlsx` / `_run_log_oneshot_v2.txt`, `_oneshot_rag_v2.xlsx` / `_run_log_oneshot_rag_v2.txt`: §2-1-2 원샷·원샷+RAG 최신 재측정 산출물/로그
-- `backend/src/barum/reference/rules.py`: `out_of_scope` 갈래 반영됨 (§5-1)
-- `backend/src/barum/reference/data/judge_rules.json`: `out_of_scope` 키 추가됨(목록은 아직 빈 상태, 2순위 작업 남음). `needs_review.5호_거짓과장기만`에 절대적표현 3개(완벽한/최적의/파워) 추가됨 (§2-1-1)
+- `backend/11st_probe_cosmetic/read_test/label_worksheet_expansion.xlsx`: 확장 정답셋 원본(835문장, 듀얼모델+비비+하니 감사추적)
+- `backend/11st_probe_cosmetic/read_test/label_worksheet_combined.xlsx`: §2-1-3 기준(기존240+확장835=1,075문장, `scripts/build_combined_labelset.py` 산출물)
+- `backend/11st_probe_cosmetic/read_test/ocr_comparison_result_combined_pipeline_oneshot.xlsx` / `_run_log_combined_pipeline_oneshot.txt`, `_combined_oneshot_rag.xlsx` / `_run_log_combined_oneshot_rag.txt`: §2-1-3 실행 로그·산출물
+- `backend/src/barum/reference/rules.py`: `out_of_scope` 갈래 반영됨(§5-1), `context_exceptions`(엑소좀)·`conditional_violation`(니들류 메커니즘 트리거) 추가됨(2026-08-17)
+- `backend/src/barum/reference/data/judge_rules.json`: `out_of_scope` 키 추가됨(목록은 아직 빈 상태, 2순위 작업 남음). `needs_review.5호_거짓과장기만`에 절대적표현 3개(완벽한/최적의/파워) 추가됨(§2-1-1). 엑소좀 문맥예외·니들류 메커니즘 트리거 추가됨(2026-08-17, §2-1-3 기준에 반영)
