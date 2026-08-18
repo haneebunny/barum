@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { checkAd } from "@/lib/api/client";
+import { checkAd, checkUSPreflight } from "@/lib/api/client";
+import type { USPreflightReport } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
@@ -175,23 +176,33 @@ function InspectContent() {
     const actualImage = adFiles.find((f) => f.file)?.file;
     const ingredients = ingText || pFiles.map((f) => `${f.name}${f.ext}`).join(", ");
 
-    // 1단계: API 호출 시작
-    const apiPromise = checkAd({
-      region: regionParam,
-      adText: adText || undefined,
-      image: actualImage,
-      ingredients: ingredients || undefined,
-    });
+    // 1단계: API 호출 시작 (US면 전용 엔드포인트)
+    const apiPromise = regionParam === "US"
+      ? checkUSPreflight({
+          adText: adText || undefined,
+          image: actualImage,
+          ingredients: ingredients || undefined,
+        })
+      : checkAd({
+          region: regionParam,
+          adText: adText || undefined,
+          image: actualImage,
+          ingredients: ingredients || undefined,
+        });
 
     const isImage = adFiles.length > 0;
 
     if (reduceMotion) {
       try {
         const report = await apiPromise;
-        setResultId(report.result_id);
+        const rid = report.result_id ?? `us-${Date.now()}`;
+        setResultId(rid);
+        if (regionParam === "US") {
+          sessionStorage.setItem(`us-preflight-${rid}`, JSON.stringify(report));
+        }
 
         const findingsCount = report.findings.length;
-        const imageFindings = report.findings.filter((f) => f.location?.tile);
+        const imageFindings = report.findings.filter((f: { location?: { tile?: string | null } }) => f.location?.tile);
 
         setSteps([
           { id: 1, label: "자료 확인", status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" },
@@ -239,10 +250,14 @@ function InspectContent() {
 
       // 3단계: 실제 API 응답 대기
       const report = await apiPromise;
-      setResultId(report.result_id);
+      const rid = report.result_id ?? `us-${Date.now()}`;
+      setResultId(rid);
+      if (regionParam === "US") {
+        sessionStorage.setItem(`us-preflight-${rid}`, JSON.stringify(report));
+      }
 
       const findingsCount = report.findings.length;
-      const imageFindings = report.findings.filter((f) => f.location?.tile);
+      const imageFindings = report.findings.filter((f: { location?: { tile?: string | null } }) => f.location?.tile);
 
       // 3단계 완료 처리 후 4단계 시작
       setSteps(prev => prev.map(s => {
@@ -560,7 +575,8 @@ function InspectContent() {
               id="toReport"
               onClick={() => {
                 if (resultId) {
-                  router.push(`/report/${resultId}`);
+                  const reportPath = regionParam === "US" ? `/report/us/${resultId}` : `/report/${resultId}`;
+                  router.push(reportPath);
                 }
               }}
             >
@@ -587,7 +603,8 @@ function InspectContent() {
                   className="font-sans text-[12px] font-bold p-[7px_14px] bg-[var(--brand)] text-[var(--on-brand)] border border-[var(--brand)] dark:text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-deep)] transition-colors"
                   onClick={() => {
                     if (resultId) {
-                      router.push(`/report/${resultId}`);
+                      const reportPath = regionParam === "US" ? `/report/us/${resultId}` : `/report/${resultId}`;
+                      router.push(reportPath);
                     }
                   }}
                 >
