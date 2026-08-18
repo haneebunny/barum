@@ -24,9 +24,31 @@ interface FindingCardProps {
   onHover: (hover: boolean) => void;
   open: boolean;
   onToggle: () => void;
-  tier: "FREE" | "PRO";
+  tier: "FREE" | "BASIC" | "PRO";
   remediationCount: number;
   onFetchRemediation: () => void;
+}
+
+function getRemediationText(violationType: string, suggestionsNode: React.ReactNode) {
+  if (violationType === "1호_의약품오인") {
+    return (
+      <>
+        의학적 효능 표현 대신 {suggestionsNode} 과 같은 화장품 범주 보습 및 케어 표현으로 다듬어 보세요.
+      </>
+    );
+  }
+  if (violationType === "2호_기능성오인") {
+    return (
+      <>
+        기능성 오인 표현 대신 {suggestionsNode} 과 같은 안전하고 허용된 기능성 표현으로 다듬어 보세요.
+      </>
+    );
+  }
+  return (
+    <>
+      위반 우려가 있는 표현 대신 {suggestionsNode} 과 같은 권장 표현으로 다듬어 보세요.
+    </>
+  );
 }
 
 function FindingCard({
@@ -47,11 +69,13 @@ function FindingCard({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
 
   useEffect(() => {
     setSuggestions([]);
     setLoading(false);
     setHasFetched(false);
+    setShowSuggestionsArea(false);
   }, [finding]);
 
   const handleFetchSuggestions = () => {
@@ -73,16 +97,23 @@ function FindingCard({
       });
   };
 
+  const handleShowAndFetchSuggestions = () => {
+    setShowSuggestionsArea(true);
+    handleFetchSuggestions();
+  };
+
   const cls = finding.flag === "위반" ? "violation" : "review";
   const isExcluded = act === "exclude";
 
-  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] ${
+  // 호버 translate 제거 및 피그마 디자인 규격 적용 (rounded, overflow, flex-col)
+  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${
     cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
-  } ${isExcluded ? "opacity-50" : ""} ${
-    isHovered ? "translate-x-0.5" : ""
-  }`;
+  } ${isExcluded ? "opacity-50" : ""}`;
 
-  const spanStyle = cls === "violation" ? "font-bold text-[var(--crit)] border-b-2 border-[var(--crit)]" : "font-bold text-[var(--ink)] border-b-2 border-[var(--ink-3)]";
+  // 텍스트 글자색은 유지하고 테두리와 배경으로만 하이라이트
+  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${
+    cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
+  }`;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -98,151 +129,158 @@ function FindingCard({
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
-      {/* 헤더 - 항상 표시, 클릭으로 토글 */}
+      {/* 토글 고정 헤더 (상시 노출) */}
       <div
-        className="cursor-pointer border-b border-[var(--line)] bg-[var(--surface-sub)]"
+        className="cursor-pointer border-b border-[var(--line)] bg-[var(--surface-sub)] p-[8px_12px_8px]"
         onClick={handleHeaderClick}
       >
-        {/* 1행: 번호 + 위반유형 + 플래그 + 버튼 + chevron */}
-        <div className="flex items-center gap-2 p-[8px_12px_5px]">
-          <span className={`shrink-0 w-5 h-5 inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${
-            cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--ink-3)]"
+        <div className="flex gap-2.5">
+          {/* 사각형 번호 배지 */}
+          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${
+            cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
           }`}>{num}</span>
-          <span className="font-mono text-[11px] text-[var(--ink-2)] font-semibold">
-            {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
-          </span>
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-            cls === "violation" ? "text-[var(--crit)]" : "text-[var(--ink-3)]"
-          }`}>
-            {cls === "violation" ? (
-              <Warning size={13} weight="bold" />
-            ) : (
-              <MagnifyingGlass size={13} weight="bold" />
-            )}
-            {finding.flag}
-          </span>
-          {/* 수용 / 제외 버튼 */}
-          <div className="ml-auto flex items-center gap-1.75">
-            <button
-              className={`font-sans text-[11px] p-[4px_9px] border cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                act === "accept"
-                  ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
-                  : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              onClick={() => onAction(index, orderIndex, "accept")}
-            >
-              <Check size={11} weight="bold" />
-              수용
-            </button>
-            <button
-              className={`font-sans text-[11px] p-[4px_9px] border cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                act === "exclude"
-                  ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
-                  : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              onClick={() => onAction(index, orderIndex, "exclude")}
-            >
-              <X size={11} weight="bold" />
-              제외
-            </button>
-            {/* 토글 chevron */}
-            <span
-              className={`ml-1 text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${
-                open ? "rotate-180" : ""
-              }`}
-            >
-              <CaretDown size={12} weight="bold" />
-            </span>
-          </div>
-        </div>
-        {/* 2행: 위반 문구 및 법령 조항 - 항상 표시 */}
-        <div className="px-[12px] pb-[8px] flex flex-col gap-1">
-          <div className={`text-[12.5px] font-semibold text-[var(--ink)] ${isExcluded ? "line-through opacity-50" : ""}`}>
-            위반 문구: <span className={spanStyle}>{finding.span}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] text-[var(--ink-3)] font-mono">법령:</span>
-            <span className={`font-mono text-[11.5px] text-[var(--brand-ink)] ${
-              isExcluded ? "line-through opacity-60" : ""
-            }`}>{finding.legal_basis}</span>
+
+          {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
+          <div className="flex-1 min-w-0">
+            {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
+            <div className="flex items-center justify-between gap-2">
+              <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>{finding.span}</span>
+              
+              <div className="flex items-center gap-1.5 ml-auto">
+                {tier === "FREE" ? (
+                  <span className="text-[10px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
+                    유료 요금제 전용
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
+                        act === "accept"
+                          ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                      }`}
+                      onClick={() => onAction(index, orderIndex, "accept")}
+                    >
+                      <Check size={11} weight="bold" />
+                      수용
+                    </button>
+                    <button
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
+                        act === "exclude"
+                          ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                      }`}
+                      onClick={() => onAction(index, orderIndex, "exclude")}
+                    >
+                      <X size={11} weight="bold" />
+                      제외
+                    </button>
+                  </>
+                )}
+                {/* 토글 chevron */}
+                <span
+                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${
+                    open ? "rotate-180" : ""
+                  }`}
+                >
+                  <CaretDown size={14} weight="bold" />
+                </span>
+              </div>
+            </div>
+
+            {/* 2행: 위반 유형 */}
+            <div className="text-[11px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
+              위반 유형 {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 토글 바디: 설명 + 대체표현 */}
-      {open && (
-        <div className="p-[13px_14px_14px] border-t border-[var(--line)] flex flex-col gap-3.5">
-          {/* 조문 원문 인용: citation_registry 단일 소스에서 온 값만 표시(없으면 숨김, 지어내지 않음) */}
-          {finding.legal_basis_text && (
-            <blockquote className="m-0 border-l-2 border-[var(--brand-deep)] bg-[var(--surface)] p-[7px_11px]">
-              <span className="font-mono text-[9.5px] text-[var(--ink-3)] block mb-[3px]">조문 원문</span>
-              <span className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">&ldquo;{finding.legal_basis_text}&rdquo;</span>
-            </blockquote>
-          )}
-          <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
-            {finding.explanation}
-          </p>
-          <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[12px_14px] rounded-sm">
-            <div className="flex items-center gap-1.75 mb-2">
-              <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
-              {tier === "FREE" && (
-                <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">
-                  FREE 플랜 · 1회 제한 (사용: {remediationCount}/1)
-                </span>
-              )}
-            </div>
-            <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
-              {loading ? (
-                <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12px]">
-                  <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
-                  대체 표현 제안을 불러오는 중...
+      {/* 아코디언 바디 wrapper */}
+      <div className={`accordion-wrapper ${open ? "open" : ""}`}>
+        <div className="accordion-content">
+          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex flex-col gap-3.5">
+            
+            {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
+            {(tier !== "FREE" || num === 1) ? (
+              !showSuggestionsArea && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleShowAndFetchSuggestions}
+                    className="font-sans text-[11.5px] font-bold p-[6px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm shadow-sm"
+                  >
+                    대체 표현 제안 보기 {tier === "FREE" ? "(체험 1회)" : ""}
+                  </button>
                 </div>
-              ) : hasFetched ? (
-                suggestions.length > 0 ? (
-                  <span className="font-semibold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded">
-                    {suggestions.join(", ")}
-                  </span>
+              )
+            ) : (
+              <div className="text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] p-2.5 border border-[var(--line-2)] rounded-sm">
+                대체 표현 제안 조회를 더 이용하려면 유료 요금제로 업그레이드해주세요.
+              </div>
+            )}
+
+            {/* 조문 원문 인용 (화장품법 조항 및 조문 원문을 흰색 상자 안에 표기) */}
+            {(finding.legal_basis || finding.legal_basis_text) && (
+              <blockquote className="m-0 border border-[var(--line-2)] bg-[var(--surface)] p-[8px_12px] rounded-sm">
+                {tier === "FREE" && num > 1 ? (
+                  <span className="text-[12px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
                 ) : (
-                  <span className="text-[var(--ink-3)]">대체 표현 없음</span>
-                )
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {tier === "FREE" && remediationCount >= 1 ? (
-                    <>
-                      <p className="text-[11px] text-[var(--crit)] m-0 font-semibold">FREE 플랜 무료 조회 한도(1회)를 모두 사용했습니다.</p>
-                      <p className="text-[11px] text-[var(--ink-3)] m-0">대체 표현 제안 조회를 더 이용하려면 Pro 플랜으로 업그레이드해주세요.</p>
-                      <div>
-                        <button
-                          disabled
-                          className="font-sans text-[11px] font-bold p-[5px_10px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center gap-1.5 rounded-sm"
-                        >
-                          조회 한도 초과 (1/1)
-                        </button>
+                  <>
+                    {finding.legal_basis && (
+                      <div className="font-mono text-[11px] text-[var(--brand-ink)] font-semibold mb-1">
+                        {finding.legal_basis}
                       </div>
-                    </>
-                  ) : (
-                    <>
-                      {tier === "FREE" && (
-                        <p className="text-[11px] text-[var(--ink-3)] m-0">
-                          대체 표현 제안은 FREE 플랜에서 리포트당 1회만 제공됩니다.
-                        </p>
-                      )}
-                      <div>
-                        <button
-                          onClick={handleFetchSuggestions}
-                          className="font-sans text-[11px] font-bold p-[5px_10px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm"
-                        >
-                          대체 표현 제안 보기 {tier === "FREE" ? "(무료 1회)" : ""}
-                        </button>
+                    )}
+                    {finding.legal_basis_text && (
+                      <div className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">
+                        {finding.legal_basis_text}
                       </div>
-                    </>
+                    )}
+                  </>
+                )}
+              </blockquote>
+            )}
+
+            <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
+              {finding.explanation}
+            </p>
+
+            {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
+            {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
+              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm transition-all duration-300">
+                <div className="flex items-center gap-1.75 mb-2">
+                  <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
+                  {tier === "FREE" && (
+                    <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px] ml-2">
+                      FREE 요금제 체험 (1/1)
+                    </span>
                   )}
                 </div>
-              )}
-            </div>
+                <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
+                  {loading ? (
+                    <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12px]">
+                      <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
+                      대체 표현 제안을 불러오는 중...
+                    </div>
+                  ) : hasFetched ? (
+                    suggestions.length > 0 ? (
+                      getRemediationText(
+                        finding.violation_type,
+                        <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                          {suggestions.join(", ")}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-[var(--ink-3)]">대체 표현 없음</span>
+                    )
+                  ) : null}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -268,14 +306,14 @@ function markSentence(
     const isExcluded = actions[it.idx] === "exclude";
     const isViolation = it.cls === "violation";
     
-    let spanCls = "relative px-[1px] cursor-default ";
+    let spanCls = "relative px-1 rounded-sm cursor-default border inline ";
     if (isExcluded) {
       spanCls += "opacity-50 line-through ";
     }
     if (isViolation) {
-      spanCls += "border-b-2 border-[var(--crit)] text-[var(--crit)] font-semibold";
+      spanCls += "border-[var(--crit)] bg-[var(--crit-bg)] font-semibold";
     } else {
-      spanCls += "border-b-2 border-[var(--ink-3)]";
+      spanCls += "border-[var(--line-2)] bg-[var(--surface-sub)]";
     }
     
     out = out.replace(
@@ -297,7 +335,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [tier, setTier] = useState<"FREE" | "PRO">("FREE");
+  const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
   const [remediationCount, setRemediationCount] = useState<number>(0);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
 
@@ -340,7 +378,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
           const nextFinding = findByOrder[nextOrderIndex];
           setTimeout(() => {
             scrollToBox(nextFinding.idx, false);
-          }, 100);
+          }, 220);
         }
       }
       return next;
@@ -450,7 +488,15 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 tier === "FREE" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
               }`}
             >
-              FREE (1회 한도)
+              FREE (체험)
+            </button>
+            <button
+              onClick={() => setTier("BASIC")}
+              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
+                tier === "BASIC" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              }`}
+            >
+              BASIC (수정안 제공)
             </button>
             <button
               onClick={() => setTier("PRO")}
@@ -458,7 +504,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 tier === "PRO" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
               }`}
             >
-              PRO (무제한)
+              PRO (무제한+제작)
             </button>
           </div>
         </div>
@@ -899,12 +945,24 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
         <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        <Link
-          href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
-        >
-          이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
-        </Link>
+        {tier === "PRO" ? (
+          <Link
+            href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+          >
+            이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
+            <span className="text-[11px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
+            <button
+              disabled
+              className="font-sans text-[12.5px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center justify-center gap-1.5 rounded-sm"
+            >
+              상세페이지 만들기 잠김 🔒
+            </button>
+          </div>
+        )}
       </div>
 
       <PageFooter basis={envelope.report.basis ?? null} snapshot />
