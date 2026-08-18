@@ -227,11 +227,27 @@ class ImageGenResult(BaseModel):
     ai_labeled: bool = False
 
 
+class ModuleImage(BaseModel):
+    """계획된 모듈 하나에 대한 이미지 생성 결과.
+
+    텍스트는 굽지 않는다. 배경·연출만 만들고 문구는 프론트가 위에 얹는다.
+    실패·거부도 조용히 빠지지 않게 status와 reason으로 남긴다.
+    """
+
+    module_kind: str
+    status: str  # generated(생성됨) | skipped(실패·거부·한도초과)
+    reason: str | None = None
+    image_url: str | None = None
+
+
 class ImagePlan(BaseModel):
     """이미지 배치 + 생성 가드레일 결과(FR-13)."""
 
     placed: list[PlacedImage] = Field(default_factory=list)
     generation: ImageGenResult = Field(default_factory=ImageGenResult)
+    module_images: list[ModuleImage] = Field(
+        default_factory=list, description="create 모드 모듈별 이미지 생성 결과"
+    )
 
 
 class RiskConfirmation(BaseModel):
