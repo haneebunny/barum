@@ -110,9 +110,9 @@ def test_토큰이나_계정ID가_없으면_바로_알린다(monkeypatch):
         CloudflareImageGenerator()
 
 
-def test_기본_provider는_cloudflare다(monkeypatch):
-    # Gemini 이미지 모델은 무료 할당량이 0이라 기본값이 될 수 없다.
+def test_IMAGE_PROVIDER로_cloudflare를_고를_수_있다(monkeypatch):
+    """기본값은 openai지만 Cloudflare 경로를 버린 게 아니다. 언제든 되돌릴 수 있어야 한다."""
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.delenv("IMAGE_PROVIDER", raising=False)
+    monkeypatch.setenv("IMAGE_PROVIDER", "cloudflare")
     assert isinstance(get_image_generator(), CloudflareImageGenerator)

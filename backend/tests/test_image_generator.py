@@ -97,5 +97,6 @@ def test_이미지_모달리티로_요청한다():
 
 
 def test_모르는_provider는_거부한다():
+    # 지원 목록에 없는 이름은 조용히 기본값으로 새지 않고 거부해야 한다.
     with pytest.raises(ValueError, match="지원하지 않는 provider"):
-        get_image_generator("openai")
+        get_image_generator("stability")
