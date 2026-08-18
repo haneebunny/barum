@@ -89,8 +89,11 @@ def _build_oneshot_prompt(context: str) -> str:
     )
 
 
-def load_answer_key() -> dict[str, list[dict]]:
+def load_answer_key(label_xlsx: Path | None = None) -> dict[str, list[dict]]:
     """label_worksheet_reviewed.xlsx에서 정답 라벨을 읽는다 (하니 검수 완료본).
+
+    label_xlsx를 주면 그 파일을 쓴다(예: rule_sweep.py가 label_worksheet_combined.xlsx로
+    돌릴 때). 안 주면 모듈 전역 `_LABEL_XLSX`(CLI `--label-file`로 바뀔 수 있음)를 쓴다.
 
     L열("비비_최종판단")이 채워진 행(불일치 36건)은 그 값을 최종 정답으로 쓴다.
     L열 형식은 "검토필요 — 근거설명..." 처럼 자유텍스트라, 첫 대시(—) 앞 토큰만
@@ -99,10 +102,26 @@ def load_answer_key() -> dict[str, list[dict]]:
     영향 없음. compare_with_answer_key는 judgment만 본다).
     L열이 빈 행(나머지 204건)은 원래 E/F열(대수 1차 판정)이 그대로 정답이다.
 
-    반환: {이미지번호: [{sentence, judgment, violation_type}, ...]}
+    "검토필요_사유" 열이 있으면 그 값(형식: "분류 — 판단근거")에서 분류만 잘라 쓴다
+    (정보부족형/위반의심형, §2-1-5). "제외사유" 열이 있고 채워진 행은 채점 대상이
+    아니다. 화장품이 아닌 상품(잡화·도구)이라 화장품법 판정 자체가 성립 안 한다
+    (하니 확정 2026-08-18, §2-1-6). 행을 지우지 않고 컬럼으로 표시하는 방식이라
+    원본이 보존된다.
+
+    **두 열 다 헤더 이름으로 찾는다, 고정 열번호가 아니다.** label_worksheet_reviewed.xlsx
+    (§2 정답셋)는 스키마가 달라서 8번째 열이 "LLM_판정"이지 "제외사유"가 아니다 — 고정
+    번호(G=7·H=8)로 읽었다가 그 파일의 240문장이 전부 "제외됨"으로 잘못 처리되는 사고를
+    실제로 냈다(2026-08-18, be-ingredients-parsing 브랜치 로직을 포팅하며 발견). 헤더에
+    해당 이름이 없으면 그 정답셋엔 그 기능이 없는 것으로 보고 안전하게 건너뛴다.
+
+    반환: {이미지번호: [{sentence, judgment, violation_type, review_kind}, ...]}
     """
-    wb = openpyxl.load_workbook(_LABEL_XLSX)
+    wb = openpyxl.load_workbook(label_xlsx or _LABEL_XLSX)
     ws = wb["라벨링"]
+    headers = {str(ws.cell(1, c).value or "").strip(): c for c in range(1, ws.max_column + 1)}
+    review_kind_col = headers.get("검토필요_사유")
+    exclude_col = headers.get("제외사유")
+
     by_image: dict[str, list[dict]] = {}
     n_excluded = 0
     for r in range(2, ws.max_row + 1):
@@ -121,6 +140,14 @@ def load_answer_key() -> dict[str, list[dict]]:
             n_excluded += 1
             continue
         vtype = str(ws.cell(r, 6).value or "").strip()
+        review_kind = (
+            str(ws.cell(r, review_kind_col).value or "").split("—")[0].strip()
+            if review_kind_col else ""
+        )
+        excluded = bool(exclude_col and str(ws.cell(r, exclude_col).value or "").strip())
+        if excluded:
+            n_excluded += 1
+            continue
 
         final = str(ws.cell(r, 12).value or "").strip()  # L열: 비비_최종판단
         if final:
