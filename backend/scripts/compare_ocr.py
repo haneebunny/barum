@@ -104,6 +104,7 @@ def load_answer_key() -> dict[str, list[dict]]:
     wb = openpyxl.load_workbook(_LABEL_XLSX)
     ws = wb["라벨링"]
     by_image: dict[str, list[dict]] = {}
+    n_excluded = 0
     for r in range(2, ws.max_row + 1):
         nn = str(ws.cell(r, 1).value or "").strip()
         sentence = str(ws.cell(r, 4).value or "").strip()
@@ -112,6 +113,13 @@ def load_answer_key() -> dict[str, list[dict]]:
         # 정보부족형: 데이터(전성분·인증서 등)를 주면 해소되는 것.
         # 위반의심형: 데이터를 줘도 안 풀리는 것(일반수식어·절대적 표현 등).
         review_kind = str(ws.cell(r, 7).value or "").split("—")[0].strip()
+        # H열 "제외사유"가 채워진 행은 채점 대상이 아니다. 화장품이 아닌 상품
+        # (잡화·도구)이라 화장품법 판정 자체가 성립 안 한다(하니 확정 2026-08-18).
+        # 컬럼이 없는 예전 정답셋에서도 돌아가야 하므로 빈칸이면 그냥 포함한다.
+        excluded = bool(str(ws.cell(r, 8).value or "").strip())
+        if excluded:
+            n_excluded += 1
+            continue
         vtype = str(ws.cell(r, 6).value or "").strip()
 
         final = str(ws.cell(r, 12).value or "").strip()  # L열: 비비_최종판단
@@ -127,6 +135,8 @@ def load_answer_key() -> dict[str, list[dict]]:
             "review_kind": review_kind,
             "violation_type": vtype,
         })
+    if n_excluded:
+        print(f"  정답셋에서 {n_excluded}문장 제외(제외사유 기재분, 화장품 아닌 상품)")
     return by_image
 
 
