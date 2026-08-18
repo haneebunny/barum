@@ -1,0 +1,40 @@
+{
+  "source": {
+    "brand": "토리든",
+    "goods_no": "A000000258291",
+    "url": "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=A000000258291"
+  },
+  "product_type": "세럼",
+  "modules": [
+    {
+      "kind": "texture_visual",
+      "purpose": "제형 비주얼(질감 클로즈업)",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "efficacy_qna",
+      "purpose": "질문-답변 구조로 효능 설명",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "ingredient_highlight",
+      "purpose": "핵심 성분 + 함량 라벨링",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "bundle_suggestion",
+      "purpose": "같은 라인 제품과 루틴 제안",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "full_ingredient_list",
+      "purpose": "전성분 표기",
+      "has_claim_risk": false
+    },
+    {
+      "kind": "caution",
+      "purpose": "사용 시 주의사항",
+      "has_claim_risk": false
+    }
+  ]
+}

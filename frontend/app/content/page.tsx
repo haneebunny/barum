@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getReport, generateContent } from "@/lib/api/client";
-import type { CheckReport, GenerateResponse, Section } from "@/lib/api/schema";
-import { Check, X, CaretDown, FileCode, FileImage, FilePdf } from "@phosphor-icons/react";
+import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section } from "@/lib/api/schema";
+import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 
@@ -74,8 +74,24 @@ const DEFAULT_MOCKS: Record<string, ContentMockData> = {
 const SRC_LABEL = {
   remediation: "조건표 치환",
   llm: "LLM 생성",
-  template: "표준 문구"
+  template: "표준 문구",
+  approved_claim: "인정문구 매칭",
+  clinical_evidence: "실증자료(미검증)"
 };
+
+const CERT_CATEGORIES = ["미백", "주름개선", "자외선차단"];
+
+let clinicalEvidenceSeq = 0;
+function nextClinicalEvidenceId() {
+  clinicalEvidenceSeq += 1;
+  return `ce-${clinicalEvidenceSeq}`;
+}
+
+let ingredientAmountSeq = 0;
+function nextIngredientAmountId() {
+  ingredientAmountSeq += 1;
+  return `ia-${ingredientAmountSeq}`;
+}
 
 function getRemediationProposal(violationType: string, span: string): string {
   if (span.includes("아토피 피부염")) return "순화된 보습 표현으로 대체";
@@ -92,6 +108,7 @@ function ContentGeneratorContent() {
   const router = useRouter();
   const id = searchParams.get("id") || "";
   const acceptedParam = searchParams.get("accepted") || "";
+  const mode = searchParams.get("mode") === "create" ? "create" : "improve";
 
   const [report, setReport] = useState<CheckReport | null>(null);
   const [loading, setLoading] = useState(!!id);
@@ -103,6 +120,63 @@ function ContentGeneratorContent() {
   const [exportingType, setExportingType] = useState<"html" | "png" | "pdf" | null>(null);
   const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
   const [confirmedRisks, setConfirmedRisks] = useState<Record<string, boolean>>({});
+
+  // create 모드 입력: 제품명·성분+함량·인증서·실증자료·추가정보
+  const [createProductName, setCreateProductName] = useState("");
+  const [createIngredientAmounts, setCreateIngredientAmounts] = useState<
+    Array<IngredientAmount & { id: string }>
+  >([]);
+  const [createCertifications, setCreateCertifications] = useState<Set<string>>(new Set());
+  const [createClinicalEvidence, setCreateClinicalEvidence] = useState<
+    Array<ClinicalEvidence & { id: string }>
+  >([]);
+  const [createNotes, setCreateNotes] = useState("");
+
+  const addIngredientAmount = () => {
+    setCreateIngredientAmounts((prev) => [
+      ...prev,
+      { id: nextIngredientAmountId(), name: "", amount: "" }
+    ]);
+  };
+  const updateIngredientAmount = (id: string, field: "name" | "amount", value: string) => {
+    setCreateIngredientAmounts((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+  const removeIngredientAmount = (id: string) => {
+    setCreateIngredientAmounts((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const toggleCertification = (category: string) => {
+    setCreateCertifications((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
+  const addClinicalEvidence = () => {
+    setCreateClinicalEvidence((prev) => [
+      ...prev,
+      { id: nextClinicalEvidenceId(), claim: "", value: "", institution: "", period: "", note: "" }
+    ]);
+  };
+  const updateClinicalEvidence = (
+    id: string,
+    field: "claim" | "value" | "institution" | "period" | "note",
+    value: string
+  ) => {
+    setCreateClinicalEvidence((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+  const removeClinicalEvidence = (id: string) => {
+    setCreateClinicalEvidence((prev) => prev.filter((row) => row.id !== id));
+  };
 
   const buildOriginalContent = (reportData: CheckReport) => {
     const items: Array<{ sentence: string; order: number }> = [];
@@ -151,6 +225,14 @@ function ContentGeneratorContent() {
     mockKey = "unjudged";
   }
   const mockData = DEFAULT_MOCKS[mockKey];
+
+  // 미리보기·내보내기에 쓰는 제품명. create 모드는 입력한 제품명, 아니면 기존 improve 모드 로직 그대로
+  const displayProductName =
+    mode === "create"
+      ? createProductName || "제품"
+      : report
+        ? (mockKey === "image" ? "글로우 세럼" : "수분 크림")
+        : "선크림";
 
   // 수용된 지적 목록 추출
   const acceptedIndices = acceptedParam
@@ -227,25 +309,49 @@ function ContentGeneratorContent() {
     setIsModalOpen(false);
     setLoading(true);
     try {
-      let rawContent = "";
-      if (report) {
-        rawContent = buildOriginalContent(report);
+      let res: GenerateResponse;
+      if (mode === "create") {
+        res = await generateContent({
+          mode: "create",
+          product_name: createProductName || undefined,
+          ingredient_amounts: createIngredientAmounts
+            .filter((row) => row.name.trim() && row.amount.trim())
+            .map(({ name, amount }) => ({ name, amount })),
+          certifications: Array.from(createCertifications).map((c) => `${c} 기능성 인증`),
+          clinical_evidence: createClinicalEvidence.length
+            ? createClinicalEvidence
+                .filter((row) => row.claim.trim() && row.value.trim())
+                .map(({ claim, value, institution, period, note }) => ({
+                  claim,
+                  value,
+                  institution: institution || undefined,
+                  period: period || undefined,
+                  note: note || undefined,
+                }))
+            : undefined,
+          notes: createNotes || undefined,
+        });
       } else {
-        rawContent = "자외선 차단 100%! 피부 재생 및 기미·주근깨 완벽 치료하는 선크림 SPF50";
+        let rawContent = "";
+        if (report) {
+          rawContent = buildOriginalContent(report);
+        } else {
+          rawContent = "자외선 차단 100%! 피부 재생 및 기미·주근깨 완벽 치료하는 선크림 SPF50";
+        }
+
+        const ingredients = report
+          ? Array.from(new Set(report.findings.map(f => f.span))).join(", ")
+          : undefined;
+
+        res = await generateContent({
+          mode: "improve",
+          content: rawContent,
+          result_id: id || undefined,
+          product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
+          ingredients: ingredients || undefined,
+          certifications: [],
+        });
       }
-
-      const ingredients = report
-        ? Array.from(new Set(report.findings.map(f => f.span))).join(", ")
-        : undefined;
-
-      const res = await generateContent({
-        mode: "improve",
-        content: rawContent,
-        result_id: id || undefined,
-        product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
-        ingredients: ingredients || undefined,
-        certifications: [],
-      });
       setGenResult(res);
       setIsGenerated(true);
     } catch (err) {
@@ -270,7 +376,7 @@ function ContentGeneratorContent() {
   // HTML 내보내기 (Blob)
   const exportHtml = () => {
     if (!genResult) return;
-    const productName = report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "제품";
+    const productName = displayProductName;
     
     const sectionsHtml = genResult.sections.map((s) => {
       return `<div class="dp-block"><b>${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})</b><p>${s.text}</p></div>`;
@@ -411,69 +517,227 @@ function ContentGeneratorContent() {
             홈
           </Link>{" "}
           <span className="text-[var(--ink-3)]">›</span>{" "}
-          <span
-            onClick={() => router.push(id ? `/report/${id}` : "/")}
-            style={{ cursor: "pointer" }}
-            className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]"
-          >
-            리포트
-          </span>{" "}
-          <span className="text-[var(--ink-3)]">›</span> 콘텐츠 생성
+          {mode === "create" ? (
+            "콘텐츠 생성"
+          ) : (
+            <>
+              <span
+                onClick={() => router.push(id ? `/report/${id}` : "/")}
+                style={{ cursor: "pointer" }}
+                className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]"
+              >
+                리포트
+              </span>{" "}
+              <span className="text-[var(--ink-3)]">›</span> 콘텐츠 생성
+            </>
+          )}
         </span>
         <span className="text-[var(--ink-3)] text-[10px]">
-          {id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
+          {mode === "create" ? "새로 만들기 모드" : id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
         </span>
       </div>
 
-      {/* 입력 요약 */}
-      <div className="p-[18px_20px] border-b border-[var(--line)]">
-        <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
-          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">입력 요약</h2>
-          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">리포트에서 수용 처리된 항목</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
-          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
-            <ul className="list-none m-0 p-0 flex flex-col gap-1.25">
-              {acceptedFindings.map((f, i) => (
-                <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
-                  <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
-                    <path d="M4 12l5 5L20 6" />
-                  </svg>
-                  <span>
-                    <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
-                    <span className="text-[var(--ink-3)] mx-0.5">→</span>
-                    {getRemediationProposal(f.violation_type || "", f.span || "")}
-                  </span>
-                </li>
-              ))}
-              {acceptedFindings.length === 0 && (
-                <li style={{ color: "var(--ink-3)" }}>수용 처리된 수정 권고안이 없습니다.</li>
-              )}
-            </ul>
+      {/* 입력 요약 / create 모드 입력 폼 */}
+      {mode === "create" ? (
+        <div className="p-[18px_20px] border-b border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">제품 정보 입력</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">전부 선택 입력, 없으면 그 근거가 필요한 모듈만 빠집니다</span>
           </div>
-          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
-            <div className="flex flex-wrap gap-1.75">
-              {uploadedImages.map((img, i) => (
-                <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[4px_9px]">
-                  {img}
-                </span>
-              ))}
-              {uploadedImages.length === 0 && (
-                <span className="text-[var(--ink-3)] text-[10px]">
-                  첨부된 이미지가 없습니다.
-                </span>
-              )}
+          <div className="flex flex-col gap-3.5">
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">제품명</label>
+              <input
+                type="text"
+                value={createProductName}
+                onChange={(e) => setCreateProductName(e.target.value)}
+                placeholder="예: 글로우 세럼"
+                className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)]"
+              />
             </div>
-            <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
-              이미지는 새로 만들지 않고 업로드분을 재배치만 합니다.
-            </p>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">전성분 + 함량 (선택, 인정문구 함량기준 대조용)</p>
+              <div className="flex flex-col gap-1.5">
+                {createIngredientAmounts.map((row) => (
+                  <div key={row.id} className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={(e) => updateIngredientAmount(row.id, "name", e.target.value)}
+                      placeholder="성분명 (예: 나이아신아마이드)"
+                      className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                    />
+                    <input
+                      type="text"
+                      value={row.amount}
+                      onChange={(e) => updateIngredientAmount(row.id, "amount", e.target.value)}
+                      placeholder="함량 (예: 2%)"
+                      className="w-[120px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeIngredientAmount(row.id)}
+                      aria-label="성분 삭제"
+                      className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                    >
+                      <Trash size={14} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addIngredientAmount}
+                  className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
+                >
+                  <Plus size={12} weight="bold" /> 성분 추가
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">보유 인증서 (선택, 인정문구 매칭용)</p>
+              <div className="flex flex-wrap gap-3">
+                {CERT_CATEGORIES.map((cat) => (
+                  <label key={cat} className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createCertifications.has(cat)}
+                      onChange={() => toggleCertification(cat)}
+                    />
+                    {cat} 기능성 인증
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (선택, 임상 수치 모듈에만 필요 — barum은 진위를 검증하지 않습니다)</p>
+              <div className="flex flex-col gap-2.5">
+                {createClinicalEvidence.map((row) => (
+                  <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={row.claim}
+                        onChange={(e) => updateClinicalEvidence(row.id, "claim", e.target.value)}
+                        placeholder="무엇을 개선했는지 (예: 다크스팟 개선)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={row.value}
+                        onChange={(e) => updateClinicalEvidence(row.id, "value", e.target.value)}
+                        placeholder="결과 수치 (예: 87%)"
+                        className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeClinicalEvidence(row.id)}
+                        aria-label="실증자료 삭제"
+                        className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                      >
+                        <Trash size={14} weight="bold" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={row.institution || ""}
+                        onChange={(e) => updateClinicalEvidence(row.id, "institution", e.target.value)}
+                        placeholder="시험기관명 (선택)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={row.period || ""}
+                        onChange={(e) => updateClinicalEvidence(row.id, "period", e.target.value)}
+                        placeholder="시험기간 (선택, 예: 4주)"
+                        className="w-[130px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={row.note || ""}
+                      onChange={(e) => updateClinicalEvidence(row.id, "note", e.target.value)}
+                      placeholder="피험자 수·조건 등 부연 (선택)"
+                      className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addClinicalEvidence}
+                  className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
+                >
+                  <Plus size={12} weight="bold" /> 실증자료 추가
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보 (선택)</label>
+              <textarea
+                value={createNotes}
+                onChange={(e) => setCreateNotes(e.target.value)}
+                placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
+                className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="p-[18px_20px] border-b border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">입력 요약</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">리포트에서 수용 처리된 항목</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
+              <ul className="list-none m-0 p-0 flex flex-col gap-1.25">
+                {acceptedFindings.map((f, i) => (
+                  <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
+                    <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                      <path d="M4 12l5 5L20 6" />
+                    </svg>
+                    <span>
+                      <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
+                      <span className="text-[var(--ink-3)] mx-0.5">→</span>
+                      {getRemediationProposal(f.violation_type || "", f.span || "")}
+                    </span>
+                  </li>
+                ))}
+                {acceptedFindings.length === 0 && (
+                  <li style={{ color: "var(--ink-3)" }}>수용 처리된 수정 권고안이 없습니다.</li>
+                )}
+              </ul>
+            </div>
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
+              <div className="flex flex-wrap gap-1.75">
+                {uploadedImages.map((img, i) => (
+                  <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[4px_9px]">
+                    {img}
+                  </span>
+                ))}
+                {uploadedImages.length === 0 && (
+                  <span className="text-[var(--ink-3)] text-[10px]">
+                    첨부된 이미지가 없습니다.
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
+                이미지는 새로 만들지 않고 업로드분을 재배치만 합니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 생성 결과 */}
       <div className="p-[18px_20px] border-b-0">
@@ -489,11 +753,19 @@ function ContentGeneratorContent() {
         {/* 생성 전 게이트 */}
         {!isGenerated && (
           <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
-            <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요.</p>
+            <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">
+              {mode === "create"
+                ? "입력한 제품 정보로 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요."
+                : "입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요."}
+            </p>
+            {mode === "create" && !createProductName.trim() && (
+              <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
+            )}
             <button
-              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
               id="startGen"
               ref={startGenRef}
+              disabled={mode === "create" && !createProductName.trim()}
               onClick={() => setIsModalOpen(true)}
             >
               확인 후 생성하기 <span className="font-mono">→</span>
@@ -524,6 +796,52 @@ function ContentGeneratorContent() {
                 </>
               )}
             </div>
+
+            {genResult.layout_plan && genResult.layout_plan.modules.length > 0 && (
+              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mb-3.5">
+                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
+                  구성 계획 · {genResult.layout_plan.modules.length}개 모듈
+                  {genResult.layout_plan.product_type && ` · ${genResult.layout_plan.product_type}`}
+                  {" · "}
+                  {genResult.layout_plan.source === "planner" ? "AI 계획" : "고정 플랜"}
+                </p>
+                <ol className="list-none m-0 p-0 flex flex-wrap gap-1.5">
+                  {genResult.layout_plan.modules.map((m, i) => (
+                    <li
+                      key={`${m.kind}-${i}`}
+                      className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
+                    >
+                      <span className="text-[var(--ink-3)]">{i + 1}.</span>
+                      {m.kind}
+                      {m.has_claim_risk && (
+                        <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
+                          ✓근거
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {genResult.skipped_claims.length > 0 && (
+              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[15px_16px] mb-3.5">
+                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
+                  근거 부족으로 제외됨 · {genResult.skipped_claims.length}건
+                </p>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+                  {genResult.skipped_claims.map((s, i) => (
+                    <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
+                      <X size={13} weight="bold" className="shrink-0 mt-0.5" />
+                      <span>
+                        <b className="text-[var(--ink-2)] font-semibold">{s.category}</b> — {s.reason}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="border border-[var(--line-2)] bg-[var(--surface-sub)]">
               <div className="flex items-center gap-2 p-[8px_12px] border-b border-[var(--line-2)] font-mono text-[11px] text-[var(--ink-3)]">
                 <span className="w-1.75 h-1.75 rounded-full bg-[var(--line-2)] shrink-0"></span>
@@ -533,7 +851,7 @@ function ContentGeneratorContent() {
                 <div className="w-full max-w-[520px] bg-[var(--surface)] border border-[var(--line-2)]" id="detailPage">
                   <div className="aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4">
                     <span className="text-[var(--ink)] text-[19px] font-extrabold tracking-[-0.3px] bg-[var(--surface)] p-[6px_10px] border border-[var(--line-2)]">
-                      {report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림"}
+                      {displayProductName}
                     </span>
                   </div>
                   <div id="secList">

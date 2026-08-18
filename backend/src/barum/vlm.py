@@ -142,6 +142,70 @@ class OpenAIVLM:
         return _extract_json(text)
 
 
+class ImageGenerator(Protocol):
+    """이미지를 만들어내는 어댑터가 지켜야 할 최소 인터페이스.
+
+    `VLM`(generate_json)과 따로 둔다. VLM은 JSON 텍스트를 받게 만들어져 있어
+    (`response_mime_type="application/json"`) 이미지 바이트를 못 받기 때문이다.
+    """
+
+    def generate_image(self, prompt: str, images: list[bytes]) -> bytes:
+        """프롬프트(+참고 이미지)로 이미지 1장을 만들어 PNG 바이트로 낸다."""
+        ...
+
+
+class GeminiImageGenerator(GeminiVLM):
+    """Gemini 이미지 생성 어댑터.
+
+    인증·클라이언트 초기화·throttle은 `GeminiVLM`에서 그대로 물려받고, 생성 경로만
+    새로 만든다(응답 모달리티가 JSON이 아니라 IMAGE라 기존 메서드를 못 쓴다).
+
+    텍스트는 이미지에 굽지 않는다. 프론트가 이미지 위에 얹는 구조라, 배경·연출만
+    만들면 된다(하니·PM 확정, 2026-08-18).
+    """
+
+    def __init__(self, model: str | None = None, **kwargs):
+        super().__init__(
+            model=model or os.environ.get("IMAGE_MODEL_NAME", "gemini-2.5-flash-image"),
+            **kwargs,
+        )
+
+    def generate_image(self, prompt: str, images: list[bytes]) -> bytes:
+        """프롬프트로 이미지 1장을 만든다. 참고 이미지를 주면 그걸 편집·합성한다.
+
+        호출 실패는 삼키지 않고 그대로 올려보낸다. 스킵 여부는 호출자가 정한다
+        (과금 호출이라 재시도하지 않는다).
+        """
+        from google.genai import types
+
+        self._throttle()
+
+        parts = [types.Part.from_bytes(data=b, mime_type="image/png") for b in images]
+        resp = self.client.models.generate_content(
+            model=self.model,
+            contents=[*parts, prompt],
+            config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+        )
+        if resp.usage_metadata:
+            self.total_tokens += resp.usage_metadata.total_token_count or 0
+
+        for part in _response_parts(resp):
+            inline = getattr(part, "inline_data", None)
+            if inline is not None and inline.data:
+                return inline.data
+        # 안전필터 차단·빈 응답은 '예상된 실패'로 본다. 호출자가 스킵 처리.
+        raise ValueError("이미지 모델이 이미지를 반환하지 않았다")
+
+
+def _response_parts(resp) -> list:
+    """응답에서 파트 목록을 꺼낸다. 후보·콘텐츠가 비어도 터지지 않게 한다."""
+    candidates = getattr(resp, "candidates", None) or []
+    if not candidates:
+        return []
+    content = getattr(candidates[0], "content", None)
+    return list(getattr(content, "parts", None) or [])
+
+
 def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     """provider 이름으로 어댑터를 만든다."""
     if provider == "gemini":
@@ -149,3 +213,10 @@ def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     if provider == "openai":
         return OpenAIVLM(**kwargs)
     raise ValueError(f"모르는 provider: {provider}")
+
+
+def get_image_generator(provider: str = "gemini", **kwargs) -> ImageGenerator:
+    """provider 이름으로 이미지 생성 어댑터를 만든다. 지금은 gemini만 있다."""
+    if provider == "gemini":
+        return GeminiImageGenerator(**kwargs)
+    raise ValueError(f"이미지 생성을 지원하지 않는 provider: {provider}")

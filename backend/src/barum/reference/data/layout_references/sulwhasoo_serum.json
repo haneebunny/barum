@@ -1,0 +1,26 @@
+{
+  "source": {
+    "brand": "설화수",
+    "product_name": "자정앰플세럼",
+    "url": "https://www.sulwhasoo.com/product/자정앰플세럼/",
+    "note": "아모레퍼시픽 자체 디자인시스템(ap- 클래스). 텍스트가 DOM 텍스트 노드라 VLM 없이 DOM 파싱만으로 모듈 구조를 정확히 뽑을 수 있음. 섹션 클래스에 순서 번호까지 포함(ap-section--detail--01~14)"
+  },
+  "product_type": "세럼",
+  "modules": [
+    { "kind": "hero_intro", "purpose": "문제 제기로 시작하는 도입부, 효능 단정 + 각주", "has_claim_risk": true },
+    { "kind": "cause_explain", "purpose": "칙칙함의 원인 설명", "has_claim_risk": false },
+    { "kind": "ingredient_highlight", "purpose": "핵심 성분 소개(독자 원료 + 성분 조합)", "has_claim_risk": false },
+    { "kind": "persistence_claim", "purpose": "효과 지속성 강조", "has_claim_risk": false },
+    { "kind": "clinical_intro", "purpose": "인체적용시험 결과 섹션의 도입부", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "개선 경험 1: 색소침착·잡티 개선율, 사용 전/8주 후 비교 사진(피험자 실물) 포함", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "개선 경험 2: 다크스팟(속기미) 개선율", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "개선 경험 3: 밝기 개선율", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "개선 경험 4: 멜라닌 개선율", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "개선 경험 5: 전방위 윤기 개선율", "has_claim_risk": true },
+    { "kind": "clinical_followup", "purpose": "사용 중단 후에도 유지되는 효과 설명", "has_claim_risk": true },
+    { "kind": "clinical_result", "purpose": "유지 효과 수치", "has_claim_risk": true },
+    { "kind": "how_to_use", "purpose": "제형·디바이스 소개 + 사용 스텝(STEP1/STEP2)", "has_claim_risk": false },
+    { "kind": "bundle_suggestion", "purpose": "연계 제품과 병행 사용 시 시너지, 병행 사용 만족도 수치 포함", "has_claim_risk": true },
+    { "kind": "lineup", "purpose": "라인업 내 신제품 소개", "has_claim_risk": false }
+  ]
+}
