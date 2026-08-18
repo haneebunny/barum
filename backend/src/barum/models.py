@@ -317,6 +317,41 @@ class IngredientAmount(BaseModel):
     amount: str = Field(..., description='함량 원문 표기, 예: "2%", "2~5%", "2,500 IU/g"')
 
 
+class ClinicalEvidence(BaseModel):
+    """create 모드 전용: 사업자가 직접 입력한 실증자료(인체적용시험 결과 등).
+
+    **barum은 이 자료의 진위를 검증하지 않는다.** 기능성 인증서(`certifications`)와
+    달리 대조할 레퍼런스팩이 없어서, 사업자 입력을 그대로 신뢰하고 그대로 싣는다.
+    그래서 ① 응답 안내문구에 미검증임을 명시하고 ② `risk_confirmations`에 진위
+    확인 항목을 넣는다(하니·PM 확정, 2026-08-18).
+
+    이 값이 하나라도 있으면 임상 계열 모듈(clinical_result 등)이 계획에 허용된다.
+    수치는 LLM이 쓰지 않고 여기 입력값을 그대로 쓴다(지어낼 여지를 없앤다).
+    """
+
+    claim: str = Field(..., description='무엇을 개선했는지, 예: "다크스팟 개선"')
+    value: str = Field(..., description='결과 수치 원문 표기, 예: "87%", "4주 후 2.1배"')
+    institution: str | None = Field(None, description="시험기관명")
+    period: str | None = Field(None, description='시험기간, 예: "4주", "8주"')
+    note: str | None = Field(None, description="피험자 수·조건 등 부연")
+
+
+class LayoutModule(BaseModel):
+    """상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."""
+
+    kind: str  # hero_intro | ingredient_highlight | clinical_result | texture 등
+    purpose: str
+    has_claim_risk: bool = False
+
+
+class LayoutPlan(BaseModel):
+    """이번 상품 상세페이지의 모듈 구성·순서(플래너 산출물)."""
+
+    modules: list[LayoutModule] = Field(default_factory=list)
+    product_type: str | None = Field(None, description="추측된 상품 종류. None이면 레퍼런스 없이 폴백")
+    source: str = Field("fallback", description="planner(LLM 계획) | fallback(고정 플랜)")
+
+
 class GenerateRequest(BaseModel):
     """`POST /generate` 요청. `mode`로 improve(개선)/create(신규 생성) 분기.
 
@@ -336,6 +371,10 @@ class GenerateRequest(BaseModel):
         None, description="성분명+함량(create 모드 전용, 인정문구 함량기준 대조에 씀)"
     )
     certifications: list[str] = Field(default_factory=list)
+    clinical_evidence: list[ClinicalEvidence] | None = Field(
+        None,
+        description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
+    )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
     image_generation: ImageGenRequest | None = None
 
@@ -362,5 +401,8 @@ class GenerateResponse(BaseModel):
     pii_removed: list[str] = Field(default_factory=list)
     risk_confirmations: list[RiskConfirmation] = Field(default_factory=list)
     skipped_claims: list[SkippedClaim] = Field(default_factory=list)
+    layout_plan: LayoutPlan | None = Field(
+        None, description="create 모드 모듈 구성·순서. improve 모드는 None"
+    )
     recheck: RecheckSummary
     disclaimer: str
