@@ -206,6 +206,79 @@ def _response_parts(resp) -> list:
     return list(getattr(content, "parts", None) or [])
 
 
+class CloudflareImageGenerator:
+    """Cloudflare Workers AI 이미지 생성 어댑터 (FLUX.1 schnell).
+
+    무료 티어가 매일 갱신돼서 골랐다(Gemini 이미지 모델은 무료 할당량이 0이라 결제
+    없이는 못 쓴다, 2026-08-18 4개 모델 전부 limit:0 확인).
+
+    **한계: 이 모델은 text-to-image 전용이라 참고 이미지를 못 받는다.** 요청 스키마에
+    prompt와 steps밖에 없다. 지금 용도(모듈별 배경 생성)는 참고 이미지를 안 쓰므로
+    문제없지만, 나중에 업로드 사진 편집·합성이 필요해지면 다른 모델로 갈아야 한다.
+    그래서 이미지를 넘기면 조용히 버리지 않고 예외로 알린다.
+
+    인증에 토큰과 계정ID 둘 다 필요하다(Gemini는 키 하나였다).
+    """
+
+    MODEL = "@cf/black-forest-labs/flux-1-schnell"
+    _ENDPOINT = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+
+    def __init__(
+        self,
+        api_token: str | None = None,
+        account_id: str | None = None,
+        model: str | None = None,
+        steps: int = 4,
+        timeout: float = 60.0,
+    ):
+        load_dotenv()
+        self.model = model or os.environ.get("CLOUDFLARE_IMAGE_MODEL", self.MODEL)
+        self.api_token = api_token or os.environ.get("CLOUDFLARE_API_TOKEN")
+        self.account_id = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+        if not self.api_token or not self.account_id:
+            raise RuntimeError(
+                "CLOUDFLARE_API_TOKEN과 CLOUDFLARE_ACCOUNT_ID가 둘 다 필요하다. .env를 확인할 것."
+            )
+        # steps는 문서상 최대 8. 넘기면 400이 나므로 여기서 자른다.
+        self.steps = max(1, min(int(steps), 8))
+        self.timeout = timeout
+        self.total_images = 0
+
+    def generate_image(self, prompt: str, images: list[bytes]) -> bytes:
+        """프롬프트로 이미지 1장을 만들어 PNG 바이트로 낸다.
+
+        호출 실패는 삼키지 않고 그대로 올려보낸다. 스킵 여부는 호출자가 정한다.
+        """
+        import base64
+
+        import httpx
+
+        if images:
+            raise ValueError(
+                f"{self.model}은 참고 이미지를 못 받는다(text-to-image 전용). "
+                "이미지 편집·합성이 필요하면 다른 모델을 써야 한다."
+            )
+
+        url = self._ENDPOINT.format(account_id=self.account_id, model=self.model)
+        resp = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {self.api_token}"},
+            json={"prompt": prompt, "steps": self.steps},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if not body.get("success", True):
+            # 예상된 실패(할당량 초과·프롬프트 거부 등). 호출자가 스킵 처리.
+            raise ValueError(f"Cloudflare 이미지 생성 실패: {body.get('errors')}")
+
+        b64 = (body.get("result") or {}).get("image")
+        if not b64:
+            raise ValueError("Cloudflare가 이미지를 반환하지 않았다")
+        self.total_images += 1
+        return base64.b64decode(b64)
+
+
 def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     """provider 이름으로 어댑터를 만든다."""
     if provider == "gemini":
@@ -215,8 +288,15 @@ def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     raise ValueError(f"모르는 provider: {provider}")
 
 
-def get_image_generator(provider: str = "gemini", **kwargs) -> ImageGenerator:
-    """provider 이름으로 이미지 생성 어댑터를 만든다. 지금은 gemini만 있다."""
+def get_image_generator(provider: str | None = None, **kwargs) -> ImageGenerator:
+    """provider 이름으로 이미지 생성 어댑터를 만든다.
+
+    기본값은 cloudflare다. Gemini 이미지 모델은 무료 할당량이 0이라 결제 없이는
+    못 쓴다(2026-08-18 확인). provider를 안 주면 IMAGE_PROVIDER 환경변수를 본다.
+    """
+    provider = provider or os.environ.get("IMAGE_PROVIDER", "cloudflare")
+    if provider == "cloudflare":
+        return CloudflareImageGenerator(**kwargs)
     if provider == "gemini":
         return GeminiImageGenerator(**kwargs)
     raise ValueError(f"이미지 생성을 지원하지 않는 provider: {provider}")
