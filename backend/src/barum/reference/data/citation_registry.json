@@ -164,6 +164,36 @@
       "source_url": null,
       "used_by": ["frontend/components/PageFooter/PageFooter.tsx", "frontend/app/page.tsx"],
       "known_issue": "상세 근거 미비. 미국 팩 착수 시점에 채울 것"
+    },
+    {
+      "id": "us_fda_m020_sunscreen_baseline",
+      "jurisdiction": "US",
+      "law_name": "OTC Monograph M020: Sunscreen Drug Products for Over-the-Counter Human Use (베이스라인)",
+      "citation_id": "Final Order OTC000006",
+      "effective_date": "2020-03-27 (CARES Act 시행과 함께 deemed final order로 확정)",
+      "checked_date": "2026-08-18",
+      "purpose": "미국 자외선차단제 승인 활성성분 16종·최대함량의 1차 근거. 미국 프리플라이트(자외선차단 최소보장 스코프)의 성분 대조 기준",
+      "source_url": "https://www.law.cornell.edu/cfr/text/21/352.10",
+      "used_by": [
+        "reference/cosmetic_us/sunscreen_active_ingredients.md",
+        "backend/src/barum/reference/data/us_sunscreen_ingredients.json"
+      ],
+      "known_issue": "eCFR 21 CFR 352는 절차상 'Stayed Indefinitely'로 표시되나, 내용은 OTC000006과 동일. CARES Act 이후 실제 개정은 CFR이 아니라 FDA 행정오더 체계로 이루어짐(혼동 주의)",
+      "pending_risk": "제안오더 OTC000008(2021-09-27)이 이 16종 중 12종의 GRASE 미인정을 제안했으나 2026-08-18 기준 미최종화. 통과 시 목록 축소 가능, 상세는 sunscreen_active_ingredients.md §3"
+    },
+    {
+      "id": "us_fda_otc000039_bemotrizinol",
+      "jurisdiction": "US",
+      "law_name": "Amending OTC Monograph M020: Sunscreen Drug Products for OTC Human Use, and Related Information",
+      "citation_id": "Final Order OTC000039",
+      "effective_date": "2026-06-10 (연방관보 게재, FR Doc. 2026-11578)",
+      "checked_date": "2026-08-18",
+      "purpose": "베모트리지놀(Bemotrizinol) 최대 6%를 신규 승인 자외선차단 활성성분으로 추가",
+      "source_url": "https://public-inspection.federalregister.gov/2026-11578.pdf",
+      "used_by": [
+        "reference/cosmetic_us/sunscreen_active_ingredients.md",
+        "backend/src/barum/reference/data/us_sunscreen_ingredients.json"
+      ]
     }
   ]
 }
