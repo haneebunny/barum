@@ -302,6 +302,8 @@ def compare_with_answer_key(
     시스템이 위반으로 잡은 것 중 정답셋에서 합법/대상외인 것(오탐).
     """
     tp, fn, fp = 0, 0, 0
+    # 위반 라벨만 / 검토필요 라벨만 따로 집계(합산 탐지율의 왜곡을 피하려고)
+    v_tp = v_fn = r_tp = r_fn = 0
     details = []
 
     # 정답 중 위반/검토필요인 문장
@@ -322,8 +324,16 @@ def compare_with_answer_key(
         matched = norm in found_normalized or any(
             norm in fn or fn in norm for fn in found_normalized
         )
+        # 라벨을 나눠 센다. "검토필요"는 상당수가 "근거를 확인 못 해 사람이 봐야 함"이라
+        # 근거를 제공하면 해소되는 게 정상인데, 합산 탐지율은 그 해소를 미탐으로 세서
+        # 개선할수록 점수가 나빠진다(2026-08-18 확인). 그래서 위반만 따로 본다.
+        is_violation = str(row["judgment"]).strip() == "위반"
         if matched:
             tp += 1
+            if is_violation:
+                v_tp += 1
+            else:
+                r_tp += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -333,6 +343,10 @@ def compare_with_answer_key(
             })
         else:
             fn += 1
+            if is_violation:
+                v_fn += 1
+            else:
+                r_fn += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -359,9 +373,19 @@ def compare_with_answer_key(
             })
 
     detection_rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0.0
+    # ① 위반탐지율: 라벨이 "위반"인 문장만. 이게 핵심 지표다.
+    violation_rate = v_tp / (v_tp + v_fn) * 100 if (v_tp + v_fn) > 0 else 0.0
+    # ② 검토필요 격상율: 낮아지는 게 꼭 나쁜 건 아니다(근거로 해소된 경우 포함).
+    review_rate = r_tp / (r_tp + r_fn) * 100 if (r_tp + r_fn) > 0 else 0.0
 
     return {
         "method": method_name,
+        "violation_tp": v_tp,
+        "violation_fn": v_fn,
+        "violation_rate": violation_rate,
+        "review_tp": r_tp,
+        "review_fn": r_fn,
+        "review_rate": review_rate,
         "tp": tp,
         "fn": fn,
         "fp": fp,
@@ -372,6 +396,27 @@ def compare_with_answer_key(
 
 
 # ── 결과 엑셀 출력 ──
+
+
+def _print_split_metrics(comparisons: list, label: str) -> None:
+    """라벨을 나눈 지표를 출력한다.
+
+    합산 탐지율만 보면, 근거를 제공해 "검토필요"가 해소된 것까지 미탐으로 세서
+    개선할수록 점수가 나빠진다(2026-08-18 전성분 실험에서 확인). 그래서
+    ① 위반탐지율을 핵심 지표로 따로 낸다.
+    """
+    v_tp = sum(c["violation_tp"] for c in comparisons)
+    v_fn = sum(c["violation_fn"] for c in comparisons)
+    r_tp = sum(c["review_tp"] for c in comparisons)
+    r_fn = sum(c["review_fn"] for c in comparisons)
+    v_tot, r_tot = v_tp + v_fn, r_tp + r_fn
+    v_rate = v_tp / v_tot * 100 if v_tot else 0.0
+    r_rate = r_tp / r_tot * 100 if r_tot else 0.0
+    print(f"{label} ① 위반탐지율    {v_tp}/{v_tot} = {v_rate:.1f}%  <== 핵심 지표")
+    print(f"{label} ② 검토필요 격상율 {r_tp}/{r_tot} = {r_rate:.1f}%  (낮다고 꼭 나쁜 건 아님)")
+    if v_tot and v_tot < 30:
+        print(f"{label}    주의: 위반 표본이 {v_tot}건뿐이라 1건 = {100/v_tot:.1f}%p로 흔들린다")
+
 
 
 def write_result_xlsx(
@@ -696,13 +741,15 @@ def main():
         fn = sum(c["fn"] for c in pipeline_comparisons)
         fp = sum(c["fp"] for c in pipeline_comparisons)
         rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
-        print(f"② 나눠서:  정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 탐지율 {rate:.1f}%")
+        print(f"② 나눠서:  정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 합산탐지율 {rate:.1f}%")
+        _print_split_metrics(pipeline_comparisons, "②")
     if oneshot_comparisons:
         tp = sum(c["tp"] for c in oneshot_comparisons)
         fn = sum(c["fn"] for c in oneshot_comparisons)
         fp = sum(c["fp"] for c in oneshot_comparisons)
         rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
-        print(f"③ 한 방:   정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 탐지율 {rate:.1f}%")
+        print(f"③ 한 방:   정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 합산탐지율 {rate:.1f}%")
+        _print_split_metrics(oneshot_comparisons, "③")
 
 
 if __name__ == "__main__":
