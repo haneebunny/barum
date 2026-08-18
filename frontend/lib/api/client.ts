@@ -9,6 +9,7 @@ import type {
   RemediationResponse,
   GenerateRequest,
   GenerateResponse,
+  USPreflightReport,
 } from "./schema";
 
 export interface CheckAdInput {
@@ -334,6 +335,44 @@ export async function getRemediation(req: RemediationRequest): Promise<Remediati
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(`Failed to remediate: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
+}
+
+export interface CheckUSPreflightInput {
+  adText?: string;
+  image?: File;
+  ingredients?: string;
+  productName?: string;
+}
+
+export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<USPreflightReport> {
+  const url = `${getApiUrl()}/check/us-sunscreen`;
+  const formData = new FormData();
+  formData.append("country", "US");
+
+  if (input.adText) {
+    formData.append("ad_text", input.adText);
+  }
+  if (input.image) {
+    formData.append("image", input.image);
+  }
+  if (input.ingredients) {
+    formData.append("ingredients", input.ingredients);
+  }
+  if (input.productName) {
+    formData.append("product_name", input.productName);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`US preflight check failed: ${response.status} - ${errText}`);
   }
 
   return response.json();

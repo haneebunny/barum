@@ -236,3 +236,36 @@ export const GenerateResponseSchema = z.object({
   disclaimer: z.string(),
 });
 export type GenerateResponse = z.infer<typeof GenerateResponseSchema>;
+
+// ── 미국 프리플라이트 (POST /check/us-sunscreen) ──────────────────────────
+
+export const USPreflightCategorySchema = z.enum([
+  "OTC의약품_분류전환",
+  "미국_미승인_성분",
+  "성분정보_확인불가",
+]);
+export type USPreflightCategory = z.infer<typeof USPreflightCategorySchema>;
+
+export const USPreflightFindingSchema = z.object({
+  span: z.string(),
+  sentence: z.string(),
+  category: USPreflightCategorySchema,
+  explanation: z.string(),
+  location: LocationSchema,
+});
+export type USPreflightFinding = z.infer<typeof USPreflightFindingSchema>;
+
+export const USPreflightSummarySchema = z.object({
+  n_sentences: z.number(),
+  n_findings: z.number(),
+  counts_by_category: z.record(z.string(), z.number()),
+});
+export type USPreflightSummary = z.infer<typeof USPreflightSummarySchema>;
+
+export const USPreflightReportSchema = z.object({
+  findings: z.array(USPreflightFindingSchema),
+  summary: USPreflightSummarySchema,
+  result_id: z.string().nullable().optional(),
+  disclaimer: z.string(),
+});
+export type USPreflightReport = z.infer<typeof USPreflightReportSchema>;

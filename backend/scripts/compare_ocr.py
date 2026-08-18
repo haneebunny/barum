@@ -14,6 +14,7 @@
   11st_probe_cosmetic/read_test/ocr_comparison_result.xlsx
 """
 import argparse
+import collections
 import json
 import sys
 import time
@@ -88,8 +89,11 @@ def _build_oneshot_prompt(context: str) -> str:
     )
 
 
-def load_answer_key() -> dict[str, list[dict]]:
+def load_answer_key(label_xlsx: Path | None = None) -> dict[str, list[dict]]:
     """label_worksheet_reviewed.xlsx에서 정답 라벨을 읽는다 (하니 검수 완료본).
+
+    label_xlsx를 주면 그 파일을 쓴다(예: rule_sweep.py가 label_worksheet_combined.xlsx로
+    돌릴 때). 안 주면 모듈 전역 `_LABEL_XLSX`(CLI `--label-file`로 바뀔 수 있음)를 쓴다.
 
     L열("비비_최종판단")이 채워진 행(불일치 36건)은 그 값을 최종 정답으로 쓴다.
     L열 형식은 "검토필요 — 근거설명..." 처럼 자유텍스트라, 첫 대시(—) 앞 토큰만
@@ -98,16 +102,52 @@ def load_answer_key() -> dict[str, list[dict]]:
     영향 없음. compare_with_answer_key는 judgment만 본다).
     L열이 빈 행(나머지 204건)은 원래 E/F열(대수 1차 판정)이 그대로 정답이다.
 
-    반환: {이미지번호: [{sentence, judgment, violation_type}, ...]}
+    "검토필요_사유" 열이 있으면 그 값(형식: "분류 — 판단근거")에서 분류만 잘라 쓴다
+    (정보부족형/위반의심형, §2-1-5). "제외사유" 열이 있고 채워진 행은 채점 대상이
+    아니다. 화장품이 아닌 상품(잡화·도구)이라 화장품법 판정 자체가 성립 안 한다
+    (하니 확정 2026-08-18, §2-1-6). 행을 지우지 않고 컬럼으로 표시하는 방식이라
+    원본이 보존된다.
+
+    **두 열 다 헤더 이름으로 찾는다, 고정 열번호가 아니다.** label_worksheet_reviewed.xlsx
+    (§2 정답셋)는 스키마가 달라서 8번째 열이 "LLM_판정"이지 "제외사유"가 아니다 — 고정
+    번호(G=7·H=8)로 읽었다가 그 파일의 240문장이 전부 "제외됨"으로 잘못 처리되는 사고를
+    실제로 냈다(2026-08-18, be-ingredients-parsing 브랜치 로직을 포팅하며 발견). 헤더에
+    해당 이름이 없으면 그 정답셋엔 그 기능이 없는 것으로 보고 안전하게 건너뛴다.
+
+    반환: {이미지번호: [{sentence, judgment, violation_type, review_kind}, ...]}
     """
-    wb = openpyxl.load_workbook(_LABEL_XLSX)
+    wb = openpyxl.load_workbook(label_xlsx or _LABEL_XLSX)
     ws = wb["라벨링"]
+    headers = {str(ws.cell(1, c).value or "").strip(): c for c in range(1, ws.max_column + 1)}
+    review_kind_col = headers.get("검토필요_사유")
+    exclude_col = headers.get("제외사유")
+
     by_image: dict[str, list[dict]] = {}
+    n_excluded = 0
     for r in range(2, ws.max_row + 1):
         nn = str(ws.cell(r, 1).value or "").strip()
         sentence = str(ws.cell(r, 4).value or "").strip()
         judgment = str(ws.cell(r, 5).value or "").strip()
+        # G열 "검토필요_사유"는 "분류 — 판단근거" 형식이라 분류만 잘라 쓴다.
+        # 정보부족형: 데이터(전성분·인증서 등)를 주면 해소되는 것.
+        # 위반의심형: 데이터를 줘도 안 풀리는 것(일반수식어·절대적 표현 등).
+        review_kind = str(ws.cell(r, 7).value or "").split("—")[0].strip()
+        # H열 "제외사유"가 채워진 행은 채점 대상이 아니다. 화장품이 아닌 상품
+        # (잡화·도구)이라 화장품법 판정 자체가 성립 안 한다(하니 확정 2026-08-18).
+        # 컬럼이 없는 예전 정답셋에서도 돌아가야 하므로 빈칸이면 그냥 포함한다.
+        excluded = bool(str(ws.cell(r, 8).value or "").strip())
+        if excluded:
+            n_excluded += 1
+            continue
         vtype = str(ws.cell(r, 6).value or "").strip()
+        review_kind = (
+            str(ws.cell(r, review_kind_col).value or "").split("—")[0].strip()
+            if review_kind_col else ""
+        )
+        excluded = bool(exclude_col and str(ws.cell(r, exclude_col).value or "").strip())
+        if excluded:
+            n_excluded += 1
+            continue
 
         final = str(ws.cell(r, 12).value or "").strip()  # L열: 비비_최종판단
         if final:
@@ -119,8 +159,11 @@ def load_answer_key() -> dict[str, list[dict]]:
         by_image.setdefault(nn, []).append({
             "sentence": sentence,
             "judgment": judgment,
+            "review_kind": review_kind,
             "violation_type": vtype,
         })
+    if n_excluded:
+        print(f"  정답셋에서 {n_excluded}문장 제외(제외사유 기재분, 화장품 아닌 상품)")
     return by_image
 
 
@@ -302,6 +345,11 @@ def compare_with_answer_key(
     시스템이 위반으로 잡은 것 중 정답셋에서 합법/대상외인 것(오탐).
     """
     tp, fn, fp = 0, 0, 0
+    # 위반 라벨만 / 검토필요 라벨만 따로 집계(합산 탐지율의 왜곡을 피하려고)
+    v_tp = v_fn = r_tp = r_fn = 0
+    # 검토필요 하위분류별 집계(정보부족형 / 위반의심형)
+    by_kind_tp: collections.Counter = collections.Counter()
+    by_kind_fn: collections.Counter = collections.Counter()
     details = []
 
     # 정답 중 위반/검토필요인 문장
@@ -322,8 +370,18 @@ def compare_with_answer_key(
         matched = norm in found_normalized or any(
             norm in fn or fn in norm for fn in found_normalized
         )
+        # 라벨을 나눠 센다. "검토필요"는 상당수가 "근거를 확인 못 해 사람이 봐야 함"이라
+        # 근거를 제공하면 해소되는 게 정상인데, 합산 탐지율은 그 해소를 미탐으로 세서
+        # 개선할수록 점수가 나빠진다(2026-08-18 확인). 그래서 위반만 따로 본다.
+        is_violation = str(row["judgment"]).strip() == "위반"
+        kind = str(row.get("review_kind") or "").strip()
         if matched:
             tp += 1
+            if is_violation:
+                v_tp += 1
+            else:
+                r_tp += 1
+                by_kind_tp[kind] += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -333,6 +391,11 @@ def compare_with_answer_key(
             })
         else:
             fn += 1
+            if is_violation:
+                v_fn += 1
+            else:
+                r_fn += 1
+                by_kind_fn[kind] += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -359,9 +422,21 @@ def compare_with_answer_key(
             })
 
     detection_rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0.0
+    # ① 위반탐지율: 라벨이 "위반"인 문장만. 이게 핵심 지표다.
+    violation_rate = v_tp / (v_tp + v_fn) * 100 if (v_tp + v_fn) > 0 else 0.0
+    # ② 검토필요 격상율: 낮아지는 게 꼭 나쁜 건 아니다(근거로 해소된 경우 포함).
+    review_rate = r_tp / (r_tp + r_fn) * 100 if (r_tp + r_fn) > 0 else 0.0
 
     return {
         "method": method_name,
+        "violation_tp": v_tp,
+        "violation_fn": v_fn,
+        "violation_rate": violation_rate,
+        "review_tp": r_tp,
+        "review_fn": r_fn,
+        "review_by_kind_tp": dict(by_kind_tp),
+        "review_by_kind_fn": dict(by_kind_fn),
+        "review_rate": review_rate,
         "tp": tp,
         "fn": fn,
         "fp": fp,
@@ -372,6 +447,44 @@ def compare_with_answer_key(
 
 
 # ── 결과 엑셀 출력 ──
+
+
+def _print_split_metrics(comparisons: list, label: str) -> None:
+    """라벨을 나눈 지표를 출력한다.
+
+    합산 탐지율만 보면, 근거를 제공해 "검토필요"가 해소된 것까지 미탐으로 세서
+    개선할수록 점수가 나빠진다(2026-08-18 전성분 실험에서 확인). 그래서
+    ① 위반탐지율을 핵심 지표로 따로 낸다.
+    """
+    v_tp = sum(c["violation_tp"] for c in comparisons)
+    v_fn = sum(c["violation_fn"] for c in comparisons)
+    r_tp = sum(c["review_tp"] for c in comparisons)
+    r_fn = sum(c["review_fn"] for c in comparisons)
+    v_tot, r_tot = v_tp + v_fn, r_tp + r_fn
+    v_rate = v_tp / v_tot * 100 if v_tot else 0.0
+    r_rate = r_tp / r_tot * 100 if r_tot else 0.0
+    print(f"{label} ① 위반탐지율    {v_tp}/{v_tot} = {v_rate:.1f}%  <== 핵심 지표")
+    print(f"{label} ② 검토필요 격상율 {r_tp}/{r_tot} = {r_rate:.1f}%  (합산은 해석하지 말 것)")
+
+    # 검토필요는 하위분류로 나눠야 방향이 읽힌다.
+    # 정보부족형: 데이터를 주면 해소되는 게 정상이므로 격상율이 내려가는 게 개선.
+    # 위반의심형: 데이터로 안 풀리므로 격상율이 유지돼야 한다(내려가면 놓친 것).
+    tp_by = collections.Counter()
+    fn_by = collections.Counter()
+    for c in comparisons:
+        tp_by.update(c.get("review_by_kind_tp") or {})
+        fn_by.update(c.get("review_by_kind_fn") or {})
+    for kind, direction in (("정보부족형", "내려가야 개선"), ("위반의심형", "유지돼야 정상")):
+        tot = tp_by[kind] + fn_by[kind]
+        if not tot:
+            continue
+        rate = tp_by[kind] / tot * 100
+        print(f"{label}    - {kind} 격상율 {tp_by[kind]}/{tot} = {rate:.1f}%  ({direction})")
+
+    if v_tot and v_tot < 30:
+        print(f"{label}    주의: 위반 표본이 {v_tot}건뿐이라 퍼센트로 보지 말 것.")
+        print(f"{label}          15건 개별 회귀 체크리스트로 관리한다(하니 확정 2026-08-18).")
+
 
 
 def write_result_xlsx(
@@ -696,13 +809,15 @@ def main():
         fn = sum(c["fn"] for c in pipeline_comparisons)
         fp = sum(c["fp"] for c in pipeline_comparisons)
         rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
-        print(f"② 나눠서:  정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 탐지율 {rate:.1f}%")
+        print(f"② 나눠서:  정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 합산탐지율 {rate:.1f}%")
+        _print_split_metrics(pipeline_comparisons, "②")
     if oneshot_comparisons:
         tp = sum(c["tp"] for c in oneshot_comparisons)
         fn = sum(c["fn"] for c in oneshot_comparisons)
         fp = sum(c["fp"] for c in oneshot_comparisons)
         rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
-        print(f"③ 한 방:   정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 탐지율 {rate:.1f}%")
+        print(f"③ 한 방:   정탐 {tp} / 미탐 {fn} / 오탐 {fp} / 합산탐지율 {rate:.1f}%")
+        _print_split_metrics(oneshot_comparisons, "③")
 
 
 if __name__ == "__main__":

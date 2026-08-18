@@ -21,8 +21,8 @@
     },
     {
       "name": "frontend-win",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd frontend && npx next dev"],
       "port": 3000,
       "autoPort": true
     }
