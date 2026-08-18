@@ -1,48 +1,73 @@
 "use client";
 
 /**
- * 검사 이력 페이지 (v1.9 "Pro 이력 대시보드" + 이력 목록).
+ * 검사 이력 페이지.
  *
- * - Pro 현황 스트립: stat 타일 3개. non-Pro는 FR-14 잠금 티저(블러+자물쇠, 완전 숨김 아님)
+ * - Pro 현황 스트립: stat 타일 3개. non-Pro는 잠금 티저(블러+자물쇠, 완전 숨김 아님)
  * - Free 티어: 7일 이전 행 잠금 티저 (Basic부터 무제한 보관)
- * - 티어 스위처는 목업 전용(리포트 화면 FR-14 게이팅과 같은 데모 장치)
- * - 데이터: 이력 목록 API가 아직 없어 목데이터. API가 생기면 MOCK_HISTORY를
+ * - 티어 스위처는 목업 전용(데모 장치)
+ * - 데이터: mock을 StoredCheck 구조에 맞춤. API가 생기면 MOCK_HISTORY를
  *   GET /reports 목록 응답으로 교체하고 필터를 쿼리 파라미터로 옮긴다.
  */
 
 import Link from "next/link";
 import { useState } from "react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { useTier, type Tier } from "@/lib/tier";
+import type { Region } from "@/lib/api/schema";
 
-type Tier = "FREE" | "BASIC" | "PRO";
 type RowStatus = "review" | "done" | "draft";
 
-interface HistoryRow {
-  id: string;
-  name: string;
-  region: string;
+interface HistoryItem {
+  result_id: string;
+  created_at: string;
+  region: Region;
+  image_available: boolean;
+  product_name: string;
+  report: {
+    summary: {
+      n_violation: number;
+      n_needs_review: number;
+    };
+  };
   status: RowStatus;
-  nViolation: number;
-  nReview: number;
-  score: number | null; // 작성중이면 null
-  dateLabel: string;
-  daysAgo: number;
-  href: string;
+  score: number | null;
 }
 
-// 목데이터 (실측 아님, 데모용)
-const MOCK_HISTORY: HistoryRow[] = [
-  { id: "h1", name: "글로우 세럼 · 미국 상세페이지", region: "해외 · 미국", status: "review", nViolation: 1, nReview: 1, score: 62, dateLabel: "오늘", daysAgo: 0, href: "/report/demo-id-1" },
-  { id: "h2", name: "수분 크림 리뉴얼 상세페이지", region: "국내", status: "done", nViolation: 0, nReview: 0, score: 98, dateLabel: "2일 전", daysAgo: 2, href: "/report/demo-id-2" },
-  { id: "h3", name: "선크림 SPF50 신제품", region: "해외 · 미국·EU", status: "draft", nViolation: 0, nReview: 0, score: null, dateLabel: "어제", daysAgo: 1, href: "/inspect?id=demo-id-3" },
-  { id: "h4", name: "탄력 앰플 SNS 광고 문구", region: "국내", status: "review", nViolation: 2, nReview: 1, score: 41, dateLabel: "4일 전", daysAgo: 4, href: "/report/demo-id-1" },
-  { id: "h5", name: "클렌징 폼 상세페이지 v2", region: "국내", status: "done", nViolation: 0, nReview: 0, score: 95, dateLabel: "6일 전", daysAgo: 6, href: "/report/demo-id-2" },
-  { id: "h6", name: "미백 크림 패키지 문구", region: "국내", status: "review", nViolation: 1, nReview: 0, score: 70, dateLabel: "8월 5일", daysAgo: 10, href: "/report/demo-id-1" },
-  { id: "h7", name: "진정 토너 상세페이지", region: "국내", status: "done", nViolation: 0, nReview: 0, score: 100, dateLabel: "8월 1일", daysAgo: 14, href: "/report/demo-id-2" },
-  { id: "h8", name: "아이크림 리뉴얼 초안", region: "해외 · 미국", status: "done", nViolation: 0, nReview: 0, score: 88, dateLabel: "7월 28일", daysAgo: 18, href: "/report/demo-id-2" },
+const REGION_LABEL: Record<Region, string> = { KR: "국내", US: "해외 · 미국" };
+
+function daysAgo(created_at: string): number {
+  const diff = Date.now() - new Date(created_at).getTime();
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+}
+
+function dateLabel(created_at: string): string {
+  const d = daysAgo(created_at);
+  if (d === 0) return "오늘";
+  if (d === 1) return "어제";
+  if (d < 7) return `${d}일 전`;
+  if (d < 14) return "1주 전";
+  if (d < 21) return "2주 전";
+  return new Date(created_at).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+}
+
+function isoDate(daysBack: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return d.toISOString();
+}
+
+const MOCK_HISTORY: HistoryItem[] = [
+  { result_id: "demo-id-1", created_at: isoDate(0), region: "US", image_available: true, product_name: "글로우 세럼 · 미국 상세페이지", report: { summary: { n_violation: 1, n_needs_review: 1 } }, status: "review", score: 62 },
+  { result_id: "demo-id-2", created_at: isoDate(2), region: "KR", image_available: true, product_name: "수분 크림 리뉴얼 상세페이지", report: { summary: { n_violation: 0, n_needs_review: 0 } }, status: "done", score: 98 },
+  { result_id: "demo-id-3", created_at: isoDate(1), region: "US", image_available: false, product_name: "선크림 SPF50 신제품", report: { summary: { n_violation: 0, n_needs_review: 0 } }, status: "draft", score: null },
+  { result_id: "demo-id-4", created_at: isoDate(4), region: "KR", image_available: true, product_name: "탄력 앰플 SNS 광고 문구", report: { summary: { n_violation: 2, n_needs_review: 1 } }, status: "review", score: 41 },
+  { result_id: "demo-id-5", created_at: isoDate(6), region: "KR", image_available: true, product_name: "클렌징 폼 상세페이지 v2", report: { summary: { n_violation: 0, n_needs_review: 0 } }, status: "done", score: 95 },
+  { result_id: "demo-id-6", created_at: isoDate(10), region: "KR", image_available: true, product_name: "미백 크림 패키지 문구", report: { summary: { n_violation: 1, n_needs_review: 0 } }, status: "review", score: 70 },
+  { result_id: "demo-id-7", created_at: isoDate(14), region: "KR", image_available: true, product_name: "진정 토너 상세페이지", report: { summary: { n_violation: 0, n_needs_review: 0 } }, status: "done", score: 100 },
+  { result_id: "demo-id-8", created_at: isoDate(18), region: "US", image_available: true, product_name: "아이크림 리뉴얼 초안", report: { summary: { n_violation: 0, n_needs_review: 0 } }, status: "done", score: 88 },
 ];
 
-// Pro 현황 타일 (목데이터, 실측 아님)
 const MOCK_STATS = [
   { value: "24", unit: "건", label: "이번 달 검사", sub: "지난달 대비 +6건" },
   { value: "9", unit: "건", label: "위반 검출", sub: "검토필요 별도 4건", crit: true },
@@ -56,7 +81,6 @@ const STATUS_META: Record<RowStatus, { label: string; crit: boolean }> = {
 };
 
 function StatusIcon({ status }: { status: RowStatus }) {
-  // 상태는 색이 아니라 모양으로도 구분: 경고삼각 / 체크 / 연필
   if (status === "review") {
     return (
       <svg className="w-3.25 h-3.25 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
@@ -103,27 +127,31 @@ const PERIOD_FILTERS = [
 ] as const;
 
 export default function HistoryPage() {
-  const [tier, setTier] = useState<Tier>("FREE");
+  const { tier, setTier } = useTier();
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState<(typeof REGION_FILTERS)[number]>("전체");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
   const [period, setPeriod] = useState<number>(9999);
 
   const rows = MOCK_HISTORY.filter(row => {
-    if (query && !row.name.includes(query.trim())) return false;
-    if (region !== "전체" && !row.region.startsWith(region)) return false;
+    if (query && !row.product_name.includes(query.trim())) return false;
+    const rl = REGION_LABEL[row.region];
+    if (region !== "전체" && !rl.startsWith(region)) return false;
     if (status !== "all" && row.status !== status) return false;
-    if (row.daysAgo > period) return false;
+    if (daysAgo(row.created_at) > period) return false;
     return true;
   });
 
-  const isLockedRow = (row: HistoryRow) => tier === "FREE" && row.daysAgo > 7;
+  const isLockedRow = (row: HistoryItem) => tier === "Free" && daysAgo(row.created_at) > 7;
   const filterPill = (active: boolean) =>
     `font-mono text-[11px] p-[4px_9px] border cursor-pointer transition-all duration-[120ms] ${
       active
         ? "border-[var(--ink-3)] text-[var(--ink)] bg-[var(--nav-active-bg)] font-bold"
         : "border-[var(--line-2)] text-[var(--ink-3)] bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
     }`;
+
+  const rowHref = (row: HistoryItem) =>
+    row.status === "draft" ? `/inspect?id=${row.result_id}` : `/report/${row.result_id}`;
 
   return (
     <>
@@ -132,10 +160,9 @@ export default function HistoryPage() {
         <div className="flex items-center gap-3">
           <h1 className="m-0 text-[var(--ink)] text-[22px] font-extrabold tracking-[-0.5px]">검사 이력</h1>
           <span className="font-mono text-[11px] text-[var(--ink-3)]">총 {MOCK_HISTORY.length}건 · 최근 30일</span>
-          {/* 목업 전용 티어 스위처 (리포트 화면 FR-14 데모 장치와 동일 목적) */}
           <span className="ml-auto inline-flex items-center gap-[6px] font-mono text-[10.5px] text-[var(--ink-3)]">
             티어 미리보기
-            {(["FREE", "BASIC", "PRO"] as Tier[]).map(t => (
+            {(["Free", "Basic", "Pro"] as Tier[]).map(t => (
               <button key={t} type="button" onClick={() => setTier(t)} className={filterPill(tier === t)}>
                 {t}
               </button>
@@ -144,10 +171,10 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* Pro 현황 스트립: stat 타일 3개. non-Pro는 잠금 티저(블러, 완전 숨김 아님) */}
+      {/* Pro 현황 스트립 */}
       <div className="p-[14px_22px_4px]">
         <div className="relative">
-          <div className={`grid grid-cols-3 border border-[var(--line-2)] bg-[var(--surface)] ${tier === "PRO" ? "" : "blur-[3px] select-none pointer-events-none"}`} aria-hidden={tier !== "PRO"}>
+          <div className={`grid grid-cols-3 border border-[var(--line-2)] bg-[var(--surface)] ${tier === "Pro" ? "" : "blur-[3px] select-none pointer-events-none"}`} aria-hidden={tier !== "Pro"}>
             {MOCK_STATS.map((s, i) => (
               <div key={s.label} className={`p-[16px_20px] ${i < 2 ? "border-r border-[var(--line)]" : ""}`}>
                 <div className={`text-[24px] font-mono font-bold [font-variant-numeric:tabular-nums] ${s.crit ? "text-[var(--crit)]" : "text-[var(--ink)]"}`}>
@@ -159,7 +186,7 @@ export default function HistoryPage() {
               </div>
             ))}
           </div>
-          {tier !== "PRO" && (
+          {tier !== "Pro" && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-[var(--ink-2)] text-[12.5px] font-semibold">
               <LockIcon />
               전체 검사 현황 대시보드는 Pro에서 제공됩니다
@@ -214,16 +241,21 @@ export default function HistoryPage() {
         {rows.map(row => {
           const meta = STATUS_META[row.status];
           const locked = isLockedRow(row);
+          const rl = REGION_LABEL[row.region];
+          const nV = row.report.summary.n_violation;
+          const nR = row.report.summary.n_needs_review;
+          const dl = dateLabel(row.created_at);
+
           if (locked) {
             return (
-              <div key={row.id} className="relative border border-[var(--line)] bg-[var(--surface)] mb-[7px]">
+              <div key={row.result_id} className="relative border border-[var(--line)] bg-[var(--surface)] mb-[7px]">
                 <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-[13px] p-[11px_14px] blur-[3px] select-none" aria-hidden="true">
-                  <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">{row.name}</span>
-                  <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">{row.region}</span>
+                  <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">{row.product_name}</span>
+                  <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">{rl}</span>
                   <span className="text-[11.5px] p-[2px_9px] border border-[var(--line-2)] text-[var(--ink-2)]">{meta.label}</span>
                   <span className="font-mono text-[11px] text-[var(--ink-3)]">점수 --</span>
                   <span className="font-mono text-[11px] text-[var(--ink-3)]">리포트</span>
-                  <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">{row.dateLabel}</span>
+                  <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">{dl}</span>
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center gap-2 text-[var(--ink-2)] text-[12px] font-semibold">
                   <LockIcon />
@@ -237,12 +269,12 @@ export default function HistoryPage() {
           }
           return (
             <Link
-              key={row.id}
-              href={row.href}
+              key={row.result_id}
+              href={rowHref(row)}
               className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-[13px] border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] mb-[7px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]"
             >
-              <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">{row.name}</span>
-              <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">{row.region}</span>
+              <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">{row.product_name}</span>
+              <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">{rl}</span>
               <span
                 className={`inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border whitespace-nowrap ${
                   meta.crit
@@ -253,13 +285,13 @@ export default function HistoryPage() {
                 <StatusIcon status={row.status} />
                 {meta.label}
               </span>
-              <span className={`font-mono text-[11px] whitespace-nowrap [font-variant-numeric:tabular-nums] ${row.nViolation > 0 ? "text-[var(--crit)] font-bold" : "text-[var(--ink-3)]"}`}>
-                {row.status === "draft" ? "검사 전" : `위반 ${row.nViolation} · 검토 ${row.nReview}`}
+              <span className={`font-mono text-[11px] whitespace-nowrap [font-variant-numeric:tabular-nums] ${nV > 0 ? "text-[var(--crit)] font-bold" : "text-[var(--ink-3)]"}`}>
+                {row.status === "draft" ? "검사 전" : `위반 ${nV} · 검토 ${nR}`}
               </span>
               <span className="font-mono text-[11px] text-[var(--ink-2)] whitespace-nowrap [font-variant-numeric:tabular-nums]">
                 {row.score === null ? "점수 --" : `점수 ${row.score}점`}
               </span>
-              <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap text-right min-w-[52px]">{row.dateLabel}</span>
+              <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap text-right min-w-[52px]">{dl}</span>
             </Link>
           );
         })}
@@ -267,7 +299,7 @@ export default function HistoryPage() {
 
       {/* 하단 안내 */}
       <div className="p-[4px_22px_18px] font-mono text-[10.5px] text-[var(--ink-3)]">
-        {tier === "FREE" ? "Free는 최근 7일 이력만 보관됩니다" : "이력 무제한 보관 중"} · 행을 누르면 리포트로 이동
+        {tier === "Free" ? "Free는 최근 7일 이력만 보관됩니다" : "이력 무제한 보관 중"} · 행을 누르면 리포트로 이동
       </div>
 
       <PageFooter />

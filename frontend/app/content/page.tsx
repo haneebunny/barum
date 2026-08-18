@@ -8,6 +8,7 @@ import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount,
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
 
 interface ContentMockData {
   productName: string;
@@ -103,12 +104,37 @@ function getRemediationProposal(violationType: string, span: string): string {
   return "순화된 표현 권고";
 }
 
+function UpgradeCard({ title, desc, children }: { title: string; desc: string; children?: React.ReactNode }) {
+  return (
+    <div className="p-[18px_20px]">
+      <div className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[32px_24px] flex flex-col items-center gap-3 text-center">
+        <svg className="w-8 h-8 text-[var(--ink-3)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+          <rect x={5} y={11} width={14} height={9} />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+        <p className="m-0 text-[14px] font-bold text-[var(--ink)]">{title}</p>
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[44ch]">{desc}</p>
+        {children}
+        <Link
+          href="/#pricing"
+          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+        >
+          요금제 보기 <span className="font-mono">→</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function ContentGeneratorContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const id = searchParams.get("id") || "";
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
+
+  const { tier, setTier } = useTier();
+  const { remaining, consume, resetWithAd } = useImproveQuota();
 
   const [report, setReport] = useState<CheckReport | null>(null);
   const [loading, setLoading] = useState(!!id);
@@ -352,6 +378,7 @@ function ContentGeneratorContent() {
           certifications: [],
         });
       }
+      if (mode === "improve" && tier === "Free") consume();
       setGenResult(res);
       setIsGenerated(true);
     } catch (err) {
@@ -535,7 +562,49 @@ function ContentGeneratorContent() {
         <span className="text-[var(--ink-3)] text-[10px]">
           {mode === "create" ? "새로 만들기 모드" : id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
         </span>
+        <span className="ml-auto inline-flex items-center gap-[6px] font-mono text-[10.5px] text-[var(--ink-3)]">
+          티어 미리보기
+          {(["Free", "Basic", "Pro"] as Tier[]).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTier(t)}
+              className={`font-mono text-[11px] p-[4px_9px] border cursor-pointer transition-all duration-[120ms] ${
+                tier === t
+                  ? "border-[var(--ink-3)] text-[var(--ink)] bg-[var(--nav-active-bg)] font-bold"
+                  : "border-[var(--line-2)] text-[var(--ink-3)] bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </span>
       </div>
+
+      {/* 티어 게이팅 */}
+      {mode === "create" && tier !== "Pro" ? (
+        <UpgradeCard
+          title="콘텐츠 생성은 Pro에서 이용 가능합니다"
+          desc="제품 정보를 입력하면 화장품법을 준수하는 상세페이지 초안을 자동으로 만들어줍니다. Pro 요금제에서 월 5회까지 사용할 수 있어요."
+        />
+      ) : mode === "improve" && tier === "Free" && remaining <= 0 ? (
+        <UpgradeCard
+          title="무료 체험 1회를 모두 사용했습니다"
+          desc="수정 권고안 기반 콘텐츠 개선은 Basic부터 무제한으로 이용할 수 있어요."
+        >
+          <button
+            type="button"
+            onClick={resetWithAd}
+            className="font-sans text-[12px] font-semibold p-[8px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5 transition-all duration-[120ms]"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+              <polygon points="6,4 20,12 6,20" />
+            </svg>
+            광고 보고 1회 추가 사용
+          </button>
+        </UpgradeCard>
+      ) : (
+      <>
 
       {/* 입력 요약 / create 모드 입력 폼 */}
       {mode === "create" ? (
@@ -970,6 +1039,9 @@ function ContentGeneratorContent() {
           </div>
         )}
       </div>
+
+      </>
+      )}
 
       <PageFooter />
 
