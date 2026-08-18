@@ -139,5 +139,6 @@ html[data-nav="collapsed"] .app-side-expanded-only {
 
 .font-mono,
 [class*="font-mono"] {
+  font-family: var(--mono);
   font-weight: 600;
 }
