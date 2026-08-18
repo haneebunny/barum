@@ -56,16 +56,29 @@ def test_antiaging_with_elasticity_is_needs_review_not_legal():
     assert m.span == "안티에이징"
 
 
-def test_procedure_context_makes_soothing_violation():
-    """'시술 후 진정'은 진정 단독과 달리 위반 — 시술이 먼저 hit한다.
+def test_procedure_alone_is_not_violation():
+    """'시술 후 진정'은 이제 위반이 아니다(2026-08-18 정정).
 
-    진정은 실증대상(검토필요)이나 '시술'이 의료맥락이라 위반이다(§3 ④ 경계).
-    우선순위 스캔(violation > needs_review)으로 시술이 진정보다 먼저 걸린다.
+    옛 규칙은 "시술 동반이면 진정보다 시술이 먼저 걸려 위반"이었는데, 정답셋에
+    "시술 후 예민해진 피부 진정에 도움이 필요하신 분"이 합법으로 확정돼 있어
+    오탐이었다. type_1_drug_misperception.md '시술 vs 치료' 확정규칙("시술"은
+    구체적 시술명 없이 맥락으로만 쓰이면 중립)과도 맞다. "시술"을 문맥예외로
+    돌려 메디컬·피부과 같은 구체적 주체가 없으면 위반 아니게 했다. 다만 "진정"
+    자체는 여전히 검토필요 대상이라(§2 실증대상), 완전한 합법이 아니라
+    needs_review로 남는다 — 위반보다는 개선이다.
     """
     m = match_rule("시술 후 예민해진 피부를 진정")
     assert m is not None
-    assert m.outcome == RuleOutcome.violation
-    assert m.span == "시술"
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.span == "진정"
+
+
+def test_medical_procedure_context_is_still_violation():
+    """'메디컬시술'·'피부과시술'처럼 구체적 주체가 붙으면 위반을 유지한다(하니 확정)."""
+    for s in ["메디컬시술로 관리된 피부", "피부과시술 전후 케어에 좋은 크림"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.violation, s
 
 
 def test_normalization_matches_across_spaces():
@@ -88,12 +101,21 @@ def test_synonym_detox_maps_to_haedok():
     assert m.violation_type == ViolationType.type_1_drug_misperception
 
 
-def test_synonym_trouble_maps_to_acne():
-    """'트러블'은 대표어 '여드름'의 동의어 — violation hit."""
-    m = match_rule("트러블 피부를 위한 솔루션")
+def test_synonym_trouble_alone_is_not_violation():
+    """'트러블'은 이제 단독으로는 위반이 아니다(2026-08-18 정정).
+
+    정답셋 "★피부 트러블로 인한 경우 반품 불가"(반품정책 문구, 효능주장 아님)가
+    여드름의 동의어로 오탐 났다. "여드름"의 동의어 3개(트러블·피부트러블·뾰루지)
+    전부 문맥예외로 돌려, "치료"급 단어가 같이 있을 때만 위반으로 올린다.
+    """
+    assert match_rule("트러블 피부를 위한 솔루션") is None
+
+
+def test_synonym_trouble_with_treatment_claim_is_violation():
+    """'치료'급 단어가 같이 있으면 트러블 계열도 위반을 유지한다."""
+    m = match_rule("트러블을 치료하는 솔루션")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
-    assert m.span == "여드름"
 
 
 def test_synonym_healing_maps_to_treatment():
