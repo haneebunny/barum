@@ -14,6 +14,7 @@
   11st_probe_cosmetic/read_test/ocr_comparison_result.xlsx
 """
 import argparse
+import collections
 import json
 import sys
 import time
@@ -107,6 +108,10 @@ def load_answer_key() -> dict[str, list[dict]]:
         nn = str(ws.cell(r, 1).value or "").strip()
         sentence = str(ws.cell(r, 4).value or "").strip()
         judgment = str(ws.cell(r, 5).value or "").strip()
+        # G열 "검토필요_사유"는 "분류 — 판단근거" 형식이라 분류만 잘라 쓴다.
+        # 정보부족형: 데이터(전성분·인증서 등)를 주면 해소되는 것.
+        # 위반의심형: 데이터를 줘도 안 풀리는 것(일반수식어·절대적 표현 등).
+        review_kind = str(ws.cell(r, 7).value or "").split("—")[0].strip()
         vtype = str(ws.cell(r, 6).value or "").strip()
 
         final = str(ws.cell(r, 12).value or "").strip()  # L열: 비비_최종판단
@@ -119,6 +124,7 @@ def load_answer_key() -> dict[str, list[dict]]:
         by_image.setdefault(nn, []).append({
             "sentence": sentence,
             "judgment": judgment,
+            "review_kind": review_kind,
             "violation_type": vtype,
         })
     return by_image
@@ -304,6 +310,9 @@ def compare_with_answer_key(
     tp, fn, fp = 0, 0, 0
     # 위반 라벨만 / 검토필요 라벨만 따로 집계(합산 탐지율의 왜곡을 피하려고)
     v_tp = v_fn = r_tp = r_fn = 0
+    # 검토필요 하위분류별 집계(정보부족형 / 위반의심형)
+    by_kind_tp: collections.Counter = collections.Counter()
+    by_kind_fn: collections.Counter = collections.Counter()
     details = []
 
     # 정답 중 위반/검토필요인 문장
@@ -328,12 +337,14 @@ def compare_with_answer_key(
         # 근거를 제공하면 해소되는 게 정상인데, 합산 탐지율은 그 해소를 미탐으로 세서
         # 개선할수록 점수가 나빠진다(2026-08-18 확인). 그래서 위반만 따로 본다.
         is_violation = str(row["judgment"]).strip() == "위반"
+        kind = str(row.get("review_kind") or "").strip()
         if matched:
             tp += 1
             if is_violation:
                 v_tp += 1
             else:
                 r_tp += 1
+                by_kind_tp[kind] += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -347,6 +358,7 @@ def compare_with_answer_key(
                 v_fn += 1
             else:
                 r_fn += 1
+                by_kind_fn[kind] += 1
             details.append({
                 "sentence": row["sentence"],
                 "human": row["judgment"],
@@ -385,6 +397,8 @@ def compare_with_answer_key(
         "violation_rate": violation_rate,
         "review_tp": r_tp,
         "review_fn": r_fn,
+        "review_by_kind_tp": dict(by_kind_tp),
+        "review_by_kind_fn": dict(by_kind_fn),
         "review_rate": review_rate,
         "tp": tp,
         "fn": fn,
@@ -413,9 +427,26 @@ def _print_split_metrics(comparisons: list, label: str) -> None:
     v_rate = v_tp / v_tot * 100 if v_tot else 0.0
     r_rate = r_tp / r_tot * 100 if r_tot else 0.0
     print(f"{label} ① 위반탐지율    {v_tp}/{v_tot} = {v_rate:.1f}%  <== 핵심 지표")
-    print(f"{label} ② 검토필요 격상율 {r_tp}/{r_tot} = {r_rate:.1f}%  (낮다고 꼭 나쁜 건 아님)")
+    print(f"{label} ② 검토필요 격상율 {r_tp}/{r_tot} = {r_rate:.1f}%  (합산은 해석하지 말 것)")
+
+    # 검토필요는 하위분류로 나눠야 방향이 읽힌다.
+    # 정보부족형: 데이터를 주면 해소되는 게 정상이므로 격상율이 내려가는 게 개선.
+    # 위반의심형: 데이터로 안 풀리므로 격상율이 유지돼야 한다(내려가면 놓친 것).
+    tp_by = collections.Counter()
+    fn_by = collections.Counter()
+    for c in comparisons:
+        tp_by.update(c.get("review_by_kind_tp") or {})
+        fn_by.update(c.get("review_by_kind_fn") or {})
+    for kind, direction in (("정보부족형", "내려가야 개선"), ("위반의심형", "유지돼야 정상")):
+        tot = tp_by[kind] + fn_by[kind]
+        if not tot:
+            continue
+        rate = tp_by[kind] / tot * 100
+        print(f"{label}    - {kind} 격상율 {tp_by[kind]}/{tot} = {rate:.1f}%  ({direction})")
+
     if v_tot and v_tot < 30:
-        print(f"{label}    주의: 위반 표본이 {v_tot}건뿐이라 1건 = {100/v_tot:.1f}%p로 흔들린다")
+        print(f"{label}    주의: 위반 표본이 {v_tot}건뿐이라 퍼센트로 보지 말 것.")
+        print(f"{label}          15건 개별 회귀 체크리스트로 관리한다(하니 확정 2026-08-18).")
 
 
 
