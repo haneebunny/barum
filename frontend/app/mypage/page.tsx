@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { useTier } from "@/lib/tier";
 
 interface FeatItem {
   text: string;
@@ -74,7 +75,7 @@ const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
 };
 
 export default function MyPage() {
-  const [tier, set_tier] = useState<"Free" | "Basic" | "Pro">("Basic");
+  const { tier, setTier } = useTier();
   const [is_compare_modal_open, set_is_compare_modal_open] = useState(false);
 
   const compare_btn_ref = useRef<HTMLButtonElement>(null);
@@ -103,7 +104,7 @@ export default function MyPage() {
                     ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold"
                     : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                 }`}
-                onClick={() => set_tier(t)}
+                onClick={() => setTier(t)}
               >
                 {t}
               </button>
