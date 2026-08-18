@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <div className={collapsed ? "contents" : "flex items-center max-[900px]:contents"}>
                   <Link href="/home" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                     collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "flex-1 gap-[11px] p-[9px_11px]"
-                  } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 ${
+                  } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${
                     pathname === "/home"
                       ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
                       : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
@@ -168,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
                 <Link href="/history" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                   collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
-                } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 ${
+                } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${
                   pathname === "/history"
                     ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
                     : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
@@ -180,7 +180,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
                 <Link href="/mypage" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${
                   collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
-                } max-[900px]:flex-col max-[900px]:items-center max-[900px]:w-auto max-[900px]:p-2 max-[900px]:gap-1 ${
+                } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${
                   pathname === "/mypage"
                     ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
                     : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
