@@ -36,6 +36,7 @@ _READ_TEST = Path("11st_probe_cosmetic/read_test")
 _IMAGES_DIR = _READ_TEST / "images"
 _ANSWER_KEY = _READ_TEST / "_llm_answer_key.json"
 _LABEL_XLSX = _READ_TEST / "label_worksheet_reviewed.xlsx"  # 하니 검수 완료본(2026-08-13, §2 재측정)
+_INGREDIENTS_MAP = _READ_TEST / "ingredients_map.json"  # nn -> 전성분(11/53만 확보, §2-1-4 부분반영)
 _OUT_XLSX = _READ_TEST / "ocr_comparison_result.xlsx"
 
 # "비비_최종판단"(L열) 값 형식: "검토필요 — 근거설명..." 처럼 대시 앞이 판정 라벨이다.
@@ -128,16 +129,31 @@ def load_images() -> list[dict]:
     return json.loads(_ANSWER_KEY.read_text(encoding="utf-8"))
 
 
+def load_ingredients_map() -> dict[str, str]:
+    """ingredients_map.json에서 nn -> 전성분 문자열만 뽑는다(11/53, `scripts/check_ingredients_coverage.py` 산출물).
+
+    나머지 42개는 값이 없거나 null이라 dict에 안 들어간다 -> ingredients=None으로 기존과 동일하게 처리됨.
+    """
+    if not _INGREDIENTS_MAP.exists():
+        return {}
+    raw = json.loads(_INGREDIENTS_MAP.read_text(encoding="utf-8"))
+    return {nn: v["ingredients"] for nn, v in raw.items() if v.get("ingredients")}
+
+
 # ── ② 현 파이프라인 (나눠서) ──
 
 
-def run_pipeline_method(image_meta: dict, ocr_vlm, judge) -> dict:
+def run_pipeline_method(image_meta: dict, ocr_vlm, judge, ingredients_map: dict[str, str] | None = None) -> dict:
     """② 현 파이프라인으로 한 이미지를 처리한다.
+
+    ingredients_map: nn -> 전성분 문자열(`load_ingredients_map()`). 있는 이미지만 2호 판정에
+    성분 대조가 붙는다(11/53, §2-1-4 부분반영 — 나머지는 기존처럼 ingredients=None).
 
     반환: {findings: [{sentence, violation_type, flag}], elapsed, tokens_before, tokens_after}
     """
     img_path = _IMAGES_DIR / image_meta["png"]
     image_bytes = img_path.read_bytes()
+    ingredients = (ingredients_map or {}).get(image_meta["nn"])
 
     tokens_before = getattr(ocr_vlm, "total_tokens", 0)
     t0 = time.time()
@@ -149,6 +165,7 @@ def run_pipeline_method(image_meta: dict, ocr_vlm, judge) -> dict:
         image_filename=image_meta["png"],
         vlm=ocr_vlm,
         judge=judge,
+        ingredients=ingredients,
         verbose=False,
     )
 
@@ -609,12 +626,14 @@ def main():
         ocr_vlm = get_vlm(args.ocr_provider)
         judge_vlm = get_vlm(args.judge_provider)
         judge = RagJudge(judge_vlm)
+        ingredients_map = load_ingredients_map()
+        print(f"  전성분 반영: {len(ingredients_map)}/{len(images)}장 (나머지는 기존처럼 ingredients=None)")
 
         total_elapsed = 0.0
         for img in images:
             nn = img["nn"]
             print(f"  [{nn}] {img['png']}...", end=" ", flush=True)
-            result = run_pipeline_method(img, ocr_vlm, judge)
+            result = run_pipeline_method(img, ocr_vlm, judge, ingredients_map)
             result["nn"] = nn
             pipeline_results.append(result)
             total_elapsed += result["elapsed"]
