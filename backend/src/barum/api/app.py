@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
+from barum.judge.us_sunscreen import USSunscreenJudge
 from barum.models import (
     CheckReport,
     GenerateRequest,
@@ -19,11 +20,12 @@ from barum.models import (
     RemediationRequest,
     RemediationResponse,
     StoredCheck,
+    USPreflightReport,
 )
 from barum.generate.content import generate_content
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
-from barum.pipeline import run_check
+from barum.pipeline import run_check, run_us_sunscreen_check
 from barum.storage.checks_store import (
     build_check_row,
     download_image,
@@ -230,6 +232,52 @@ async def check(
         product_name=product_name,
     )
     return report
+
+
+@app.post("/check/us-sunscreen", response_model=USPreflightReport)
+async def check_us_sunscreen(
+    country: str = Form(
+        "US", description="대상국. 1차 대상국은 미국만 지원(팀 확정). 다른 값은 400."
+    ),
+    ad_text: str | None = Form(None),
+    image: UploadFile | None = File(None),
+    ingredients: str | None = Form(
+        None, description="전성분(콤마 구분). 있으면 미국 승인 자외선차단 성분 대조가 붙는다."
+    ),
+    product_name: str | None = Form(
+        None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
+    ),
+) -> USPreflightReport:
+    """미국 프리플라이트(자외선차단 최소보장) 검사. 국내 `/check`와 별도 엔드포인트(팀 확정).
+
+    위반/합법 판정이 아니라 "화장품→OTC의약품 분류전환" 안내다(USPreflightCategory 참조).
+    country는 프론트가 넘기되 지금은 미국만 실동작(`sunscreen_otc_classification.md` 스코프).
+    이미지·글 중 최소 하나는 있어야 한다.
+    """
+    if country != "US":
+        raise HTTPException(
+            status_code=400,
+            detail=f"현재는 미국(US) 프리플라이트만 지원합니다. 받은 값: {country!r}",
+        )
+
+    image_bytes = await image.read() if image is not None else None
+    if not ad_text and not image_bytes:
+        raise HTTPException(
+            status_code=422,
+            detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
+        )
+
+    ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
+
+    return run_us_sunscreen_check(
+        ad_text=ad_text,
+        image_bytes=image_bytes,
+        image_filename=image.filename if image is not None else None,
+        vlm=ocr_vlm,
+        judge=USSunscreenJudge(),
+        ingredients=ingredients,
+        product_name=product_name,
+    )
 
 
 @app.post("/remediate", response_model=RemediationResponse)

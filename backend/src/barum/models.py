@@ -153,6 +153,53 @@ class CheckReport(BaseModel):
     basis: RegulatoryBasis | None = None
 
 
+# ── 미국 프리플라이트 (자외선차단 최소보장, 기획서 v1.6) ──────────────────────
+
+
+class USPreflightCategory(str, Enum):
+    """미국 프리플라이트 지적 갈래. 국내 ViolationType/JudgmentFlag와 다른 개념이다 —
+    법 위반이 아니라 화장품→OTC의약품 규제 카테고리 전환 안내다(팀 확정 2026-08-18,
+    reference/cosmetic_us/sunscreen_otc_classification.md §0).
+    """
+
+    otc_reclassification = "OTC의약품_분류전환"  # SPF/자외선차단 표현 자체가 트리거
+    unapproved_ingredient = "미국_미승인_성분"  # 성분이 미국 승인 목록에 없음
+    ingredient_info_missing = "성분정보_확인불가"  # 전성분 정보가 없어 성분 대조를 못함
+
+
+class USPreflightFinding(BaseModel):
+    """미국 프리플라이트 지적 하나. 국내 Finding과 필드는 비슷하지만 violation_type/flag
+    대신 category를 쓴다(위반이 아니므로). 국내 Finding과 절대 섞지 않는다.
+    """
+
+    span: str  # 지목된 표현(SPF 문구) 또는 성분명
+    sentence: str  # span이 속한 원문 문장. 성분 트리거는 전성분 원문 표기 그대로
+    category: USPreflightCategory
+    explanation: str  # 왜 이 카테고리로 잡혔는지 사람이 읽는 설명
+    location: Location
+
+
+class USPreflightSummary(BaseModel):
+    """미국 프리플라이트 리포트 상단 요약."""
+
+    n_sentences: int
+    n_findings: int
+    counts_by_category: dict[str, int] = Field(default_factory=dict)
+
+
+class USPreflightReport(BaseModel):
+    """미국 프리플라이트 검사 응답. 국내 CheckReport와 별도 엔드포인트·별도 스키마(팀 확정).
+
+    disclaimer: 리포트 하단 각주. 확정 안 된 규제 변경 리스크(OTC000008 등)는 개별
+    finding으로 안 만들고 여기 각주로만 담기로 확정함(sunscreen_otc_classification.md §4).
+    """
+
+    findings: list[USPreflightFinding]
+    summary: USPreflightSummary
+    result_id: str | None = None
+    disclaimer: str
+
+
 class StoredCheck(BaseModel):
     """`GET /reports/{result_id}` 응답 (다시 보기).
 
