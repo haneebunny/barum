@@ -171,16 +171,23 @@ def test_cica_exosome_is_exception():
     assert match_rule("시카 엑소좀 함유 크림") is None
 
 
-# ── 조건부 위반(conditional_violation) 테스트 — 니들류 메커니즘 트리거 ──────
+# ── 니들류 — 2026-08-18 하니 확정으로 조건부 위반 폐지, 단어 자체로 위반 ──────
+# 예전엔 "단어+메커니즘 서술 동반"일 때만 위반이었다(conditional_violation).
+# "니들샷"처럼 메커니즘 없는 브랜드명도 합법 취급했는데, 그 완화의 원래 의도가
+# "리들샷"이었던 걸로 정정됐다(기록 과정에서 리들→니들로 바뀌었다). §1 T5
+# 마스터 문서(prohibited_expressions.md)는 원래부터 니들류를 단어로 나열하고
+# 있어서, 이번 변경은 마스터 문서에 맞춘 것이다.
 
 
-def test_needle_brand_name_alone_is_not_matched():
-    """'니들샷'처럼 메커니즘 설명 없는 브랜드·제품명은 규칙이 위반으로 안 잡는다(None, VLM 위임)."""
-    assert match_rule("니들샷 앰플 추천") is None
+def test_needle_brand_name_alone_is_violation():
+    """'니들샷'은 이제 메커니즘 서술 없이도 위반이다(브랜드명 완화 정정)."""
+    m = match_rule("니들샷 앰플 추천")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
 
 
-def test_needle_with_penetration_claim_is_violation():
-    """'니들'+침투 메커니즘 동반이면 위반, 위반유형은 5호(1호 아님, 매핑 정정)."""
+def test_needle_word_alone_is_violation():
+    """'니들' 단어 자체가 위반이다. 침투·흡수 서술이 없어도 된다."""
     m = match_rule("니들이 피부 속까지 침투해서 유효성분을 전달")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
@@ -188,16 +195,17 @@ def test_needle_with_penetration_claim_is_violation():
     assert m.span == "니들"
 
 
-def test_microneedle_with_absorption_claim_is_violation():
-    """'마이크로니들'+흡수 메커니즘도 동일하게 위반(5호)."""
+def test_microneedle_alone_is_violation():
+    """'마이크로니들'도 단어 자체로 위반(5호)."""
     m = match_rule("마이크로니들 기술로 흡수율을 높였습니다")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
     assert m.violation_type == ViolationType.type_5_deception
 
 
-def test_fine_needle_with_penetration_claim_is_violation():
-    """실사례: '미세침이... 침투' — 위반(5호), 확정 사례(51/9439804435, 하니 합의판단)."""
+def test_fine_needle_alone_is_violation():
+    """실사례(51/9439804435). 정답셋과 하니 결정이 어긋나 있었는데, 하니가
+    정답셋 라벨(위반)을 그대로 확정했다(2026-08-18)."""
     m = match_rule("이 모공 속으로 15㎛의 미세침이 넓고 빠르게 침투")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
@@ -205,14 +213,21 @@ def test_fine_needle_with_penetration_claim_is_violation():
     assert m.span == "미세침"
 
 
-def test_needle_evasion_spelling_ridle_is_caught():
-    """회피표기 "리들"(니들의 변형)도 메커니즘 동반이면 위반으로 잡는다."""
-    m = match_rule("리들 앰플로 피부 속까지 침투하는 케어")
+def test_pin_unit_notation_is_violation():
+    """51번 원문 표현 그대로. 'Pin'만으로도 위반이다(case-sensitive, 대문자 P만 확인됨)."""
+    m = match_rule("15㎛ Pin")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
-    assert m.violation_type == ViolationType.type_5_deception
 
 
-def test_mts_alone_is_not_matched():
-    """MTS도 단어만으로는 위반 아님(메커니즘 동반 없음, None)."""
-    assert match_rule("MTS 전용 세럼") is None
+def test_needle_evasion_spelling_ridle_is_exempt():
+    """'리들'은 이제 예외다. 상표 등록·장기 미제재된 회피표기라 하니가 뺐다
+    (2026-08-18). synonyms.json의 "니들":["리들"] 매핑을 지웠다."""
+    assert match_rule("리들 앰플로 피부 속까지 침투하는 케어") is None
+
+
+def test_mts_alone_is_violation():
+    """MTS도 이제 단어 자체로 위반이다(니들류와 동일 결정, 2026-08-18)."""
+    m = match_rule("MTS 전용 세럼")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
