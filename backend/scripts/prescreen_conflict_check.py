@@ -16,12 +16,20 @@
 배치 1회로 끝난다. 문장 수가 늘면 배치가 늘 수 있으니 실행 전 dry-run으로 개수부터
 확인하는 걸 권한다.
 
+**누적 관측**: 팀장 결정(2026-08-18) — prescreen 프롬프트는 지금 안 건드리고,
+규칙집에 새 위반 갈래가 생길 때마다(예: 06번 비교광고 갈래 신설) 이 도구를 다시
+돌려서 표본을 계속 쌓는다. 매 실행 결과를 `_LOG_PATH`(JSONL)에 이어붙이고, 같은
+문장(이미지+원문)이 재실행되면 최신 관측으로 덮어쓴다(규칙이 안 바뀐 채 그냥
+재실행했을 때 분모가 부풀지 않게). "이번 실행"과 "누적 전체"를 따로 보여준다.
+
 사용법(backend/에서):
   python scripts/prescreen_conflict_check.py --dry-run   # 비용 0, 대상 문장 개수만 확인
-  python scripts/prescreen_conflict_check.py              # 실제 실행(VLM 호출)
+  python scripts/prescreen_conflict_check.py              # 실제 실행(VLM 호출) + 로그 누적
 """
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, "src")
@@ -34,6 +42,7 @@ sys.path.insert(0, "scripts")
 import compare_ocr  # noqa: E402
 
 _DEFAULT_LABEL_XLSX = Path("11st_probe_cosmetic/read_test/label_worksheet_combined.xlsx")
+_LOG_PATH = Path("11st_probe_cosmetic/read_test/_prescreen_conflict_log.jsonl")
 _BATCH_SIZE = 12
 
 
@@ -89,12 +98,54 @@ def run_prescreen(vlm, sentences: list[dict]) -> list[dict]:
     return results
 
 
+def _log_key(record: dict) -> str:
+    """로그 중복 판정 키. 같은 이미지+원문이면 같은 관측 대상으로 본다."""
+    return f"{record['nn']}||{record['text']}"
+
+
+def load_log(path: Path) -> dict[str, dict]:
+    """기존 누적 로그를 읽는다. 파일이 없으면 빈 딕셔너리(첫 실행)."""
+    if not path.exists():
+        return {}
+    log: dict[str, dict] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        record = json.loads(line)
+        log[_log_key(record)] = record  # 나중 줄이 이전 줄을 덮어쓴다(최신 관측 우선)
+    return log
+
+
+def append_log(path: Path, results: list[dict]) -> None:
+    """이번 실행 결과를 로그 파일에 이어붙인다. 실행 시각을 같이 남긴다."""
+    stamp = datetime.now(timezone.utc).isoformat()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        for r in results:
+            f.write(json.dumps({**r, "observed_at": stamp}, ensure_ascii=False) + "\n")
+
+
+def _summarize(records: list[dict], label: str) -> None:
+    conflicts = [r for r in records if r["prescreen_claim"] is False]
+    failed = [r for r in records if r.get("prescreen_failed")]
+    print(f"\n=== {label} ({len(records)}건) ===")
+    print(f"충돌(규칙=위반, prescreen=효능주장아님) {len(conflicts)}건, 미판정 {len(failed)}건")
+    if conflicts:
+        for c in conflicts:
+            print(f"  [{c['nn']}] 규칙 span={c['span']!r} | {c['text'][:70]}")
+    rate = len(conflicts) / len(records) * 100 if records else 0.0
+    print(f"불일치율: {rate:.1f}% ({len(conflicts)}/{len(records)})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--label-file", default=str(_DEFAULT_LABEL_XLSX))
+    ap.add_argument("--log-file", default=str(_LOG_PATH), help="누적 로그 경로(JSONL)")
     ap.add_argument("--dry-run", action="store_true", help="VLM 안 부름. 대상 문장 개수만 출력")
     ap.add_argument("--provider", default="gemini")
     args = ap.parse_args()
+    log_path = Path(args.log_file)
 
     violations = collect_rule_violations(Path(args.label_file))
     print(f"규칙 위반 확정 문장: {len(violations)}건 (배치 {_BATCH_SIZE}개씩, "
@@ -108,18 +159,11 @@ def main() -> None:
     vlm = get_vlm(args.provider)
     results = run_prescreen(vlm, violations)
 
-    conflicts = [r for r in results if r["prescreen_claim"] is False]
-    failed = [r for r in results if r["prescreen_failed"]]
-    print(f"\n=== 결과 ===")
-    print(f"규칙=위반 확정 {len(results)}건 중 prescreen=효능주장아님(충돌) {len(conflicts)}건, "
-          f"실패(미판정) {len(failed)}건")
-    if conflicts:
-        print("\n충돌 문장 목록:")
-        for c in conflicts:
-            print(f"  [{c['nn']}] 규칙 span={c['span']!r} | {c['text'][:70]}")
+    _summarize(results, "이번 실행")
 
-    rate = len(conflicts) / len(results) * 100 if results else 0.0
-    print(f"\n불일치율: {rate:.1f}% ({len(conflicts)}/{len(results)})")
+    append_log(log_path, results)
+    cumulative = load_log(log_path)
+    _summarize(list(cumulative.values()), "누적 전체")
 
 
 if __name__ == "__main__":
