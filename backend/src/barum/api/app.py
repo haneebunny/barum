@@ -352,6 +352,56 @@ def get_generated_image(image_id: str) -> Response:
     return Response(content=data, media_type="image/png")
 
 
+# uuid hex(32자) + 확장자(png/jpg/webp)만 받는다. 확장자를 id에 포함시켜서(업로드
+# 원본 포맷을 그대로 보관), 저장 경로도 그대로 재구성한다(path traversal 방지,
+# 화이트리스트 확장자 외엔 전부 거부).
+_PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
+
+
+@app.post("/uploads/product-photo")
+async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
+    """판매자가 올리는 제품사진을 저장하고 photo_id를 낸다(create 모드, AI 합성 참조용).
+
+    `/generate`는 복잡한 JSON 바디(ingredient_amounts 등 중첩 리스트)라 통째로
+    multipart로 바꾸지 않고, `/generated/{image_id}`와 같은 "먼저 올려 id를 받고
+    나중에 그 id로 참조" 패턴을 그대로 따른다(냐냐·PM과 확정, 2026-08-19).
+    응답의 photo_id를 `GenerateRequest.product_photo_ids`에 담아 `/generate`로 보낸다.
+    """
+    ext = _CT_TO_EXT.get(photo.content_type or "")
+    if ext is None:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 이미지 형식입니다: {photo.content_type!r}"
+        )
+    data = await photo.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    photo_id = f"{uuid4().hex}{ext}"
+    client = _checks_client()
+    ensure_bucket(client)
+    upload_image(client, f"uploads/{photo_id}", data, photo.content_type)
+    return {"photo_id": photo_id}
+
+
+def _resolve_product_photos(client):
+    """`product_photo_ids` → 참조 이미지 바이트 목록. `generate_content`에 주입한다.
+
+    id 형식이 안 맞거나 조회에 실패한 사진은 예상된 실패라 건너뛴다(전체 요청을
+    막지 않는다. 참조 없이 배경만 생성되는 쪽으로 계속 진행).
+    """
+    def resolve(photo_ids: list[str]) -> list[bytes]:
+        images: list[bytes] = []
+        for photo_id in photo_ids:
+            if not _PHOTO_ID_RE.match(photo_id):
+                print(f"    [skip] 잘못된 photo_id 형식: {photo_id!r}")
+                continue
+            try:
+                images.append(download_image(client, f"uploads/{photo_id}"))
+            except Exception as e:
+                print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
+        return images
+    return resolve
+
+
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest) -> GenerateResponse:
     """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve+create).
@@ -362,10 +412,12 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     인자를 안 만들고 그대로 통과한다(불필요한 Supabase 클라이언트 생성 회피).
     """
     image_gen = _image_generator()
+    client = _checks_client() if image_gen else None
     return generate_content(
         req,
         judge=_build_judge(),
         vlm=_section_vlm(),
         image_generator=image_gen,
-        image_sink=_image_sink(_checks_client()) if image_gen else None,
+        image_sink=_image_sink(client) if client else None,
+        photo_resolver=_resolve_product_photos(client) if client else None,
     )

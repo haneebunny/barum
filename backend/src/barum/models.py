@@ -400,6 +400,11 @@ class GenerateRequest(BaseModel):
     mood: str | None = Field(
         None, description="인터뷰에서 받은 분위기(create 모드, 이미지 생성용). 예: '미니멀하고 차분한'"
     )
+    product_photo_ids: list[str] | None = Field(
+        None,
+        description="`POST /uploads/product-photo`로 먼저 올린 제품사진 ID 목록(create 모드). "
+        "있으면 배경 이미지 생성 시 합성 참조 이미지로 쓴다(AI 배경·연출 합성, 팀장 승인).",
+    )
     image_generation: ImageGenRequest | None = None
 
     @model_validator(mode="after")

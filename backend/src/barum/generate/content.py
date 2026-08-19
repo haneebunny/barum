@@ -148,6 +148,7 @@ def build_image_plan(
     plan: LayoutPlan | None = None,
     image_generator=None,
     image_sink=None,
+    photo_resolver=None,
 ) -> ImagePlan:
     """업로드 이미지 배치 + 생성요청 사칭 가드레일(FR-13).
 
@@ -157,6 +158,10 @@ def build_image_plan(
     image_sink: `(모듈kind, PNG바이트) -> 이미지 URL | None`. 저장은 여기서 하지 않고
     주입받는다(`content.py`는 저장소를 몰라야 오프라인 테스트가 된다. 실제 저장은
     `api/app.py`가 `storage/checks_store.py`로 한다).
+
+    photo_resolver: `(product_photo_ids) -> 참조 이미지 바이트 목록`. image_sink와 같은
+    이유로 저장소 접근은 여기서 안 하고 주입만 받는다. `generate_module_images`로
+    그대로 넘긴다.
     """
     placed: list[PlacedImage] = []
     if req.result_id:
@@ -170,7 +175,9 @@ def build_image_plan(
 
     module_images: list[ModuleImage] = []
     if plan is not None and image_generator is not None:
-        module_images, blobs = generate_module_images(plan, req, image_generator)
+        module_images, blobs = generate_module_images(
+            plan, req, image_generator, photo_resolver=photo_resolver
+        )
         _store_module_images(module_images, blobs, image_sink)
     return ImagePlan(placed=placed, generation=gen, module_images=module_images)
 
@@ -286,7 +293,7 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
 
 
 def _generate_create_content(
-    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
     """신규 생성(create) 모드 오케스트레이션. 원본 검사 없음, replacements 항상 빈 배열.
 
@@ -321,7 +328,7 @@ def _generate_create_content(
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
     # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
-    image_plan = build_image_plan(req, plan, image_generator, image_sink)
+    image_plan = build_image_plan(req, plan, image_generator, image_sink, photo_resolver)
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
     # 7. 실증자료는 미검증이라 사용자 확인 항목으로 남긴다
@@ -350,15 +357,22 @@ def _generate_create_content(
 
 
 def generate_content(
-    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
     """`POST /generate` 오케스트레이션. `req.mode`로 improve/create 분기.
 
-    image_generator·image_sink는 create 모드에서만 쓴다. 안 주면 이미지 생성을
-    건너뛴다(모델 확정 전까지 기본 비활성).
+    image_generator·image_sink·photo_resolver는 create 모드에서만 쓴다.
+    image_generator를 안 주면 이미지 생성을 건너뛴다(모델 확정 전까지 기본 비활성).
+    photo_resolver는 판매자가 올린 제품사진(req.product_photo_ids)을 참조 이미지로
+    바꿔주는 콜백이다(AI 배경·연출 합성). 안 주면 참조 없이 배경만 생성한다.
     """
     if req.mode == "create":
         return _generate_create_content(
-            req, judge=judge, vlm=vlm, image_generator=image_generator, image_sink=image_sink
+            req,
+            judge=judge,
+            vlm=vlm,
+            image_generator=image_generator,
+            image_sink=image_sink,
+            photo_resolver=photo_resolver,
         )
     return _generate_improve_content(req, judge=judge, vlm=vlm)

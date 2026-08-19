@@ -53,8 +53,10 @@ def test_generate_requires_content():
 class FakeImageGenerator:
     def __init__(self, *results):
         self._results = list(results)
+        self.images_received: list[list] = []
 
     def generate_image(self, prompt, images):
+        self.images_received.append(images)
         r = self._results.pop(0) if self._results else b"PNG"
         if isinstance(r, Exception):
             raise r
@@ -164,3 +166,72 @@ def test_create_모드_실제로_켜면_module_images에_URL이_채워진다(mon
     assert images, "module_images가 비어있으면 배선이 여전히 끊긴 것"
     assert images[0]["status"] == "generated"
     assert images[0]["image_url"].startswith("/generated/")
+
+
+# ── 제품사진 업로드 → AI 합성 (2026-08-19, 팀장 승인 방식 A) ──────────────────
+
+
+def test_제품사진_업로드하면_photo_id를_낸다(monkeypatch):
+    client_fake = FakeBucketClient()
+    monkeypatch.setattr(app_module, "_checks_client", lambda: client_fake)
+
+    r = client.post(
+        "/uploads/product-photo",
+        files={"photo": ("product.png", b"PNGDATA", "image/png")},
+    )
+    assert r.status_code == 200
+    photo_id = r.json()["photo_id"]
+    assert photo_id.endswith(".png")
+    assert client_fake.files[f"uploads/{photo_id}"] == b"PNGDATA"
+
+
+def test_지원하지_않는_형식은_415(monkeypatch):
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    r = client.post(
+        "/uploads/product-photo",
+        files={"photo": ("product.gif", b"GIFDATA", "image/gif")},
+    )
+    assert r.status_code == 415
+
+
+def test_빈_파일은_422(monkeypatch):
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    r = client.post(
+        "/uploads/product-photo",
+        files={"photo": ("product.png", b"", "image/png")},
+    )
+    assert r.status_code == 422
+
+
+def test_resolve_product_photos가_유효한_id만_내려받는다():
+    client_fake = FakeBucketClient()
+    client_fake.files["uploads/" + "a" * 32 + ".png"] = b"PHOTO"
+    resolve = app_module._resolve_product_photos(client_fake)
+
+    result = resolve(["a" * 32 + ".png", "not-a-valid-id", "b" * 32 + ".png"])
+    assert result == [b"PHOTO"]  # 형식 안 맞는 id·조회 실패한 id는 건너뛴다
+
+
+def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘긴다(monkeypatch):
+    """업로드 → /generate에서 photo_id 참조까지 end-to-end 배선 확인."""
+    client_fake = FakeBucketClient()
+    photo_id = "c" * 32 + ".png"
+    client_fake.files[f"uploads/{photo_id}"] = b"PHOTOBYTES"
+
+    fake_gen = FakeImageGenerator(b"PNGBYTES")
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+    monkeypatch.setattr(app_module, "get_image_generator", lambda: fake_gen)
+    monkeypatch.setattr(app_module, "_checks_client", lambda: client_fake)
+    monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
+        "barum.judge.cosmetic", fromlist=["StubJudge"]
+    ).StubJudge())
+    monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    r = client.post(
+        "/generate",
+        json={"mode": "create", "product_name": "테스트 세럼", "product_photo_ids": [photo_id]},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["image_plan"]["module_images"][0]["status"] == "generated"
+    assert fake_gen.images_received == [[b"PHOTOBYTES"]]
