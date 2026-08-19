@@ -946,12 +946,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
         <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
         {tier === "PRO" ? (
-          <Link
-            href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
-          >
-            이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+            >
+              이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
+            </Link>
+            <Link
+              href="/content?mode=create"
+              className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+            >
+              처음부터 새로 만들기 <span className="font-mono">→</span>
+            </Link>
+          </div>
         ) : (
           <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
             <span className="text-[11px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
