@@ -117,3 +117,51 @@ def test_프롬프트의_금지문구가_사칭가드를_스스로_트리거하�
     assert blobs == {"hero_intro": b"A"}
     # 가드가 통과시킨 뒤 실제로 보낸 프롬프트에는 금지 지시문이 그대로 살아있어야 한다.
     assert "의사" in gen.prompts[0]
+
+
+# ── 제품 종류별 질감 (2026-08-19, 토너인데 크림 이미지 나오던 버그 회귀방지) ──
+
+
+def test_토너_프롬프트에는_크림이_없다():
+    """팀장이 지적한 실제 사례: 토너 상품인데 흰 크림 덩어리가 그려짐."""
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "토너")
+    assert "크림" not in prompt
+    assert "액체" in prompt or "물방울" in prompt
+
+
+def test_크림_프롬프트에는_크림_질감이_들어간다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "크림")
+    assert "크림" in prompt
+
+
+def test_세럼_프롬프트에는_액상_질감이_들어간다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "세럼")
+    assert "크림" not in prompt
+    assert "액상" in prompt or "광택" in prompt
+
+
+def test_product_type_모르면_제형을_특정하지_않는다():
+    """폴백은 원료 클로즈업만 시키고 제형(크림·액상 등)을 못 박지 않는다."""
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, None)
+    assert "크림" not in prompt
+    assert "제품 제형은 특정하지 마라" in prompt
+
+
+def test_product_type이_인자를_안_줘도_기본값으로_동작한다():
+    """기존 호출부(인자 3개 생략)가 안 깨져야 한다."""
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "크림" not in prompt
+
+
+def test_오케스트레이션이_plan의_product_type을_실제로_전달한다():
+    """build_image_prompt만 고치고 호출부(generate_module_images)에서 안 넘기면
+    소용없다. 실제로 전달되는지 end-to-end로 확인."""
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="hero_intro", purpose="도입")],
+        product_type="토너",
+        source="planner",
+    )
+    gen = FakeGenerator(b"A")
+    generate_module_images(plan, _REQ, gen)
+    assert "크림" not in gen.prompts[0]
+    assert "토너" in gen.prompts[0]
