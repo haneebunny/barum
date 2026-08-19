@@ -303,12 +303,36 @@ def test_comparison_without_multiplier_is_not_flagged_by_this_rule():
 
 
 def test_exclusive_superlative_no1_is_needs_review():
-    """정답셋 29·32번. 'NO.1'·'No.1'은 배타적 최상급 — needs_review."""
-    for s in ["No.1* 선스틱", "전세계적으로 10초에 1개씩 판매되는 록시땅 베스트 셀러 NO.1"]:
+    """정답셋 29·32번. 'NO.1'·'No.1'·'1위'는 배타적 최상급 — needs_review."""
+    for s in [
+        "No.1* 선스틱",
+        "전세계적으로 10초에 1개씩 판매되는 록시땅 베스트 셀러 NO.1",
+        "전 세계 록시땅 매장 내 판매 1위를 고수하고 있는",
+    ]:
         m = match_rule(s)
         assert m is not None, s
         assert m.outcome == RuleOutcome.needs_review, s
         assert m.violation_type == ViolationType.type_5_deception, s
+
+
+def test_hash_one_is_needs_review():
+    """'#1'도 같은 배타적 최상급 계열(록시땅 실사례, 2026-08-19 팀장 승인)."""
+    m = match_rule("록시땅의 #1 베스트셀러 시어 버터 핸드크림")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.violation_type == ViolationType.type_5_deception
+
+
+def test_rank_number_with_leading_digit_is_not_flagged():
+    """'11위'·'#123'처럼 앞뒤에 다른 숫자가 붙으면 매칭하지 않는다.
+
+    'NO.1'·'1위'·'#1'은 순수 영단어가 아니라(#·마침표·한글 혼합) 기존
+    `_keyword_present`의 우측경계 보호를 못 받는다 — "Pin"이 "Pintox"에 부분일치로
+    걸렸던 사고와 같은 클래스라, 정규식으로 숫자 경계를 직접 봤다(2026-08-19).
+    """
+    for s in ["매출 11위 브랜드", "판매순위 21위", "상품코드 #123"]:
+        m = match_rule(s)
+        assert m is None or m.span != "배타적순위", s
 
 
 def test_exclusive_superlative_choego_is_needs_review():
