@@ -405,3 +405,25 @@ def test_method_term_alone_without_certainty_marker_is_not_flagged():
     """검증방법 용어가 있어도 '검증/입증' 단정이 없으면 이 규칙에 안 걸린다."""
     m = match_rule("임상시험 참가자를 모집합니다")
     assert m is None or m.span != "검증방법단정"
+
+
+# ── 모공수축 표방 — 2026-08-12 확정 규칙, 2026-08-19 규칙집 반영 ───────────────
+
+
+def test_pore_shrink_claim_is_needs_review():
+    """정답셋 02번. prohibited_expressions.md:46이 T5로 명시하고 "실증자료 없이
+    표방하면 위반후보(검토필요), 뒷받침되면 예외"로 확정해 뒀는데 규칙집에 반영이
+    안 돼 있었다."""
+    for s in ["모공수축", "모공 축소 효과를 원하시는 분"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+        assert m.violation_type == ViolationType.type_5_deception, s
+
+
+def test_bare_pore_word_is_not_flagged():
+    """맨 '모공'은 규칙에 안 넣는다. 정답셋에서 해부학적 사실 서술(대상외)과
+    합법 문장에 걸린다 — 복합어로만 잡아야 하는 전형적 substring 함정."""
+    for s in ["1cm에 모공 60~70개", "피지-모공-수분 3단계 과학적 설계"]:
+        m = match_rule(s)
+        assert m is None or m.span not in ("모공수축", "모공축소"), s
