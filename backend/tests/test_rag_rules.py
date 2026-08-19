@@ -427,3 +427,31 @@ def test_bare_pore_word_is_not_flagged():
     for s in ["1cm에 모공 60~70개", "피지-모공-수분 3단계 과학적 설계"]:
         m = match_rule(s)
         assert m is None or m.span not in ("모공수축", "모공축소"), s
+
+
+# ── 시험·검사 표현 — §3 실증대상, 2026-08-19 반영 ─────────────────────────────
+
+
+def test_test_completion_claim_is_needs_review():
+    """prohibited_expressions.md:75가 "시험·검사 표현(예: 피부과 테스트 완료)"을
+    §3 실증대상으로 명시한다. 정답셋 18번과 축자 일치."""
+    for s in ["피부과 테스트 완료", "인체적용시험 완료", "지속내수성테스트 완료"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+        assert m.violation_type == ViolationType.type_5_deception, s
+
+
+def test_test_without_completion_is_not_flagged():
+    """'완료'가 판별자다. 정답셋에서 '피부 무자극 테스트'(완료 없음)는 합법 4건인데
+    '테스트 완료'는 검토필요 7건으로 갈린다. 맨 '테스트'로 잡으면 합법을 오탐한다."""
+    for s in ["피부 무자극 테스트", "피부 무자극 테스트 EXCELLENT 0.00"]:
+        m = match_rule(s)
+        assert m is None or m.span not in ("테스트완료", "시험완료"), s
+
+
+def test_low_irritation_alone_is_not_flagged():
+    """'저자극'은 안 넣는다. 정답셋에 합법 2건('저자극 딥클렌징'·'저자극 토너')이 있다."""
+    for s in ["저자극 딥클렌징", "✓ 지성, 문제성 피부용 저자극 토너"]:
+        m = match_rule(s)
+        assert m is None or m.outcome != RuleOutcome.needs_review, s
