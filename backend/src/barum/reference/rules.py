@@ -295,3 +295,25 @@ def match_rule(sentence: str) -> RuleMatch | None:
 
     # 대표어로 안 걸렸으면 동의어 변형으로 재시도
     return _match_synonyms(norm, rules)
+
+
+# 2호(기능성오인) 표방을 가리키는 표지. judge_rules.json의 legal_allow 문맥예외
+# (탄력·민감·예민)가 쓰는 unsafe_markers와 같은 목록이라 여기서 단일 출처로 둔다.
+_FUNCTIONAL_MARKER_SOURCE = "탄력"
+
+
+@lru_cache(maxsize=1)
+def _functional_markers() -> tuple[str, ...]:
+    exc = _load().get("context_exceptions", {}).get(_FUNCTIONAL_MARKER_SOURCE, {})
+    return tuple(exc.get("unsafe_markers", ()))
+
+
+def has_functional_claim(sentence: str) -> bool:
+    """문장에 2호(미백·주름개선·자외선차단 등) 표방이 섞여 있는지 본다.
+
+    규칙이 1호 경계표현으로 먼저 확정해 버리면 같은 문장의 2호 클레임이 평가될
+    기회를 잃는다("진정에 도움을 주는 미백 크림" → needs_review(진정, 1호)에서 끝나
+    미백이 안 보인다). 그때 VLM에도 같이 넘길지 판단하는 데 쓴다.
+    """
+    norm = _normalize(sentence)
+    return any(_normalize(m) in norm for m in _functional_markers())
