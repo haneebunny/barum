@@ -924,15 +924,37 @@ function ContentGeneratorContent() {
                     </span>
                   </div>
                   <div id="secList">
-                    {genResult.sections.map((s, idx) => (
-                      <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
-                        <div className="flex items-center gap-2 m-[0_0_7px]">
-                          <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
-                          <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                    {genResult.sections.map((s, idx) => {
+                      const moduleImage = genResult.image_plan.module_images.find(
+                        (mi) => mi.module_kind === s.kind && mi.status === "generated" && mi.image_url
+                      );
+                      if (moduleImage?.image_url) {
+                        return (
+                          <div
+                            key={idx}
+                            className="relative border-t border-[var(--line)] bg-cover bg-center flex items-end min-h-[180px]"
+                            style={{ backgroundImage: `url(${moduleImage.image_url})` }}
+                          >
+                            <div className="w-full bg-gradient-to-t from-black/70 via-black/25 to-transparent p-[16px_18px] pt-10">
+                              <div className="flex items-center gap-2 m-[0_0_7px]">
+                                <b className="text-[11.5px] text-white font-bold">{s.kind}</b>
+                                <span className="font-mono text-[9px] text-white/80 border border-white/40 p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                              </div>
+                              <p className="m-0 text-[13.5px] text-white leading-[1.75]">{s.text}</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
+                          <div className="flex items-center gap-2 m-[0_0_7px]">
+                            <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
+                            <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                          </div>
+                          <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
                         </div>
-                        <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {genResult.image_plan.placed.map((img, idx) => (
                       <div className="p-0 border-t border-[var(--line)] relative" key={`img-${idx}`}>
                         <div className="aspect-[16/10] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] border-t border-[var(--line)] flex items-center justify-center">
