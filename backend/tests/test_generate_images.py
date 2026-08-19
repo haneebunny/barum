@@ -331,8 +331,12 @@ def test_얼굴은_여전히_금지다():
 
 
 def test_손_팔_뒷모습은_허용_문구가_있다():
-    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    """손 허용 layout_type(hero_fullbleed 등)에서만 나온다(구도 다양화 이후, 2026-08-19)."""
+    prompt = build_image_prompt(
+        LayoutModule(kind="hero_intro", purpose="도입", layout_type="hero_fullbleed"), _REQ
+    )
     assert "손" in prompt and "팔" in prompt
+    assert "넣어도 된다" in prompt
 
 
 def test_실사용_후기_연출_금지가_명시된다():
@@ -344,3 +348,45 @@ def test_실사용_후기_연출_금지가_명시된다():
 def test_의사_전문가_연상_금지는_그대로_유지된다():
     prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
     assert "의사" in prompt and "전문가" in prompt
+
+
+# ── 구도 다양화 (2026-08-19, 팀장 지적: 6장 전부 "손으로 바르는 장면"으로 수렴) ──
+
+
+def test_손_비허용_layout_type은_손_예시가_없다():
+    """대부분의 layout_type은 손 자체를 금지해서 텍스처·추상 배경으로 갈리게 한다."""
+    prompt = build_image_prompt(
+        LayoutModule(kind="ingredient_highlight", purpose="성분", layout_type="image_text_split"), _REQ
+    )
+    assert "손으로 제품을 바르는 장면" not in prompt
+    assert "넣지 마라" in prompt
+
+
+def test_손_허용은_hero_fullbleed와_step_list뿐이다():
+    for layout_type in ("section_statement", "image_text_split", "clinical_bar_compare", "icon_grid",
+                          "card_list_repeat", "lineup_strip", "table_info", "banner_strip", "mood_macro",
+                          "clinical_photo_compare"):
+        prompt = build_image_prompt(
+            LayoutModule(kind="x", purpose="x", layout_type=layout_type), _REQ
+        )
+        assert "손으로 제품을 바르는 장면" not in prompt, f"{layout_type}에 손 예시가 남아있음"
+
+
+def test_기본_layout_type도_손을_강제하지_않는다():
+    """layout_type을 안 정해도(모델 기본값 section_statement) 손으로 안 쏠려야 한다."""
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "손으로 제품을 바르는 장면" not in prompt
+
+
+def test_모듈마다_구도_지시가_달라_페이지_전체가_다양해진다():
+    """이게 핵심 회귀 테스트다. hero_fullbleed 하나만 손을 받고 나머지는 다른
+    구도를 강제받아야, 6장이 전부 같은 장면으로 수렴하던 버그가 재발하지 않는다."""
+    hand_allowed = build_image_prompt(
+        LayoutModule(kind="hero_intro", purpose="도입", layout_type="hero_fullbleed"), _REQ
+    )
+    hand_forbidden = build_image_prompt(
+        LayoutModule(kind="texture", purpose="제형", layout_type="mood_macro"), _REQ
+    )
+    assert "넣어도 된다" in hand_allowed
+    assert "넣지 마라" in hand_forbidden
+    assert hand_allowed != hand_forbidden
