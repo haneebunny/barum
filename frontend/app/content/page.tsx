@@ -480,9 +480,15 @@ function ContentGeneratorContent() {
     }
   };
 
+  // 파인프린트(작은 글씨)로 다룰 섹션 종류. 라벨은 안 보여주되 타이포로는 구분한다.
+  const isFinePrintKind = (kind: string) => kind.includes("caution") || kind.includes("주의");
+
+  const escapeAttr = (s: string) => s.replace(/'/g, "&#39;");
+
   const exportHtml = async () => {
     if (!genResult) return;
     const productName = displayProductName;
+    const hasAnyGeneratedImage = genResult.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
 
     // 섹션별로 매칭되는 module_image가 있으면 배경 이미지 data URI로 인라인
     const moduleImageDataUris: Record<string, string | null> = {};
@@ -492,14 +498,20 @@ function ContentGeneratorContent() {
       }
     }
 
+    const aiImageBadge = `<span class="dp-ai-tag">AI 생성</span>`;
+
     const sectionsHtml = genResult.sections.map((s) => {
       const dataUri = moduleImageDataUris[s.kind];
-      const label = `${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})`;
+      const finePrint = isFinePrintKind(s.kind) ? " dp-fine" : "";
       if (dataUri) {
-        return `<div class="dp-block dp-block-img" style="background-image:url('${dataUri}')"><div class="dp-block-overlay"><b>${label}</b><p>${s.text}</p></div></div>`;
+        return `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->
+    <div class="dp-block dp-block-img" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
+      ${aiImageBadge}
+      <div class="dp-block-overlay${finePrint}"><p>${s.text}</p></div>
+    </div>`;
       }
-      return `<div class="dp-block"><b>${label}</b><p>${s.text}</p></div>`;
-    }).join("");
+      return `<div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+    }).join("\n    ");
 
     const placedImages = await Promise.all(
       genResult.image_plan.placed.map(async (img) => {
@@ -509,32 +521,49 @@ function ContentGeneratorContent() {
           : `<div class="dp-img"><span>${img.image_url}</span></div>`;
       })
     );
-    const imagesHtml = placedImages.join("");
+    const imagesHtml = placedImages.join("\n    ");
+
+    const aiPageNotice = hasAnyGeneratedImage
+      ? `<div class="dp-ai-notice">이 페이지의 일부 문구·이미지는 AI로 생성됐습니다.</div>`
+      : "";
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>${productName} 상세페이지 초안</title>
+  <!--
+    barum이 만든 상세페이지 초안입니다.
+    - 이미지를 판매자 본인 사진으로 바꾸려면: 아래 "이미지 교체" 주석이 붙은 <div data-swap="..."> 블록을 찾아
+      style="background-image:url('...')" 부분만 원하는 이미지 경로로 바꾸면 됩니다.
+    - 문구는 <p> 태그 안 텍스트를 그대로 수정하면 됩니다.
+    - AI 생성 표시(전체 안내문·이미지별 "AI 생성" 태그)는 관련 법령(AI기본법 제31조) 대응용이니
+      임의로 지우지 마세요.
+  -->
   <style>
-    body { font-family: sans-serif; padding: 40px; background: #E7ECEB; color: #14231B; display: flex; justify-content: center; }
+    * { box-sizing: border-box; }
+    body { font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; margin: 0; padding: 40px 16px; background: #E7ECEB; color: #14231B; display: flex; justify-content: center; }
     .detailpage { width: 100%; max-width: 520px; background: #fff; border: 1px solid #CDD6D3; }
-    .dp-hero { aspect-ratio: 4/3; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); display: flex; align-items: flex-end; padding: 16px; }
-    .dp-hero span { font-size: 19px; font-weight: 800; background: #fff; padding: 6px 10px; border: 1px solid #CDD6D3; }
-    .dp-block { padding: 16px 18px; border-top: 1px solid #DDE4E2; }
-    .dp-block b { font-size: 11.5px; color: #14231B; display: block; margin-bottom: 7px; }
-    .dp-block p { margin: 0; font-size: 13.5px; line-height: 1.75; color: #33413A; }
-    .dp-block-img { background-size: cover; background-position: center; min-height: 180px; display: flex; align-items: flex-end; padding: 0; }
-    .dp-block-img .dp-block-overlay { width: 100%; background: linear-gradient(to top, rgba(0,0,0,.7), rgba(0,0,0,.25) 60%, transparent); padding: 16px 18px 14px; }
-    .dp-block-img .dp-block-overlay b { color: #fff; }
-    .dp-block-img .dp-block-overlay p { color: #fff; }
-    .dp-img { aspect-ratio: 16/10; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); background-size: cover; background-position: center; border-top: 1px solid #DDE4E2; display: flex; align-items: center; justify-content: center; color: #5C6B62; font-size: 10px; font-family: monospace; }
-    .dp-close { padding: 14px 18px; border-top: 1px dashed #CDD6D3; font-size: 11px; color: #5C6B62; line-height: 1.6; }
+    .dp-hero { aspect-ratio: 4/3; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); display: flex; align-items: flex-end; padding: 22px; }
+    .dp-hero span { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; background: #fff; padding: 8px 12px; border: 1px solid #CDD6D3; }
+    .dp-ai-notice { padding: 9px 22px; font-size: 11px; color: #8A9490; background: #F6F8F7; border-bottom: 1px solid #E4E9E7; line-height: 1.5; }
+    .dp-block { padding: 26px 22px; border-top: 1px solid #EEF1EF; }
+    .dp-block p { margin: 0; font-size: 15px; line-height: 1.85; color: #2B342F; }
+    .dp-block.dp-fine { padding: 18px 22px; background: #FAFBFA; }
+    .dp-block.dp-fine p { font-size: 11.5px; line-height: 1.7; color: #8A9490; }
+    .dp-block-img { position: relative; background-size: cover; background-position: center; min-height: 220px; display: flex; align-items: flex-end; padding: 0; border-top: none; }
+    .dp-block-img .dp-block-overlay { width: 100%; background: linear-gradient(to top, rgba(10,15,12,.78), rgba(10,15,12,.2) 65%, transparent); padding: 20px 22px 18px; }
+    .dp-block-img .dp-block-overlay p { color: #fff; font-size: 15px; line-height: 1.75; }
+    .dp-block-img .dp-block-overlay.dp-fine p { font-size: 12px; color: #EDEFEE; }
+    .dp-ai-tag { position: absolute; top: 10px; right: 10px; font-size: 9.5px; letter-spacing: .2px; color: rgba(255,255,255,.9); background: rgba(10,15,12,.45); padding: 3px 7px; border-radius: 2px; }
+    .dp-img { position: relative; aspect-ratio: 16/10; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); background-size: cover; background-position: center; border-top: 1px solid #EEF1EF; display: flex; align-items: center; justify-content: center; color: #5C6B62; font-size: 10px; font-family: monospace; }
+    .dp-close { padding: 16px 22px; border-top: 1px dashed #CDD6D3; font-size: 11px; color: #5C6B62; line-height: 1.65; background: #FAFBFA; }
   </style>
 </head>
 <body>
   <div class="detailpage">
     <div class="dp-hero"><span>${productName}</span></div>
+    ${aiPageNotice}
     ${sectionsHtml}
     ${imagesHtml}
     <div class="dp-close">${genResult.disclaimer}</div>
