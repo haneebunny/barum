@@ -228,6 +228,8 @@ export const LayoutModuleSchema = z.object({
   kind: z.string(),
   purpose: z.string(),
   has_claim_risk: z.boolean().default(false),
+  // _vocabulary.json의 layout_type 12종 중 하나. 베베 배선 전 구버전 응답엔 없을 수 있어 optional
+  layout_type: z.string().nullable().optional(),
 });
 export type LayoutModule = z.infer<typeof LayoutModuleSchema>;
 
@@ -235,6 +237,8 @@ export const LayoutPlanSchema = z.object({
   modules: z.array(LayoutModuleSchema).default([]),
   product_type: z.string().nullable().optional(),
   source: z.string().default("fallback"),
+  // alternation | single_accent | image_led. 마찬가지로 optional(구버전 대응)
+  color_system: z.string().nullable().optional(),
 });
 export type LayoutPlan = z.infer<typeof LayoutPlanSchema>;
 
