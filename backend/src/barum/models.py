@@ -113,6 +113,8 @@ class Summary(BaseModel):
     n_needs_review: int = 0  # flag=검토필요 건수
     n_unjudged: int = 0  # 판정 실패로 미판정된 문장 수(검토필요와 다른 개념)
     counts_by_type: dict[str, int] = Field(default_factory=dict)  # 위반유형별 건수
+    product_out_of_scope: bool = False  # True면 화장품법 적용 대상 아님(도구·부자재 등), 문장 판정 자체를 안 함
+    out_of_scope_reason: str | None = None  # 대상외로 걸린 키워드. 화면에 사유 표시용
 
 
 class BasisCitation(BaseModel):

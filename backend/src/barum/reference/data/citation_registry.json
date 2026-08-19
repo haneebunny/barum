@@ -22,6 +22,20 @@
       ]
     },
     {
+      "id": "kr_law_art2",
+      "jurisdiction": "KR",
+      "law_name": "화장품법 제2조 (정의)",
+      "citation_id": "법률 제20901호(2025-04-01 일부개정)",
+      "effective_date": "2026-04-02",
+      "checked_date": "2026-08-18",
+      "purpose": "\"이 상품이 화장품인가\"(적용범위) 판정의 최상위 법적 근거. 1호 화장품 정의(인체작용 경미) + 2호 기능성화장품 5개 항목(가~마). 원문 전문은 statute/law_article_2.md, 적용범위 판단기준은 cosmetic_scope.md",
+      "source_url": "https://www.law.go.kr/LSW/lsLawLinkInfo.do?lsJoLnkSeq=1000294844&lsId=002015&chrClsCd=010202",
+      "used_by": [
+        "reference/cosmetic_kr/statute/law_article_2.md",
+        "reference/cosmetic_kr/cosmetic_scope.md"
+      ]
+    },
+    {
       "id": "kr_rule_appendix5",
       "jurisdiction": "KR",
       "law_name": "화장품법 시행규칙 별표5 (표시·광고의 범위 및 준수사항, 제22조 관련)",
