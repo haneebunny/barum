@@ -410,6 +410,9 @@ class RagJudge:
         self._vlm = vlm
         self._batch_size = batch_size
         self._retriever = case_retriever
+        # 직전 judge()에서 1차 필터가 버린 문장. 판정기가 못 본 문장이라 미탐이
+        # 여기서 샐 수 있어 관측용으로 남긴다(판정 동작에는 안 쓴다).
+        self.last_dropped: list[dict] = []
 
     def _context_for(self, remaining: list[dict]) -> str:
         """fallback LLM에 실을 grounding 컨텍스트를 만든다.
@@ -428,8 +431,21 @@ class RagJudge:
         VLM이 "이 문장이 효능/효과를 주장하는가?"만 이진 분류한다.
         NO(비효능)인 문장은 대상외로 버리고, YES인 문장만 리턴한다.
         실패 시 안전하게 전부 YES로 간주한다(미탐 방지).
+
+        **버린 문장은 경고로 남긴다(2026-08-19).** 여기서 버려지면 판정기가 그 문장을
+        볼 기회 자체가 없어지는데, 지금까지 무엇이 버려졌는지 아무 기록이 없었다.
+        실측상 이 필터는 규칙이 위반으로 확정한 문장의 43%(누적 7건 중 3건: "약국 입점
+        화장품"·"더 작고 미세한 Pin으로"·"15㎛ Pin")를 "효능주장 아님"으로 본다. 그
+        문장들이 지금 안전한 건 규칙이 먼저 잡아 여기로 안 오기 때문이고, 규칙이 못
+        잡는 같은 성격 문장은 조용히 사라진다. **약국 입점·니들 표기·순위 표현 같은
+        위반은 애초에 "효능 주장"이 아니라, 이 필터의 질문 자체가 위반 유형 절반에
+        안 맞는다.**
+
+        판정 동작은 안 바꾼다(veto 아님, 버리는 기준 그대로). 관측만 붙인다.
+        버린 목록은 `last_dropped`로도 남겨 오프라인 분석에서 집계할 수 있게 한다.
         """
         claims: list[dict] = []
+        dropped: list[dict] = []
         for start in range(0, len(sentences), self._batch_size):
             batch = sentences[start : start + self._batch_size]
             numbered = "\n".join(
@@ -462,6 +478,15 @@ class RagJudge:
                 is_claim = (item or {}).get("claim")
                 if is_claim is not False:
                     claims.append(s)
+                else:
+                    dropped.append(s)
+
+        self.last_dropped = dropped
+        if dropped:
+            # 판정기가 못 본 문장이다. 미탐이 여기서 새면 흔적이 이 로그뿐이다.
+            print(f"    [prescreen drop] 효능주장 아님으로 판정 제외 {len(dropped)}건")
+            for s in dropped:
+                print(f"      - {s['text'][:60]}")
 
         return claims
 
