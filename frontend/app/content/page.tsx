@@ -512,7 +512,9 @@ function ContentGeneratorContent() {
       }
     }
 
-    const aiImageBadge = `<span class="dp-ai-tag">AI 생성</span>`;
+    // 이미지 위 배지 대신 이미지 아래 작은 캡션으로(팀장 지시: 이미지 위에 얹지 않기).
+    // 법적 요건(AI기본법 제31조③, "명확하게 인식 가능한 방식")은 캡션으로도 충족.
+    const aiImageCaption = `<p class="dp-ai-caption">AI 생성</p>`;
     let statementAltIndex = 0;
 
     // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
@@ -527,9 +529,9 @@ function ContentGeneratorContent() {
         const { headline, subcopy } = splitHeadline(s.text);
         return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
-      ${aiImageBadge}
       <div class="dp-hero-card"><span>${productName}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
-    </div>`;
+    </div>
+    ${aiImageCaption}`;
       }
 
       if (layoutType === "image_text_split" && dataUri) {
@@ -538,7 +540,10 @@ function ContentGeneratorContent() {
         statementAltIndex++;
         return `${swapComment}
     <div class="dp-split dp-split-${side}">
-      <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">${aiImageBadge}</div>
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
       <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
     </div>`;
       }
@@ -554,7 +559,8 @@ function ContentGeneratorContent() {
         // 텍스처/원료 클로즈업 무드컷. 텍스트는 짧은 캡션 하나만(또는 생략).
         const { headline } = splitHeadline(s.text);
         return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">${aiImageBadge}</div>
+    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
     ${headline ? `<p class="dp-caption">${escapeHtml(headline)}</p>` : ""}`;
       }
 
@@ -565,9 +571,8 @@ function ContentGeneratorContent() {
       if (dataUri) {
         // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
         return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
-      ${aiImageBadge}
-    </div>
+    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
     <div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
       }
       return `<div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
@@ -630,7 +635,7 @@ function ContentGeneratorContent() {
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
-    .dp-ai-tag { position: absolute; top: 10px; right: 10px; font-size: 9.5px; font-weight: 600; letter-spacing: .2px; color: #fff; background: rgba(29,27,24,.62); padding: 4px 8px; border-radius: 999px; }
+    .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
     .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
     .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
     .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
@@ -638,8 +643,10 @@ function ContentGeneratorContent() {
     .dp-statement .dp-headline { font-size: 21px; }
     .dp-split { display: flex; align-items: stretch; gap: 0; }
     .dp-split-right { flex-direction: row-reverse; }
-    .dp-split-media { flex: 0 0 42%; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); margin: 24px 0 24px 24px; }
-    .dp-split-right .dp-split-media { margin: 24px 24px 24px 0; }
+    .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
+    .dp-split-right .dp-split-media-wrap { margin: 24px 24px 24px 0; }
+    .dp-split-media { flex: 1; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
+    .dp-split-media-wrap .dp-ai-caption { margin: 5px 0 0; }
     .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
     .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
     .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
