@@ -77,6 +77,19 @@ def _load_reverse_synonyms() -> dict[str, tuple[str, str]]:
 
 _ASCII_WORD = re.compile(r"^[A-Za-z]+$")
 
+# 근거 없는 비교수치("시중 대비 3배") — 시행규칙 별표5 "바"항(경쟁상품 비교는 대상·기준이
+# 분명하고 객관적으로 확인 가능한 사항만 허용). 배수 표현은 숫자가 가변이라 키워드 나열이
+# 아니라 정규식으로 잡는다(prohibited_expressions.md:59, cases.md:32 근거).
+_MULTIPLIER_RE = re.compile(r"\d+(\.\d+)?배")
+_COMPARISON_MARKERS = ("대비", "보다")
+
+
+def _is_unsubstantiated_comparison(norm: str) -> bool:
+    """비교표지(대비/보다)와 배수(N배)가 같은 문장에 있으면 근거 없는 비교수치로 본다."""
+    if not _MULTIPLIER_RE.search(norm):
+        return False
+    return any(marker in norm for marker in _COMPARISON_MARKERS)
+
 
 def _keyword_present(kw: str, norm: str) -> bool:
     """정규화된 문장에 키워드가 있는지 본다.
@@ -162,6 +175,7 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
 def match_rule(sentence: str) -> RuleMatch | None:
     """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
 
+    가장 먼저 근거 없는 비교수치(정규식, "대비/보다"+"N배")를 본다. 그다음 키워드 갈래를
     우선순위대로 스캔한다: violation > needs_review > legal_allow > out_of_scope.
     앞 갈래에서 먼저 걸리면 뒤는 안 본다. 이 순서가 경계표현 조합을 자연히
     처리한다(예: '시술'이 violation에 있어 '시술 후 진정'은 진정보다 시술이
@@ -177,6 +191,11 @@ def match_rule(sentence: str) -> RuleMatch | None:
     """
     norm = _normalize(sentence)
     rules = _load()
+
+    if _is_unsubstantiated_comparison(norm):
+        return RuleMatch(
+            RuleOutcome.violation, "비교수치", ViolationType.type_5_deception, JudgmentFlag.violation
+        )
 
     for type_label, keywords in rules["violation"].items():
         vtype = ViolationType(type_label)

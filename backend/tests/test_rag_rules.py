@@ -273,3 +273,47 @@ def test_mts_alone_is_violation():
     m = match_rule("MTS 전용 세럼")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
+
+
+# ── 비교광고(별표5 "바"항) — 2026-08-19 신설 ────────────────────────────
+# 근거 없는 비교수치(N배)는 위반, 배타적 최상급(NO.1·최고 등)은 일반 수식어와
+# 같은 취급으로 needs_review. prohibited_expressions.md:59 · cases.md:32 근거.
+
+
+def test_comparison_with_multiplier_is_violation():
+    """정답셋 06번 원문. '대비'+'N배'가 같이 있으면 근거 없는 비교수치로 위반."""
+    m = match_rule("시중 제품 대비 3배 이상에 해당하는 용량!")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+    assert m.span == "비교수치"
+
+
+def test_comparison_multiplier_generalizes_beyond_three():
+    """배수가 3이 아니어도(예: 5배) 같은 패턴으로 걸려야 한다(정규식이므로 숫자 나열 아님)."""
+    m = match_rule("타사 대비 5배 빠른 흡수력")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+
+
+def test_comparison_without_multiplier_is_not_flagged_by_this_rule():
+    """정답셋 53번. '대비'만 있고 배수가 없으면 비교수치 규칙에 안 걸린다(다른 경로로 처리)."""
+    m = match_rule("레티놀 대비 자극이 적고, 우수한 효과")
+    assert m is None or m.span != "비교수치"
+
+
+def test_exclusive_superlative_no1_is_needs_review():
+    """정답셋 29·32번. 'NO.1'·'No.1'은 배타적 최상급 — needs_review."""
+    for s in ["No.1* 선스틱", "전세계적으로 10초에 1개씩 판매되는 록시땅 베스트 셀러 NO.1"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+        assert m.violation_type == ViolationType.type_5_deception, s
+
+
+def test_exclusive_superlative_choego_is_needs_review():
+    """'최고'·'최상'·'유일'도 배타적 최상급 — needs_review(기존 완벽한·최적의·파워와 동일 취급)."""
+    for kw in ["최고", "최상", "유일"]:
+        m = match_rule(f"{kw}의 보습 크림")
+        assert m is not None, kw
+        assert m.outcome == RuleOutcome.needs_review, kw
