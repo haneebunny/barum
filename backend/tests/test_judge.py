@@ -412,3 +412,73 @@ def test_cache_report_handles_zero_calls():
     vlm = OpenAIVLM.__new__(OpenAIVLM)
     vlm.prompt_tokens, vlm.cached_tokens, vlm.total_tokens = 0, 0, 0
     assert vlm.cache_report()["hit_rate"] == 0.0
+
+
+# ── 1차 필터가 버린 문장 관측 (2026-08-19) ────────────────────────────────────
+# prescreen에서 버려지면 판정기가 그 문장을 볼 기회 자체가 없는데, 지금까지 무엇이
+# 버려졌는지 기록이 없었다. 판정 동작은 안 바꾸고(veto 아님) 관측만 붙인다.
+
+
+class _PrescreenVLM:
+    """1차 필터 응답을 지정한 대로 돌려주는 가짜. 판정 호출은 빈 결과."""
+
+    def __init__(self, claims: list[bool]):
+        self._claims = claims
+        self.calls = 0
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        self.calls += 1
+        if "효능/효과를 주장하는지" in prompt:  # 1차 필터 호출
+            return {"results": [{"n": i, "claim": c} for i, c in enumerate(self._claims)]}
+        return {"results": []}  # 판정 호출
+
+
+# 주의: 규칙에 걸리는 문장("15㎛ Pin"·"약국 입점 화장품")은 애초에 prescreen에 안 간다
+# (RagJudge가 규칙 미매칭분만 넘김). 그래서 여기선 규칙 미매칭 문장을 쓴다.
+def _sents(texts):
+    return [{"order": i, "tile": None, "text": t} for i, t in enumerate(texts)]
+
+
+def test_rag_judge_records_prescreen_dropped_sentences():
+    """버린 문장이 last_dropped에 남는다."""
+    from barum.judge.cosmetic import RagJudge
+
+    vlm = _PrescreenVLM([True, False, False])
+    judge = RagJudge(vlm)
+    judge.judge(_sents(["촉촉한 사용감", "대용량 200ml 구성", "국내 자체 공장에서 생산"]), "KR")
+    dropped = [s["text"] for s in judge.last_dropped]
+    assert dropped == ["대용량 200ml 구성", "국내 자체 공장에서 생산"]
+
+
+def test_prescreen_drop_is_logged(capsys):
+    """버린 문장은 경고로 출력된다. 미탐이 여기서 새면 흔적이 이 로그뿐이다."""
+    from barum.judge.cosmetic import RagJudge
+
+    judge = RagJudge(_PrescreenVLM([False]))
+    judge.judge(_sents(["대용량 200ml 구성"]), "KR")
+    out = capsys.readouterr().out
+    assert "prescreen drop" in out
+    assert "대용량 200ml 구성" in out
+
+
+def test_prescreen_drop_does_not_change_judgment():
+    """관측만 붙인 것이라 버리는 기준·판정 결과는 그대로다(veto 아님)."""
+    from barum.judge.cosmetic import RagJudge
+
+    judge = RagJudge(_PrescreenVLM([False, False]))
+    res = judge.judge(_sents(["대용량 200ml 구성", "국내 자체 공장에서 생산"]), "KR")
+    # 전부 버려졌으니 판정 호출도 없고 finding도 없다(기존 동작 그대로).
+    assert res.findings == []
+    assert len(judge.last_dropped) == 2
+
+
+def test_last_dropped_resets_between_runs():
+    """직전 실행 기록이 다음 실행에 남지 않는다."""
+    from barum.judge.cosmetic import RagJudge
+
+    judge = RagJudge(_PrescreenVLM([False]))
+    judge.judge(_sents(["대용량 200ml 구성"]), "KR")
+    assert len(judge.last_dropped) == 1
+    judge._vlm = _PrescreenVLM([True])
+    judge.judge(_sents(["촉촉한 사용감"]), "KR")
+    assert judge.last_dropped == []
