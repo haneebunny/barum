@@ -9,7 +9,9 @@ judge·vlm을 주입받아 유닛테스트는 오프라인.
 
 from barum.generate.images import generate_module_images
 from barum.generate.layout import (
+    PRODUCT_SPEC_KIND,
     clinical_sections_text,
+    ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
 )
@@ -27,6 +29,7 @@ from barum.models import (
     RiskConfirmation,
     Section,
     SkippedClaim,
+    TableRow,
 )
 from barum.pipeline import run_check
 from barum.reference.approved_claims import match_approved_claim
@@ -210,7 +213,7 @@ def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
     for s in sections:
         text, kinds = remove_pii(s.text)
         pii_kinds.update(kinds)
-        cleaned.append(Section(kind=s.kind, text=text, source=s.source))
+        cleaned.append(Section(kind=s.kind, text=text, source=s.source, table_rows=s.table_rows))
     return cleaned, pii_kinds
 
 
@@ -263,6 +266,21 @@ def build_approved_claim_sections(req: GenerateRequest) -> tuple[list[Section], 
     return sections, skipped
 
 
+def build_product_spec_section(req: GenerateRequest) -> Section:
+    """제형·용량으로 상품 스펙표 섹션을 만든다(table_info layout_type 전용).
+
+    LLM을 안 태운다. 사업자가 입력한 값을 그대로 표로 옮길 뿐이라 지어낼 게 없다.
+    호출 전에 formulation_type·volume 중 하나는 있다고 가정한다(둘 다 없으면
+    ensure_product_spec_module이 애초에 이 모듈을 계획에 안 넣는다).
+    """
+    rows = []
+    if req.formulation_type:
+        rows.append(TableRow(label="제형", value=req.formulation_type))
+    if req.volume:
+        rows.append(TableRow(label="용량", value=req.volume))
+    return Section(kind=PRODUCT_SPEC_KIND, text="", source="product_spec", table_rows=rows)
+
+
 def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
     """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM)."""
     # 1. 원본 검사 → 위반 findings
@@ -313,16 +331,21 @@ def _generate_create_content(
         has_clinical_evidence=bool(evidence),
     )
     skipped += plan_skipped
+    plan = ensure_product_spec_module(plan, req)
 
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
-    safe_modules = [m for m in plan.modules if not m.has_claim_risk]
+    #    product_spec도 LLM을 안 태운다. 사업자 입력값을 표로 그대로 옮길 뿐이다.
+    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     clinical_planned = any(m.kind.startswith("clinical") for m in plan.modules)
+    product_spec_planned = any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules)
     sections = list(claim_sections)
     if clinical_planned and evidence:
         sections.append(
             Section(kind="실증자료", text=clinical_sections_text(evidence), source="clinical_evidence")
         )
+    if product_spec_planned:
+        sections.append(build_product_spec_section(req))
     sections += generate_module_sections(req, safe_modules, vlm)
 
     # 4. PII 제거

@@ -239,12 +239,22 @@ class RemediationResponse(BaseModel):
 # ── 콘텐츠 생성 (FR-11/13) ──────────────────────────────────────────────────
 
 
+class TableRow(BaseModel):
+    """table_info 레이아웃 슬롯 한 줄(label→value). 예: "제형"→"액상"."""
+
+    label: str
+    value: str
+
+
 class Section(BaseModel):
     """생성된 콘텐츠 한 섹션. 화면은 섹션 카드로 렌더한다."""
 
     kind: str  # 제품개요 | 사용법 | 주의사항 | 광고문구
     text: str
-    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구) | approved_claim(인증서-인정문구 매칭, create 모드)
+    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구) | approved_claim(인증서-인정문구 매칭, create 모드) | product_spec(구조화 상품정보, create 모드)
+    table_rows: list[TableRow] | None = Field(
+        None, description="table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
+    )
 
 
 class Replacement(BaseModel):
@@ -405,6 +415,12 @@ class GenerateRequest(BaseModel):
         None,
         description="`POST /uploads/product-photo`로 먼저 올린 제품사진 ID 목록(create 모드). "
         "있으면 배경 이미지 생성 시 합성 참조 이미지로 쓴다(AI 배경·연출 합성, 팀장 승인).",
+    )
+    formulation_type: str | None = Field(
+        None, description="인터뷰에서 받은 제형(create 모드, table_info 상품정보 모듈용). 예: '액상', '크림'"
+    )
+    volume: str | None = Field(
+        None, description="인터뷰에서 받은 용량·중량(create 모드, table_info 상품정보 모듈용). 예: '50ml'"
     )
     image_generation: ImageGenRequest | None = None
 
