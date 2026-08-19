@@ -141,12 +141,22 @@ export const ImageGenResultSchema = z.object({
 });
 export type ImageGenResult = z.infer<typeof ImageGenResultSchema>;
 
+// create 모드 모듈별 배경 이미지 생성 결과(FR-13). 텍스트는 안 굽고 프론트가 위에 얹는다.
+export const ModuleImageSchema = z.object({
+  module_kind: z.string(),
+  status: z.enum(["generated", "skipped"]),
+  reason: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+});
+export type ModuleImage = z.infer<typeof ModuleImageSchema>;
+
 export const ImagePlanSchema = z.object({
   placed: z.array(PlacedImageSchema).default([]),
   generation: ImageGenResultSchema.default({
     requested: false,
     ai_labeled: false,
   }),
+  module_images: z.array(ModuleImageSchema).default([]),
 });
 export type ImagePlan = z.infer<typeof ImagePlanSchema>;
 
