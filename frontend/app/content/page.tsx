@@ -403,17 +403,54 @@ function ContentGeneratorContent() {
   };
 
   // HTML 내보내기 (Blob)
-  const exportHtml = () => {
+  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다.
+  const toDataUri = async (url: string): Promise<string | null> => {
+    try {
+      const res = await fetch(resolveImageUrl(url));
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error("Failed to inline image for export", url, e);
+      return null;
+    }
+  };
+
+  const exportHtml = async () => {
     if (!genResult) return;
     const productName = displayProductName;
-    
+
+    // 섹션별로 매칭되는 module_image가 있으면 배경 이미지 data URI로 인라인
+    const moduleImageDataUris: Record<string, string | null> = {};
+    for (const mi of genResult.image_plan.module_images) {
+      if (mi.status === "generated" && mi.image_url) {
+        moduleImageDataUris[mi.module_kind] = await toDataUri(mi.image_url);
+      }
+    }
+
     const sectionsHtml = genResult.sections.map((s) => {
-      return `<div class="dp-block"><b>${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})</b><p>${s.text}</p></div>`;
+      const dataUri = moduleImageDataUris[s.kind];
+      const label = `${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})`;
+      if (dataUri) {
+        return `<div class="dp-block dp-block-img" style="background-image:url('${dataUri}')"><div class="dp-block-overlay"><b>${label}</b><p>${s.text}</p></div></div>`;
+      }
+      return `<div class="dp-block"><b>${label}</b><p>${s.text}</p></div>`;
     }).join("");
 
-    const imagesHtml = genResult.image_plan.placed.map((img) => {
-      return `<div class="dp-img"><span>${img.image_url}</span></div>`;
-    }).join("");
+    const placedImages = await Promise.all(
+      genResult.image_plan.placed.map(async (img) => {
+        const dataUri = await toDataUri(img.image_url);
+        return dataUri
+          ? `<div class="dp-img" style="background-image:url('${dataUri}')"></div>`
+          : `<div class="dp-img"><span>${img.image_url}</span></div>`;
+      })
+    );
+    const imagesHtml = placedImages.join("");
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
@@ -428,7 +465,11 @@ function ContentGeneratorContent() {
     .dp-block { padding: 16px 18px; border-top: 1px solid #DDE4E2; }
     .dp-block b { font-size: 11.5px; color: #14231B; display: block; margin-bottom: 7px; }
     .dp-block p { margin: 0; font-size: 13.5px; line-height: 1.75; color: #33413A; }
-    .dp-img { aspect-ratio: 16/10; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); border-top: 1px solid #DDE4E2; display: flex; align-items: center; justify-content: center; color: #5C6B62; font-size: 10px; font-family: monospace; }
+    .dp-block-img { background-size: cover; background-position: center; min-height: 180px; display: flex; align-items: flex-end; padding: 0; }
+    .dp-block-img .dp-block-overlay { width: 100%; background: linear-gradient(to top, rgba(0,0,0,.7), rgba(0,0,0,.25) 60%, transparent); padding: 16px 18px 14px; }
+    .dp-block-img .dp-block-overlay b { color: #fff; }
+    .dp-block-img .dp-block-overlay p { color: #fff; }
+    .dp-img { aspect-ratio: 16/10; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); background-size: cover; background-position: center; border-top: 1px solid #DDE4E2; display: flex; align-items: center; justify-content: center; color: #5C6B62; font-size: 10px; font-family: monospace; }
     .dp-close { padding: 14px 18px; border-top: 1px dashed #CDD6D3; font-size: 11px; color: #5C6B62; line-height: 1.6; }
   </style>
 </head>
@@ -525,7 +566,7 @@ function ContentGeneratorContent() {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     if (type === "html") {
-      exportHtml();
+      await exportHtml();
     } else if (type === "png") {
       await exportPng();
     } else if (type === "pdf") {
