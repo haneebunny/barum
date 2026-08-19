@@ -5,6 +5,8 @@
 """
 
 import os
+import re
+from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +38,7 @@ from barum.storage.checks_store import (
     sha256_hex,
     upload_image,
 )
-from barum.vlm import get_vlm
+from barum.vlm import get_image_generator, get_vlm
 
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
 _CT_TO_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
@@ -306,10 +308,64 @@ def _section_vlm():
     return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
 
 
+def _image_generator():
+    """모듈별 배경 이미지 생성기. `IMAGE_GENERATION_ENABLED=1`일 때만 켠다.
+
+    기본 비활성이다(이미지 모델이 아직 확정 전이라는 안전장치, 2026-08-18 팀장·PM
+    확정). 켜면 `/generate` 요청마다(create 모드 + 이미지 생성 체크박스 켰을 때)
+    실제 과금(OpenAI gpt-image 계열)이 나간다. None을 내면 build_image_plan이
+    이미지 생성 경로를 아예 안 탄다(content.py 쪽 안전장치, 여기 안 건드림).
+    """
+    if os.environ.get("IMAGE_GENERATION_ENABLED", "0") != "1":
+        return None
+    return get_image_generator()
+
+
+def _image_sink(client):
+    """생성된 모듈 이미지를 private 버킷에 올리고, 스트리밍 프록시 경로를 낸다.
+
+    `/reports/{result_id}/image`와 같은 이유로 직접 버킷 URL을 안 준다(서명 URL
+    안 씀, 버킷 자체가 private). 검사 이미지는 result_id로 찾지만 생성 이미지는
+    딸린 검사 레코드가 없어서, 이미지 하나하나를 UUID로 주소를 매긴다.
+    """
+    def sink(module_kind: str, data: bytes) -> str | None:
+        image_id = uuid4().hex
+        ensure_bucket(client)
+        upload_image(client, f"generated/{image_id}.png", data, "image/png")
+        return f"/generated/{image_id}"
+    return sink
+
+
+# UUID hex(32자 16진수)만 받는다. path traversal 방지(경로 그대로 스토리지 조회에 씀).
+_IMAGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+@app.get("/generated/{image_id}")
+def get_generated_image(image_id: str) -> Response:
+    """`_image_sink`가 저장한 생성 이미지를 스트리밍한다(버킷 private, 서명 URL 없음)."""
+    if not _IMAGE_ID_RE.match(image_id):
+        raise HTTPException(status_code=404, detail="잘못된 이미지 id입니다.")
+    try:
+        data = download_image(_checks_client(), f"generated/{image_id}.png")
+    except Exception:
+        raise HTTPException(status_code=404, detail="해당 생성 이미지를 찾을 수 없습니다.")
+    return Response(content=data, media_type="image/png")
+
+
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest) -> GenerateResponse:
-    """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve).
+    """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve+create).
 
     위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.
+    create 모드의 모듈별 배경 이미지 생성은 `IMAGE_GENERATION_ENABLED=1`일 때만
+    실제로 돈다(기본 비활성). 꺼져 있으면 image_generator=None이라 이미지 관련
+    인자를 안 만들고 그대로 통과한다(불필요한 Supabase 클라이언트 생성 회피).
     """
-    return generate_content(req, judge=_build_judge(), vlm=_section_vlm())
+    image_gen = _image_generator()
+    return generate_content(
+        req,
+        judge=_build_judge(),
+        vlm=_section_vlm(),
+        image_generator=image_gen,
+        image_sink=_image_sink(_checks_client()) if image_gen else None,
+    )

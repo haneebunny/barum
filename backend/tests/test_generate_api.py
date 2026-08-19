@@ -45,3 +45,122 @@ def test_generate_requires_content():
     """content 없으면 422(pydantic 검증)."""
     r = client.post("/generate", json={"product_name": "x"})
     assert r.status_code == 422
+
+
+# ── create 모드 이미지 생성 배선 (2026-08-18, 냐냐 발견 버그 수정) ──────────────
+
+
+class FakeImageGenerator:
+    def __init__(self, *results):
+        self._results = list(results)
+
+    def generate_image(self, prompt, images):
+        r = self._results.pop(0) if self._results else b"PNG"
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+class FakeBucketClient:
+    """ensure_bucket·upload_image·download_image가 기대하는 최소 Storage 인터페이스."""
+
+    def __init__(self):
+        self.files: dict[str, bytes] = {}
+        self.storage = self
+
+    def list_buckets(self):
+        return []
+
+    def create_bucket(self, name, options=None):
+        return None
+
+    def from_(self, bucket):
+        return self
+
+    def upload(self, path, data, opts):
+        self.files[path] = data
+
+    def download(self, path):
+        if path not in self.files:
+            raise RuntimeError("not found")
+        return self.files[path]
+
+
+_PLAN = {
+    "modules": [
+        {"kind": "hero_intro", "purpose": "도입", "has_claim_risk": False},
+    ]
+}
+_MODULE_TEXT = {"sections": [{"kind": "hero_intro", "text": "일상에 쓰기 좋은 제품입니다."}]}
+
+
+class SequenceVLM:
+    def __init__(self, *results):
+        self._results = list(results)
+
+    def generate_json(self, prompt, images):
+        return self._results.pop(0) if self._results else {}
+
+
+def test_이미지생성_기본값은_비활성이다(monkeypatch):
+    """IMAGE_GENERATION_ENABLED 안 주면 image_generator가 None이라 module_images가 빈 배열."""
+    monkeypatch.delenv("IMAGE_GENERATION_ENABLED", raising=False)
+    assert app_module._image_generator() is None
+
+
+def test_이미지생성_활성화하면_생성기를_만든다(monkeypatch):
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+    monkeypatch.setattr(app_module, "get_image_generator", lambda: FakeImageGenerator())
+    assert app_module._image_generator() is not None
+
+
+def test_image_sink이_버킷에_올리고_프록시_경로를_낸다():
+    client_fake = FakeBucketClient()
+    sink = app_module._image_sink(client_fake)
+    url = sink("hero_intro", b"PNGDATA")
+    assert url.startswith("/generated/")
+    image_id = url.removeprefix("/generated/")
+    assert client_fake.files[f"generated/{image_id}.png"] == b"PNGDATA"
+
+
+def test_generated_이미지_라우트가_스트리밍한다(monkeypatch):
+    client_fake = FakeBucketClient()
+    monkeypatch.setattr(app_module, "_checks_client", lambda: client_fake)
+    sink = app_module._image_sink(client_fake)
+    url = sink("hero_intro", b"PNGDATA")
+
+    r = client.get(url)
+    assert r.status_code == 200
+    assert r.content == b"PNGDATA"
+    assert r.headers["content-type"] == "image/png"
+
+
+def test_generated_이미지_없으면_404(monkeypatch):
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    r = client.get("/generated/" + "0" * 32)
+    assert r.status_code == 404
+
+
+def test_generated_이미지_id_형식_아니면_404():
+    r = client.get("/generated/not-a-valid-id")
+    assert r.status_code == 404
+
+
+def test_create_모드_실제로_켜면_module_images에_URL이_채워진다(monkeypatch):
+    """냐냐가 발견한 버그의 회귀 테스트: 라우트가 image_generator·image_sink를
+    실제로 안 넘겨서 module_images가 항상 빈 배열이었다."""
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+    monkeypatch.setattr(app_module, "get_image_generator", lambda: FakeImageGenerator(b"PNGBYTES"))
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
+        "barum.judge.cosmetic", fromlist=["StubJudge"]
+    ).StubJudge())
+    monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    r = client.post("/generate", json={"mode": "create", "product_name": "테스트 세럼"})
+    assert r.status_code == 200
+    body = r.json()
+    images = body["image_plan"]["module_images"]
+    assert images, "module_images가 비어있으면 배선이 여전히 끊긴 것"
+    assert images[0]["status"] == "generated"
+    assert images[0]["image_url"].startswith("/generated/")
