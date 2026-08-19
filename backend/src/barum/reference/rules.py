@@ -105,6 +105,19 @@ def _is_unsubstantiated_verification_claim(norm: str) -> bool:
     return any(m in norm for m in _VERIFICATION_CLAIM_MARKERS)
 
 
+# 배타적 순위 최상급(NO.1·No.1·#1·1위) — 시행규칙 별표5 "바"항 근거, 비교광고와 같은 갈래.
+# "#"·숫자가 섞여 `_keyword_present`의 영단어 우측경계 보호가 안 먹히는 키워드라(순수
+# 영단어가 아님) 정규식으로 앞뒤 숫자 경계를 직접 본다. "11위"·"#123" 같은 상품코드·순위
+# 표기에 부분일치로 안 걸리게 — "Pin"이 "Pintox"에 걸렸던 사고와 같은 클래스라 처음부터
+# 경계를 둔다(2026-08-19).
+_RANK_SUPERLATIVE_RE = re.compile(r"(?<!\d)(?:no\.?1|#1|1위)(?!\d)", re.IGNORECASE)
+
+
+def _is_exclusive_rank_claim(norm: str) -> bool:
+    """NO.1/No.1/#1/1위처럼 배타적 순위를 내세우는 표현인지 본다(숫자 경계 보호)."""
+    return _RANK_SUPERLATIVE_RE.search(norm) is not None
+
+
 def _keyword_present(kw: str, norm: str) -> bool:
     """정규화된 문장에 키워드가 있는지 본다.
 
@@ -233,6 +246,11 @@ def match_rule(sentence: str) -> RuleMatch | None:
                 return RuleMatch(
                     RuleOutcome.needs_review, kw, vtype, JudgmentFlag.needs_review
                 )
+
+    if _is_exclusive_rank_claim(norm):
+        return RuleMatch(
+            RuleOutcome.needs_review, "배타적순위", ViolationType.type_5_deception, JudgmentFlag.needs_review
+        )
 
     for kw in rules["legal_allow"]:
         if not _keyword_present(kw, norm):
