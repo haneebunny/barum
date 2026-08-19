@@ -13,9 +13,10 @@
 비용 때문에 아무 문장에나 돌리지 않는다. 1단계가 고른 문장 중 2호(기능성) 주장에만
 돌린다(팀장 확정 2026-08-19).
 
-**⚠ 아직 파이프라인에 배선하지 않았다.** 배선 전 검증(양방향)은 끝났다. 남은 건
-1단계 필터(`reference/evidence_claim.py`, PR #191)가 먼저 머지돼야 `run_check`에
-붙일 수 있다는 것뿐이다.
+**파이프라인에 배선됐다** (`pipeline.py`의 `_verify_functional_evidence`, 2026-08-19).
+`run_check`가 판정 후 단계로 호출한다 — 2호 findings 중 증빙 표지어(`reference/
+evidence_claim.py`)가 있고 이미지 유래(밴드 좌표 있음)인 것만 대상. 격상만 하고
+강등은 신중히(둘 다 확정될 때만) — 자세한 정책은 `pipeline.py` 해당 함수 docstring.
 
 확인된 것 — 위조를 잡는가 (에스코 원본 이미지, "2중 기능성" 클레임, 2026-08-19):
 - doc_product_name="에스코 로즈 PDRN 리페어 앰플"(제품명 불일치), claim_match=False

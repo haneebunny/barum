@@ -11,7 +11,8 @@ import io
 from PIL import Image
 
 from barum.judge.cosmetic import JudgeResult, StubJudge
-from barum.pipeline import _attach_bands, run_check
+from barum.models import Finding, JudgmentFlag, Location, ViolationType
+from barum.pipeline import _attach_bands, _verify_functional_evidence, run_check
 
 
 def test_attach_bands_sets_coordinates_by_tile():
@@ -198,3 +199,98 @@ def test_ingredient_amounts_skips_entries_without_colon():
         ingredient_amounts="정제수, 나이아신아마이드:3%",
     )
     assert judge.received_ingredient_amounts == [("나이아신아마이드", "3%")]
+
+
+class FakeEvidenceVLM:
+    """증빙 대조 호출을 가로채 고정 응답을 돌려주는 가짜 어댑터(네트워크 없음)."""
+
+    def __init__(self, response: dict):
+        self._response = response
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        return self._response
+
+
+def _functional_finding(**overrides) -> Finding:
+    base = dict(
+        span="미백 주름개선 2중 기능성",
+        sentence="에스코 제주 시카 카밍 세럼은 미백 주름개선 2중 기능성을 보고한 제품입니다",
+        violation_type=ViolationType.type_2_functional_misperception,
+        legal_basis="화장품법 제13조 제1항 제2호",
+        legal_basis_text=None,
+        flag=JudgmentFlag.needs_review,
+        explanation="근거 문서 확인 안 됨",
+        location=Location(
+            tile="s_t00.png", order=0, y_start=0, y_end=200, source_h=200, source_w=200
+        ),
+    )
+    base.update(overrides)
+    return Finding(**base)
+
+
+def test_verify_functional_evidence_skips_without_image():
+    """이미지가 없으면 대조할 원본이 없다 — findings를 그대로 돌려준다."""
+    f = _functional_finding()
+    assert _verify_functional_evidence([f], image_bytes=None, product_name="p") == [f]
+
+
+def test_verify_functional_evidence_skips_non_target_findings():
+    """2호가 아니거나 증빙 표지어가 없는 문장은 VLM 호출 없이 그대로 통과한다."""
+    not_type2 = _functional_finding(
+        violation_type=ViolationType.type_1_drug_misperception, sentence="피부 재생 효과"
+    )
+    no_evidence_term = _functional_finding(sentence="미백에 좋아요")
+    out = _verify_functional_evidence(
+        [not_type2, no_evidence_term], image_bytes=_tiny_png(), product_name="p"
+    )
+    assert out == [not_type2, no_evidence_term]
+
+
+def test_verify_functional_evidence_upgrades_on_mismatch():
+    """제품명·시험항목이 광고와 어긋나면(위조 의심) needs_review여도 violation으로 격상한다."""
+    f = _functional_finding(flag=JudgmentFlag.needs_review)
+    fake = FakeEvidenceVLM({
+        "has_document": True,
+        "doc_product_name": "에스코 로즈 PDRN 리페어 앰플",
+        "doc_test_item": "피부 첩포에 의한 일차자극 인체적용시험",
+        "product_match": False,
+        "claim_match": False,
+    })
+    out = _verify_functional_evidence(
+        [f], image_bytes=_tiny_png(), product_name="에스코 제주 시카 카밍 세럼", vlm=fake
+    )
+    assert len(out) == 1
+    assert out[0].flag == JudgmentFlag.violation
+    assert "PDRN" in out[0].explanation
+
+
+def test_verify_functional_evidence_downgrades_on_verified():
+    """제품명·시험항목이 광고와 둘 다 확정 일치하면 finding 자체를 빼 합법으로 강등한다."""
+    f = _functional_finding(flag=JudgmentFlag.violation)
+    fake = FakeEvidenceVLM({
+        "has_document": True,
+        "doc_product_name": "에스코 제주 시카 카밍 세럼",
+        "doc_test_item": "미백 주름개선 2중 기능성 심사",
+        "product_match": True,
+        "claim_match": True,
+    })
+    out = _verify_functional_evidence(
+        [f], image_bytes=_tiny_png(), product_name="에스코 제주 시카 카밍 세럼", vlm=fake
+    )
+    assert out == []
+
+
+def test_verify_functional_evidence_keeps_on_unknown():
+    """읽지 못해 unknown이면 확정된 게 없으니 기존 판정을 그대로 둔다(강등은 위험한 방향)."""
+    f = _functional_finding(flag=JudgmentFlag.needs_review)
+    fake = FakeEvidenceVLM({
+        "has_document": True,
+        "doc_product_name": "unknown",
+        "doc_test_item": "unknown",
+        "product_match": "unknown",
+        "claim_match": "unknown",
+    })
+    out = _verify_functional_evidence(
+        [f], image_bytes=_tiny_png(), product_name="p", vlm=fake
+    )
+    assert out == [f]
