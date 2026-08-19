@@ -135,6 +135,27 @@ def _keyword_present(kw: str, norm: str) -> bool:
     return kw_norm in norm
 
 
+def _match_conditional_violation(norm: str, rules: dict) -> RuleMatch | None:
+    """단어 자체로는 위반이 아니고, 맥락어가 같이 있을 때만 위반인 키워드를 본다.
+
+    `context_exceptions`(기본은 위반, 예외 조건이면 빼줌)와 반대 방향이다. 여기는
+    기본이 통과고, `requires_any_context` 중 하나라도 같이 있어야 위반으로 올린다.
+
+    "리들"이 이 갈래다. 상표 등록·장기 미제재된 회피표기라 단어 자체로는 위반이
+    아니지만("리들샷 앰플"), 침투·흡수 같은 메커니즘 서술이 붙으면 니들류와 같은
+    효과를 표방하는 것이라 위반이다("리들샷으로 유효성분이 깊숙이 침투").
+    """
+    for kw, spec in rules.get("conditional_violation", {}).items():
+        if not _keyword_present(kw, norm):
+            continue
+        contexts = spec.get("requires_any_context", [])
+        if not any(_normalize(c) in norm for c in contexts):
+            continue
+        vtype = ViolationType(spec["violation_type"])
+        return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+    return None
+
+
 def _has_context_exception(norm: str, kw: str, rules: dict) -> bool:
     """kw의 위반 매칭이 `context_exceptions`에 걸린 문맥 예외인지 본다.
 
@@ -215,7 +236,12 @@ def match_rule(sentence: str) -> RuleMatch | None:
     니들류(니들·마이크로니들·미세침·MTS·바늘·Pin·needle)는 예전엔 "단어+메커니즘
     서술 동반"일 때만 위반이었는데(conditional_violation), 2026-08-18 하니
     확정으로 폐지하고 단어 자체로 위반 처리한다(violation 플랫 키워드로 이동).
-    "리들"은 상표 등록·장기 미제재된 회피표기라 예외(synonyms.json에서 뺐다).
+
+    "리들"은 니들과 갈래가 다르다. 상표 등록·장기 미제재된 회피표기라 단어 자체로는
+    위반이 아니지만, 침투·흡수 같은 메커니즘 서술이 붙으면 위반이다(팀장 확정).
+    2026-08-18에 니들류를 플랫으로 옮기면서 "리들"을 synonyms.json에서 통째로 뺐는데
+    그때 "리들+침투" 조합을 잡던 경로까지 같이 사라진 회귀가 있었다(2026-08-19 실측).
+    지금은 `conditional_violation`(judge_rules.json)으로 되살렸다.
     """
     norm = _normalize(sentence)
     rules = _load()
@@ -238,6 +264,10 @@ def match_rule(sentence: str) -> RuleMatch | None:
             if _has_context_exception(norm, kw, rules):
                 continue
             return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+
+    conditional = _match_conditional_violation(norm, rules)
+    if conditional is not None:
+        return conditional
 
     for type_label, keywords in rules["needs_review"].items():
         vtype = ViolationType(type_label)

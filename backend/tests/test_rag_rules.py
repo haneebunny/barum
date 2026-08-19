@@ -292,9 +292,16 @@ def test_pin_unit_notation_is_violation():
 
 
 def test_needle_evasion_spelling_ridle_is_exempt():
-    """'리들'은 이제 예외다. 상표 등록·장기 미제재된 회피표기라 하니가 뺐다
-    (2026-08-18). synonyms.json의 "니들":["리들"] 매핑을 지웠다."""
-    assert match_rule("리들 앰플로 피부 속까지 침투하는 케어") is None
+    """'리들'은 니들류 플랫 위반의 예외다. 상표 등록·장기 미제재된 회피표기라
+    2026-08-18에 synonyms.json의 "니들":["리들"] 매핑을 지웠다.
+
+    **2026-08-19 정정**: 이 테스트는 원래 "리들 앰플로 피부 속까지 침투하는 케어"로
+    예외를 확인했는데, 그 문장은 침투 서술이 있어서 위반이 맞다(팀장 확정: 리들샷이
+    브랜드명이고 침투 내용이 없으면 합법, 있으면 위반). 예외를 확인하려는 테스트가
+    회귀를 못박고 있었다. 메커니즘 서술이 없는 문장으로 바꾼다. 조건부 위반 쪽은
+    아래 test_ridle_with_penetration_context_is_violation이 맡는다.
+    """
+    assert match_rule("리들 앰플 신제품 출시") is None
 
 
 def test_mts_alone_is_violation():
@@ -473,3 +480,43 @@ def test_collagen_claim_is_needs_review_not_violation():
         assert m is not None, s
         assert m.outcome == RuleOutcome.needs_review, s
         assert m.violation_type == ViolationType.type_1_drug_misperception, s
+
+
+# ── 리들 = 조건부 위반 (니들과 갈래가 다름) ───────────────────────────────────
+# 2026-08-18에 니들류를 플랫 violation으로 옮기면서 "리들"을 synonyms.json에서 통째로
+# 뺐는데, 그때 "리들+침투" 조합을 잡던 경로까지 같이 사라진 회귀가 있었다(2026-08-19
+# 실측). 니들=단어 자체로 위반, 리들=메커니즘 서술 동반 시에만 위반으로 구분한다.
+
+
+def test_ridle_with_penetration_context_is_violation():
+    """회귀 재현 케이스. "리들샷으로 ... 침투"는 위반이어야 한다."""
+    for s in [
+        "리들샷으로 유효성분이 피부 깊숙이 침투합니다",
+        "리들 앰플로 피부 속까지 침투하는 케어",
+        "리들샷 흡수가 빠른 앰플",
+    ]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.violation, s
+        assert m.violation_type == ViolationType.type_5_deception, s
+        assert m.span == "리들", s
+
+
+def test_ridle_brand_name_alone_is_not_violation():
+    """메커니즘 서술 없이 브랜드명만 쓰면 통과다(상표 등록·장기 미제재 회피표기)."""
+    for s in ["리들샷 앰플 추천", "리들샷 세럼 신제품"]:
+        assert match_rule(s) is None, s
+
+
+def test_needle_stays_unconditional_violation():
+    """니들은 조건부가 아니다. 메커니즘 서술이 없어도 단어 자체로 위반을 유지한다."""
+    m = match_rule("니들샷 앰플 추천")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "니들"
+
+
+def test_penetration_context_alone_is_not_violation():
+    """맥락어만 있고 리들이 없으면 이 규칙은 발동하지 않는다("흡수"는 합법 문장에 흔하다)."""
+    m = match_rule("피부에 부드럽게 흡수되며")
+    assert m is None or m.span != "리들"
