@@ -77,6 +77,46 @@ def _load_reverse_synonyms() -> dict[str, tuple[str, str]]:
 
 _ASCII_WORD = re.compile(r"^[A-Za-z]+$")
 
+# 근거 없는 비교수치("시중 대비 3배") — 시행규칙 별표5 "바"항(경쟁상품 비교는 대상·기준이
+# 분명하고 객관적으로 확인 가능한 사항만 허용). 배수 표현은 숫자가 가변이라 키워드 나열이
+# 아니라 정규식으로 잡는다(prohibited_expressions.md:59, cases.md:32 근거).
+_MULTIPLIER_RE = re.compile(r"\d+(\.\d+)?배")
+_COMPARISON_MARKERS = ("대비", "보다")
+
+
+def _is_unsubstantiated_comparison(norm: str) -> bool:
+    """비교표지(대비/보다)와 배수(N배)가 같은 문장에 있으면 근거 없는 비교수치로 본다."""
+    if not _MULTIPLIER_RE.search(norm):
+        return False
+    return any(marker in norm for marker in _COMPARISON_MARKERS)
+
+
+# 근거 없는 검증방법 주장("임상시험으로 철저히 검증받은") — type_5_deception.md #38 근거
+# (cases.md #38 실사례로 인용 재검증됨, 2026-08-19). 의도적으로 좁게: "효과로 증명합니다"
+# 처럼 구체적 검증방법 언급 없는 막연한 자기주장형은 이 규칙 대상이 아니다(하니 재확인).
+_VERIFICATION_METHOD_TERMS = ("임상시험", "인체적용시험", "인체외시험", "임상실험", "시험분석")
+_VERIFICATION_CLAIM_MARKERS = ("검증", "입증")
+
+
+def _is_unsubstantiated_verification_claim(norm: str) -> bool:
+    """구체적 검증방법(임상시험 등)과 '검증/입증' 단정이 같이 있으면 근거 없는 주장으로 본다."""
+    if not any(t in norm for t in _VERIFICATION_METHOD_TERMS):
+        return False
+    return any(m in norm for m in _VERIFICATION_CLAIM_MARKERS)
+
+
+# 배타적 순위 최상급(NO.1·No.1·#1·1위) — 시행규칙 별표5 "바"항 근거, 비교광고와 같은 갈래.
+# "#"·숫자가 섞여 `_keyword_present`의 영단어 우측경계 보호가 안 먹히는 키워드라(순수
+# 영단어가 아님) 정규식으로 앞뒤 숫자 경계를 직접 본다. "11위"·"#123" 같은 상품코드·순위
+# 표기에 부분일치로 안 걸리게 — "Pin"이 "Pintox"에 걸렸던 사고와 같은 클래스라 처음부터
+# 경계를 둔다(2026-08-19).
+_RANK_SUPERLATIVE_RE = re.compile(r"(?<!\d)(?:no\.?1|#1|1위)(?!\d)", re.IGNORECASE)
+
+
+def _is_exclusive_rank_claim(norm: str) -> bool:
+    """NO.1/No.1/#1/1위처럼 배타적 순위를 내세우는 표현인지 본다(숫자 경계 보호)."""
+    return _RANK_SUPERLATIVE_RE.search(norm) is not None
+
 
 def _keyword_present(kw: str, norm: str) -> bool:
     """정규화된 문장에 키워드가 있는지 본다.
@@ -93,6 +133,27 @@ def _keyword_present(kw: str, norm: str) -> bool:
     if _ASCII_WORD.match(kw_norm):
         return re.search(re.escape(kw_norm) + r"(?![A-Za-z])", norm) is not None
     return kw_norm in norm
+
+
+def _match_conditional_violation(norm: str, rules: dict) -> RuleMatch | None:
+    """단어 자체로는 위반이 아니고, 맥락어가 같이 있을 때만 위반인 키워드를 본다.
+
+    `context_exceptions`(기본은 위반, 예외 조건이면 빼줌)와 반대 방향이다. 여기는
+    기본이 통과고, `requires_any_context` 중 하나라도 같이 있어야 위반으로 올린다.
+
+    "리들"이 이 갈래다. 상표 등록·장기 미제재된 회피표기라 단어 자체로는 위반이
+    아니지만("리들샷 앰플"), 침투·흡수 같은 메커니즘 서술이 붙으면 니들류와 같은
+    효과를 표방하는 것이라 위반이다("리들샷으로 유효성분이 깊숙이 침투").
+    """
+    for kw, spec in rules.get("conditional_violation", {}).items():
+        if not _keyword_present(kw, norm):
+            continue
+        contexts = spec.get("requires_any_context", [])
+        if not any(_normalize(c) in norm for c in contexts):
+            continue
+        vtype = ViolationType(spec["violation_type"])
+        return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
+    return None
 
 
 def _has_context_exception(norm: str, kw: str, rules: dict) -> bool:
@@ -162,7 +223,9 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
 def match_rule(sentence: str) -> RuleMatch | None:
     """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
 
-    우선순위대로 스캔한다: violation > needs_review > legal_allow > out_of_scope.
+    가장 먼저 근거 없는 비교수치(정규식, "대비/보다"+"N배")와 근거 없는 검증방법 주장
+    ("임상시험"+"검증" 공출현)을 본다. 그다음 키워드 갈래를 우선순위대로 스캔한다:
+    violation > needs_review > legal_allow > out_of_scope.
     앞 갈래에서 먼저 걸리면 뒤는 안 본다. 이 순서가 경계표현 조합을 자연히
     처리한다(예: '시술'이 violation에 있어 '시술 후 진정'은 진정보다 시술이
     먼저 hit). 대표어로 안 걸리면 동의어 사전(synonyms.json)의 변형 표현도
@@ -173,10 +236,25 @@ def match_rule(sentence: str) -> RuleMatch | None:
     니들류(니들·마이크로니들·미세침·MTS·바늘·Pin·needle)는 예전엔 "단어+메커니즘
     서술 동반"일 때만 위반이었는데(conditional_violation), 2026-08-18 하니
     확정으로 폐지하고 단어 자체로 위반 처리한다(violation 플랫 키워드로 이동).
-    "리들"은 상표 등록·장기 미제재된 회피표기라 예외(synonyms.json에서 뺐다).
+
+    "리들"은 니들과 갈래가 다르다. 상표 등록·장기 미제재된 회피표기라 단어 자체로는
+    위반이 아니지만, 침투·흡수 같은 메커니즘 서술이 붙으면 위반이다(팀장 확정).
+    2026-08-18에 니들류를 플랫으로 옮기면서 "리들"을 synonyms.json에서 통째로 뺐는데
+    그때 "리들+침투" 조합을 잡던 경로까지 같이 사라진 회귀가 있었다(2026-08-19 실측).
+    지금은 `conditional_violation`(judge_rules.json)으로 되살렸다.
     """
     norm = _normalize(sentence)
     rules = _load()
+
+    if _is_unsubstantiated_comparison(norm):
+        return RuleMatch(
+            RuleOutcome.violation, "비교수치", ViolationType.type_5_deception, JudgmentFlag.violation
+        )
+
+    if _is_unsubstantiated_verification_claim(norm):
+        return RuleMatch(
+            RuleOutcome.violation, "검증방법단정", ViolationType.type_5_deception, JudgmentFlag.violation
+        )
 
     for type_label, keywords in rules["violation"].items():
         vtype = ViolationType(type_label)
@@ -187,6 +265,10 @@ def match_rule(sentence: str) -> RuleMatch | None:
                 continue
             return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
 
+    conditional = _match_conditional_violation(norm, rules)
+    if conditional is not None:
+        return conditional
+
     for type_label, keywords in rules["needs_review"].items():
         vtype = ViolationType(type_label)
         for kw in keywords:
@@ -195,9 +277,17 @@ def match_rule(sentence: str) -> RuleMatch | None:
                     RuleOutcome.needs_review, kw, vtype, JudgmentFlag.needs_review
                 )
 
+    if _is_exclusive_rank_claim(norm):
+        return RuleMatch(
+            RuleOutcome.needs_review, "배타적순위", ViolationType.type_5_deception, JudgmentFlag.needs_review
+        )
+
     for kw in rules["legal_allow"]:
-        if _keyword_present(kw, norm):
-            return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
+        if not _keyword_present(kw, norm):
+            continue
+        if kw in rules.get("context_exceptions", {}) and not _has_context_exception(norm, kw, rules):
+            continue
+        return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
 
     for kw in rules.get("out_of_scope", []):
         if _keyword_present(kw, norm):
@@ -205,3 +295,25 @@ def match_rule(sentence: str) -> RuleMatch | None:
 
     # 대표어로 안 걸렸으면 동의어 변형으로 재시도
     return _match_synonyms(norm, rules)
+
+
+# 2호(기능성오인) 표방을 가리키는 표지. judge_rules.json의 legal_allow 문맥예외
+# (탄력·민감·예민)가 쓰는 unsafe_markers와 같은 목록이라 여기서 단일 출처로 둔다.
+_FUNCTIONAL_MARKER_SOURCE = "탄력"
+
+
+@lru_cache(maxsize=1)
+def _functional_markers() -> tuple[str, ...]:
+    exc = _load().get("context_exceptions", {}).get(_FUNCTIONAL_MARKER_SOURCE, {})
+    return tuple(exc.get("unsafe_markers", ()))
+
+
+def has_functional_claim(sentence: str) -> bool:
+    """문장에 2호(미백·주름개선·자외선차단 등) 표방이 섞여 있는지 본다.
+
+    규칙이 1호 경계표현으로 먼저 확정해 버리면 같은 문장의 2호 클레임이 평가될
+    기회를 잃는다("진정에 도움을 주는 미백 크림" → needs_review(진정, 1호)에서 끝나
+    미백이 안 보인다). 그때 VLM에도 같이 넘길지 판단하는 데 쓴다.
+    """
+    norm = _normalize(sentence)
+    return any(_normalize(m) in norm for m in _functional_markers())

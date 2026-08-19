@@ -113,6 +113,11 @@ class OpenAIVLM:
         raw_client = OpenAI(api_key=key)
         self.client = wrappers.wrap_openai(raw_client)
         self.total_tokens = 0
+        # 캐시 적중 계측용. 판정은 근거 문서(2만자)를 배치마다 다시 실어 보내는데,
+        # 그 앞부분이 매번 같아 자동 프롬프트 캐싱 대상이다. 실제로 먹고 있는지
+        # 재려면 cached_tokens를 봐야 한다. `cache_report()`로 읽는다.
+        self.prompt_tokens = 0
+        self.cached_tokens = 0
 
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
         import base64
@@ -136,10 +141,31 @@ class OpenAIVLM:
 
         if resp.usage:
             self.total_tokens += resp.usage.total_tokens or 0
+            self.prompt_tokens += resp.usage.prompt_tokens or 0
+            # 판정 프롬프트는 근거 문서(2만자)가 앞에 붙고 배치마다 그 앞부분이
+            # 같다. 자동 프롬프트 캐싱이 실제로 먹는지 확인할 수단이 이것뿐이라
+            # 따로 센다. 필드가 없는 모델·구버전 SDK도 있어 방어적으로 읽는다.
+            details = getattr(resp.usage, "prompt_tokens_details", None)
+            self.cached_tokens += getattr(details, "cached_tokens", None) or 0
         text = (resp.choices[0].message.content or "").strip()
         if not text:
             raise ValueError("OpenAI가 빈 응답을 반환했다")
         return _extract_json(text)
+
+    def cache_report(self) -> dict[str, int | float]:
+        """프롬프트 캐시 적중 현황. 계측용이라 판정 동작에는 영향이 없다.
+
+        `hit_rate`는 입력 토큰 중 캐시로 처리된 비율이다. 이 값을 보고서야
+        "이미 잘 되고 있다"인지 "프리픽스가 깨져 매번 새로 물고 있다"인지
+        구분할 수 있다. 추정하지 말고 이 숫자를 쓸 것.
+        """
+        hit = self.cached_tokens / self.prompt_tokens if self.prompt_tokens else 0.0
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "cached_tokens": self.cached_tokens,
+            "total_tokens": self.total_tokens,
+            "hit_rate": round(hit, 4),
+        }
 
 
 class ImageGenerator(Protocol):

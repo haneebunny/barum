@@ -7,20 +7,96 @@
   },
   "product_type": "세럼",
   "modules": [
-    { "kind": "hero_intro", "purpose": "문제 제기로 시작하는 도입부, 효능 단정 + 각주", "has_claim_risk": true },
-    { "kind": "cause_explain", "purpose": "칙칙함의 원인 설명", "has_claim_risk": false },
-    { "kind": "ingredient_highlight", "purpose": "핵심 성분 소개(독자 원료 + 성분 조합)", "has_claim_risk": false },
-    { "kind": "persistence_claim", "purpose": "효과 지속성 강조", "has_claim_risk": false },
-    { "kind": "clinical_intro", "purpose": "인체적용시험 결과 섹션의 도입부", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "개선 경험 1: 색소침착·잡티 개선율, 사용 전/8주 후 비교 사진(피험자 실물) 포함", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "개선 경험 2: 다크스팟(속기미) 개선율", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "개선 경험 3: 밝기 개선율", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "개선 경험 4: 멜라닌 개선율", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "개선 경험 5: 전방위 윤기 개선율", "has_claim_risk": true },
-    { "kind": "clinical_followup", "purpose": "사용 중단 후에도 유지되는 효과 설명", "has_claim_risk": true },
-    { "kind": "clinical_result", "purpose": "유지 효과 수치", "has_claim_risk": true },
-    { "kind": "how_to_use", "purpose": "제형·디바이스 소개 + 사용 스텝(STEP1/STEP2)", "has_claim_risk": false },
-    { "kind": "bundle_suggestion", "purpose": "연계 제품과 병행 사용 시 시너지, 병행 사용 만족도 수치 포함", "has_claim_risk": true },
-    { "kind": "lineup", "purpose": "라인업 내 신제품 소개", "has_claim_risk": false }
-  ]
+    {
+      "kind": "hero_intro",
+      "purpose": "문제 제기로 시작하는 도입부, 효능 단정 + 각주",
+      "has_claim_risk": true,
+      "layout_type": "hero_fullbleed"
+    },
+    {
+      "kind": "cause_explain",
+      "purpose": "칙칙함의 원인 설명",
+      "has_claim_risk": false,
+      "layout_type": "section_statement"
+    },
+    {
+      "kind": "ingredient_highlight",
+      "purpose": "핵심 성분 소개(독자 원료 + 성분 조합)",
+      "has_claim_risk": false,
+      "layout_type": "image_text_split"
+    },
+    {
+      "kind": "persistence_claim",
+      "purpose": "효과 지속성 강조",
+      "has_claim_risk": false,
+      "layout_type": "section_statement"
+    },
+    {
+      "kind": "clinical_intro",
+      "purpose": "인체적용시험 결과 섹션의 도입부",
+      "has_claim_risk": true,
+      "layout_type": "section_statement"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "개선 경험 1: 색소침착·잡티 개선율, 사용 전/8주 후 비교 사진(피험자 실물) 포함",
+      "has_claim_risk": true,
+      "layout_type": "clinical_photo_compare"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "개선 경험 2: 다크스팟(속기미) 개선율",
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "개선 경험 3: 밝기 개선율",
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "개선 경험 4: 멜라닌 개선율",
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "개선 경험 5: 전방위 윤기 개선율",
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
+    },
+    {
+      "kind": "clinical_followup",
+      "purpose": "사용 중단 후에도 유지되는 효과 설명",
+      "has_claim_risk": true,
+      "layout_type": "section_statement"
+    },
+    {
+      "kind": "clinical_result",
+      "purpose": "유지 효과 수치",
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
+    },
+    {
+      "kind": "how_to_use",
+      "purpose": "제형·디바이스 소개 + 사용 스텝(STEP1/STEP2)",
+      "has_claim_risk": false,
+      "layout_type": "step_list"
+    },
+    {
+      "kind": "bundle_suggestion",
+      "purpose": "연계 제품과 병행 사용 시 시너지, 병행 사용 만족도 수치 포함",
+      "has_claim_risk": true,
+      "layout_type": "card_list_repeat"
+    },
+    {
+      "kind": "lineup",
+      "purpose": "라인업 내 신제품 소개",
+      "has_claim_risk": false,
+      "layout_type": "lineup_strip"
+    }
+  ],
+  "color_system": "alternation"
 }

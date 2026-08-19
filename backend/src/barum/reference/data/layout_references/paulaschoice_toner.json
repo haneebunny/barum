@@ -10,32 +10,39 @@
     {
       "kind": "promo_banner",
       "purpose": "구매 혜택 배너",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "banner_strip"
     },
     {
       "kind": "hero_intro",
       "purpose": "히어로 비주얼 + 제품 소개",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "hero_fullbleed"
     },
     {
       "kind": "clinical_result",
       "purpose": "사용 전후 수치 변화 그래프(각주 포함)",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
     },
     {
       "kind": "how_to_use",
       "purpose": "사용법 안내",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "step_list"
     },
     {
       "kind": "bundle_suggestion",
       "purpose": "타 제품과 조합 제안",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "card_list_repeat"
     },
     {
       "kind": "research_citation",
       "purpose": "참고 논문 인용 + 전성분 표기",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "table_info"
     }
-  ]
+  ],
+  "color_system": "alternation"
 }

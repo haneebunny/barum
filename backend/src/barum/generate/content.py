@@ -9,7 +9,9 @@ judge·vlm을 주입받아 유닛테스트는 오프라인.
 
 from barum.generate.images import generate_module_images
 from barum.generate.layout import (
+    PRODUCT_SPEC_KIND,
     clinical_sections_text,
+    ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
 )
@@ -27,6 +29,7 @@ from barum.models import (
     RiskConfirmation,
     Section,
     SkippedClaim,
+    TableRow,
 )
 from barum.pipeline import run_check
 from barum.reference.approved_claims import match_approved_claim
@@ -148,6 +151,7 @@ def build_image_plan(
     plan: LayoutPlan | None = None,
     image_generator=None,
     image_sink=None,
+    photo_resolver=None,
 ) -> ImagePlan:
     """업로드 이미지 배치 + 생성요청 사칭 가드레일(FR-13).
 
@@ -157,6 +161,10 @@ def build_image_plan(
     image_sink: `(모듈kind, PNG바이트) -> 이미지 URL | None`. 저장은 여기서 하지 않고
     주입받는다(`content.py`는 저장소를 몰라야 오프라인 테스트가 된다. 실제 저장은
     `api/app.py`가 `storage/checks_store.py`로 한다).
+
+    photo_resolver: `(product_photo_ids) -> 참조 이미지 바이트 목록`. image_sink와 같은
+    이유로 저장소 접근은 여기서 안 하고 주입만 받는다. `generate_module_images`로
+    그대로 넘긴다.
     """
     placed: list[PlacedImage] = []
     if req.result_id:
@@ -170,7 +178,9 @@ def build_image_plan(
 
     module_images: list[ModuleImage] = []
     if plan is not None and image_generator is not None:
-        module_images, blobs = generate_module_images(plan, req, image_generator)
+        module_images, blobs = generate_module_images(
+            plan, req, image_generator, photo_resolver=photo_resolver
+        )
         _store_module_images(module_images, blobs, image_sink)
     return ImagePlan(placed=placed, generation=gen, module_images=module_images)
 
@@ -203,7 +213,7 @@ def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
     for s in sections:
         text, kinds = remove_pii(s.text)
         pii_kinds.update(kinds)
-        cleaned.append(Section(kind=s.kind, text=text, source=s.source))
+        cleaned.append(Section(kind=s.kind, text=text, source=s.source, table_rows=s.table_rows))
     return cleaned, pii_kinds
 
 
@@ -256,6 +266,21 @@ def build_approved_claim_sections(req: GenerateRequest) -> tuple[list[Section], 
     return sections, skipped
 
 
+def build_product_spec_section(req: GenerateRequest) -> Section:
+    """제형·용량으로 상품 스펙표 섹션을 만든다(table_info layout_type 전용).
+
+    LLM을 안 태운다. 사업자가 입력한 값을 그대로 표로 옮길 뿐이라 지어낼 게 없다.
+    호출 전에 formulation_type·volume 중 하나는 있다고 가정한다(둘 다 없으면
+    ensure_product_spec_module이 애초에 이 모듈을 계획에 안 넣는다).
+    """
+    rows = []
+    if req.formulation_type:
+        rows.append(TableRow(label="제형", value=req.formulation_type))
+    if req.volume:
+        rows.append(TableRow(label="용량", value=req.volume))
+    return Section(kind=PRODUCT_SPEC_KIND, text="", source="product_spec", table_rows=rows)
+
+
 def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
     """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM)."""
     # 1. 원본 검사 → 위반 findings
@@ -286,7 +311,7 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
 
 
 def _generate_create_content(
-    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
     """신규 생성(create) 모드 오케스트레이션. 원본 검사 없음, replacements 항상 빈 배열.
 
@@ -306,22 +331,30 @@ def _generate_create_content(
         has_clinical_evidence=bool(evidence),
     )
     skipped += plan_skipped
+    plan = ensure_product_spec_module(plan, req)
 
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
-    safe_modules = [m for m in plan.modules if not m.has_claim_risk]
+    #    product_spec도 LLM을 안 태운다. 사업자 입력값을 표로 그대로 옮길 뿐이다.
+    #    ensure_product_spec_module이 항상 plan.modules 맨 뒤에 붙이므로, 여기서도
+    #    맨 뒤에 붙여야 렌더 순서가 계획된 모듈 순서와 어긋나지 않는다(2026-08-19,
+    #    실제 export에서 표가 히어로보다 앞에 나오던 결함, 팀장 지시로 즉시 수정).
+    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     clinical_planned = any(m.kind.startswith("clinical") for m in plan.modules)
+    product_spec_planned = any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules)
     sections = list(claim_sections)
     if clinical_planned and evidence:
         sections.append(
             Section(kind="실증자료", text=clinical_sections_text(evidence), source="clinical_evidence")
         )
     sections += generate_module_sections(req, safe_modules, vlm)
+    if product_spec_planned:
+        sections.append(build_product_spec_section(req))
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
     # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
-    image_plan = build_image_plan(req, plan, image_generator, image_sink)
+    image_plan = build_image_plan(req, plan, image_generator, image_sink, photo_resolver)
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
     # 7. 실증자료는 미검증이라 사용자 확인 항목으로 남긴다
@@ -350,15 +383,22 @@ def _generate_create_content(
 
 
 def generate_content(
-    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
     """`POST /generate` 오케스트레이션. `req.mode`로 improve/create 분기.
 
-    image_generator·image_sink는 create 모드에서만 쓴다. 안 주면 이미지 생성을
-    건너뛴다(모델 확정 전까지 기본 비활성).
+    image_generator·image_sink·photo_resolver는 create 모드에서만 쓴다.
+    image_generator를 안 주면 이미지 생성을 건너뛴다(모델 확정 전까지 기본 비활성).
+    photo_resolver는 판매자가 올린 제품사진(req.product_photo_ids)을 참조 이미지로
+    바꿔주는 콜백이다(AI 배경·연출 합성). 안 주면 참조 없이 배경만 생성한다.
     """
     if req.mode == "create":
         return _generate_create_content(
-            req, judge=judge, vlm=vlm, image_generator=image_generator, image_sink=image_sink
+            req,
+            judge=judge,
+            vlm=vlm,
+            image_generator=image_generator,
+            image_sink=image_sink,
+            photo_resolver=photo_resolver,
         )
     return _generate_improve_content(req, judge=judge, vlm=vlm)

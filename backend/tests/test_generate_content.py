@@ -13,7 +13,7 @@ from barum.generate.content import (
     generate_sections,
 )
 from barum.judge.cosmetic import StubJudge
-from barum.models import ClinicalEvidence, GenerateRequest, ImageGenRequest, IngredientAmount
+from barum.models import ClinicalEvidence, GenerateRequest, ImageGenRequest, IngredientAmount, TableRow
 
 
 class FakeVLM:
@@ -333,3 +333,50 @@ def test_improve_모드는_이미지_생성을_안_한다():
         image_generator=FakeImageGenerator(b"A"),
     )
     assert resp.image_plan.module_images == []
+
+
+# ── 상품 스펙표 (2026-08-19, 팀장 확정: table_info 지원범위 = 제형·용량) ──
+
+
+def test_제형_용량이_있으면_스펙_섹션이_생긴다():
+    req = GenerateRequest(
+        mode="create", product_name="테스트 세럼", formulation_type="액상", volume="50ml"
+    )
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    spec = next((s for s in resp.sections if s.kind == "product_spec"), None)
+    assert spec is not None
+    assert spec.source == "product_spec"
+    rows = {r.label: r.value for r in spec.table_rows}
+    assert rows == {"제형": "액상", "용량": "50ml"}
+
+    module = next(m for m in resp.layout_plan.modules if m.kind == "product_spec")
+    assert module.layout_type == "table_info"
+
+
+def test_스펙_섹션은_맨_뒤에_온다():
+    """ensure_product_spec_module이 plan.modules 맨 뒤에 붙이므로, sections도 맨
+    뒤여야 실제 렌더 순서(히어로가 먼저)가 계획된 모듈 순서와 어긋나지 않는다.
+    실제 export HTML에서 표가 히어로보다 앞서 나오던 결함의 회귀 테스트."""
+    req = GenerateRequest(
+        mode="create", product_name="테스트 세럼", formulation_type="액상", volume="50ml"
+    )
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+    assert resp.sections[-1].kind == "product_spec"
+
+
+def test_제형_용량_둘다_없으면_스펙_섹션이_안_생긴다():
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    assert not any(s.kind == "product_spec" for s in resp.sections)
+    assert not any(m.kind == "product_spec" for m in resp.layout_plan.modules)
+
+
+def test_스펙_섹션은_LLM을_안_태운다():
+    """product_spec은 사업자 입력을 그대로 표로 옮길 뿐이다. LLM 서술 대상에서 빠져야 한다."""
+    req = GenerateRequest(mode="create", product_name="테스트 세럼", formulation_type="크림")
+    # _MODULE_TEXT에 product_spec 텍스트가 없어도(LLM이 그 kind를 몰라도) 정상 동작해야 한다.
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+    spec = next(s for s in resp.sections if s.kind == "product_spec")
+    assert spec.table_rows == [TableRow(label="제형", value="크림")]

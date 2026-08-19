@@ -3,12 +3,21 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport, generateContent } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl, uploadProductPhoto } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
+
+interface ProductPhotoItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  photoId: string | null;
+  uploading: boolean;
+  error: string | null;
+}
 
 interface ContentMockData {
   productName: string;
@@ -94,6 +103,12 @@ function nextIngredientAmountId() {
   return `ia-${ingredientAmountSeq}`;
 }
 
+let productPhotoSeq = 0;
+function nextProductPhotoId() {
+  productPhotoSeq += 1;
+  return `pp-${productPhotoSeq}`;
+}
+
 function getRemediationProposal(violationType: string, span: string): string {
   if (span.includes("아토피 피부염")) return "순화된 보습 표현으로 대체";
   if (span.includes("3배 빠른 흡수")) return "근거 없는 비교 수치 제거";
@@ -157,6 +172,46 @@ function ContentGeneratorContent() {
     Array<ClinicalEvidence & { id: string }>
   >([]);
   const [createNotes, setCreateNotes] = useState("");
+  const [createColorTone, setCreateColorTone] = useState("");
+  const [createMood, setCreateMood] = useState("");
+  const [createGenerateImages, setCreateGenerateImages] = useState(false);
+  const [createProductPhotos, setCreateProductPhotos] = useState<ProductPhotoItem[]>([]);
+
+  // 선택 즉시 업로드해서 photo_id를 미리 받아둔다(생성 버튼 누를 때 다시 기다리지 않게).
+  const addProductPhotos = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const id = nextProductPhotoId();
+      const previewUrl = URL.createObjectURL(file);
+      setCreateProductPhotos((prev) => [
+        ...prev,
+        { id, file, previewUrl, photoId: null, uploading: true, error: null },
+      ]);
+      uploadProductPhoto(file)
+        .then((res) => {
+          setCreateProductPhotos((prev) =>
+            prev.map((p) => (p.id === id ? { ...p, photoId: res.photo_id, uploading: false } : p))
+          );
+        })
+        .catch((err) => {
+          console.error("Failed to upload product photo", err);
+          setCreateProductPhotos((prev) =>
+            prev.map((p) =>
+              p.id === id
+                ? { ...p, uploading: false, error: err instanceof Error ? err.message : String(err) }
+                : p
+            )
+          );
+        });
+    });
+  };
+  const removeProductPhoto = (id: string) => {
+    setCreateProductPhotos((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+  };
 
   const addIngredientAmount = () => {
     setCreateIngredientAmounts((prev) => [
@@ -356,6 +411,12 @@ function ContentGeneratorContent() {
                 }))
             : undefined,
           notes: createNotes || undefined,
+          color_tone: createColorTone || undefined,
+          mood: createMood || undefined,
+          product_photo_ids: createProductPhotos.length
+            ? createProductPhotos.map((p) => p.photoId).filter((id): id is string => !!id)
+            : undefined,
+          image_generation: createGenerateImages ? { requested: true } : undefined,
         });
       } else {
         let rawContent = "";
@@ -401,40 +462,224 @@ function ContentGeneratorContent() {
   };
 
   // HTML 내보내기 (Blob)
-  const exportHtml = () => {
+  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다.
+  const toDataUri = async (url: string): Promise<string | null> => {
+    try {
+      const res = await fetch(resolveImageUrl(url));
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error("Failed to inline image for export", url, e);
+      return null;
+    }
+  };
+
+  // 파인프린트(작은 글씨)로 다룰 섹션 종류. 라벨은 안 보여주되 타이포로는 구분한다.
+  const isFinePrintKind = (kind: string) => kind.includes("caution") || kind.includes("주의");
+
+  const escapeAttr = (s: string) => s.replace(/'/g, "&#39;");
+  const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+
+  // 문장 하나짜리 text를 헤드라인(첫 문장)+서브카피(나머지)로 휴리스틱 분리.
+  // 백엔드가 headline/subcopy를 따로 안 줘서 쓰는 임시 방편(디디 B안 대기, 팀장·PM 확인).
+  const splitHeadline = (text: string): { headline: string; subcopy: string } => {
+    const match = text.match(/^([\s\S]+?[.!?])\s*([\s\S]*)$/);
+    if (!match) return { headline: text, subcopy: "" };
+    const [, headline, subcopy] = match;
+    return { headline: headline.trim(), subcopy: subcopy.trim() };
+  };
+
+  const exportHtml = async () => {
     if (!genResult) return;
     const productName = displayProductName;
-    
-    const sectionsHtml = genResult.sections.map((s) => {
-      return `<div class="dp-block"><b>${s.kind} (${SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source})</b><p>${s.text}</p></div>`;
-    }).join("");
+    const hasAnyGeneratedImage = genResult.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
+    const layoutModulesByKind: Record<string, string | null | undefined> = {};
+    for (const m of genResult.layout_plan?.modules || []) {
+      layoutModulesByKind[m.kind] = m.layout_type;
+    }
 
-    const imagesHtml = genResult.image_plan.placed.map((img) => {
-      return `<div class="dp-img"><span>${img.image_url}</span></div>`;
-    }).join("");
+    // 섹션별로 매칭되는 module_image가 있으면 이미지 data URI로 인라인
+    const moduleImageDataUris: Record<string, string | null> = {};
+    for (const mi of genResult.image_plan.module_images) {
+      if (mi.status === "generated" && mi.image_url) {
+        moduleImageDataUris[mi.module_kind] = await toDataUri(mi.image_url);
+      }
+    }
+
+    // 이미지 위 배지 대신 이미지 아래 작은 캡션으로(팀장 지시: 이미지 위에 얹지 않기).
+    // 법적 요건(AI기본법 제31조③, "명확하게 인식 가능한 방식")은 캡션으로도 충족.
+    const aiImageCaption = `<p class="dp-ai-caption">AI 생성</p>`;
+    let statementAltIndex = 0;
+
+    // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
+    // 없으면(백엔드 미배선 구버전) 무드컷(이미지)+카피(텍스트) 분리 블록으로 폴백.
+    const sectionsHtml = genResult.sections.map((s, idx) => {
+      const dataUri = moduleImageDataUris[s.kind];
+      const finePrint = isFinePrintKind(s.kind) ? " dp-fine" : "";
+      const layoutType = layoutModulesByKind[s.kind];
+      const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->`;
+
+      if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
+        const { headline, subcopy } = splitHeadline(s.text);
+        return `${swapComment}
+    <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
+      <div class="dp-hero-card"><span>${productName}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
+    </div>
+    ${aiImageCaption}`;
+      }
+
+      if (layoutType === "image_text_split" && dataUri) {
+        const { headline, subcopy } = splitHeadline(s.text);
+        const side = statementAltIndex % 2 === 0 ? "left" : "right";
+        statementAltIndex++;
+        return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
+      <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
+    </div>`;
+      }
+
+      if (layoutType === "section_statement") {
+        const { headline, subcopy } = splitHeadline(s.text);
+        const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
+        statementAltIndex++;
+        return `<div class="dp-statement${tone}${finePrint}"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>`;
+      }
+
+      if (layoutType === "mood_macro" && dataUri) {
+        // 텍스처/원료 클로즈업 무드컷. 텍스트는 짧은 캡션 하나만(또는 생략).
+        const { headline } = splitHeadline(s.text);
+        return `${swapComment}
+    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
+    ${headline ? `<p class="dp-caption">${escapeHtml(headline)}</p>` : ""}`;
+      }
+
+      if (layoutType === "banner_strip") {
+        return `<div class="dp-banner"><p>${escapeHtml(s.text)}</p></div>`;
+      }
+
+      if (layoutType === "table_info" && s.table_rows && s.table_rows.length > 0) {
+        const rowsHtml = s.table_rows
+          .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`)
+          .join("");
+        return `<div class="dp-table-wrap"><table class="dp-table">${rowsHtml}</table></div>`;
+      }
+
+      if (dataUri) {
+        // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
+        return `${swapComment}
+    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
+    <div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+      }
+      return `<div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+    }).join("\n    ");
+
+    const placedImages = await Promise.all(
+      genResult.image_plan.placed.map(async (img) => {
+        const dataUri = await toDataUri(img.image_url);
+        return dataUri
+          ? `<div class="dp-mood" style="background-image:url('${dataUri}')"></div>`
+          : `<div class="dp-mood"><span class="dp-mood-fallback">${img.image_url}</span></div>`;
+      })
+    );
+    const imagesHtml = placedImages.join("\n    ");
+
+    const aiPageNotice = hasAnyGeneratedImage
+      ? `<div class="dp-ai-notice">이 상세페이지는 AI가 생성한 문구·이미지를 포함합니다.</div>`
+      : "";
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>${productName} 상세페이지 초안</title>
+  <!--
+    barum이 만든 상세페이지 초안입니다.
+    - 이미지를 판매자 본인 사진으로 바꾸려면: 아래 "이미지 교체" 주석이 붙은 <div data-swap="..."> 블록을 찾아
+      style="background-image:url('...')" 부분만 원하는 이미지 경로로 바꾸면 됩니다.
+    - 문구는 <p> 태그 안 텍스트를 그대로 수정하면 됩니다.
+    - AI 생성 표시(전체 안내문·이미지별 "AI 생성" 태그)는 관련 법령(AI기본법 제31조 3항, "이용자가
+      명확하게 인식할 수 있는 방식으로 고지") 대응용이니 임의로 지우거나 대비를 낮추지 마세요.
+    - 이 페이지의 색·폰트는 barum 서비스 화면과 별개의 상세페이지 전용 톤입니다.
+  -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
   <style>
-    body { font-family: sans-serif; padding: 40px; background: #E7ECEB; color: #14231B; display: flex; justify-content: center; }
-    .detailpage { width: 100%; max-width: 520px; background: #fff; border: 1px solid #CDD6D3; }
-    .dp-hero { aspect-ratio: 4/3; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); display: flex; align-items: flex-end; padding: 16px; }
-    .dp-hero span { font-size: 19px; font-weight: 800; background: #fff; padding: 6px 10px; border: 1px solid #CDD6D3; }
-    .dp-block { padding: 16px 18px; border-top: 1px solid #DDE4E2; }
-    .dp-block b { font-size: 11.5px; color: #14231B; display: block; margin-bottom: 7px; }
-    .dp-block p { margin: 0; font-size: 13.5px; line-height: 1.75; color: #33413A; }
-    .dp-img { aspect-ratio: 16/10; background: repeating-linear-gradient(135deg, #F0F3F2 0 10px, #FFFFFF 10px 20px); border-top: 1px solid #DDE4E2; display: flex; align-items: center; justify-content: center; color: #5C6B62; font-size: 10px; font-family: monospace; }
-    .dp-close { padding: 14px 18px; border-top: 1px dashed #CDD6D3; font-size: 11px; color: #5C6B62; line-height: 1.6; }
+    @font-face {
+      font-family: "Cafe24Ssurround";
+      src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2105_2@1.0/Cafe24Ssurround.woff") format("woff");
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --dp-surface: #FAF9F6;
+      --dp-surface-sub: #F1EFEA;
+      --dp-line: #E3DFD7;
+      --dp-ink: #1D1B18;
+      --dp-ink-2: #4A4640;
+      --dp-ink-3: #6F6A61;
+      --dp-accent: #7A2E3A;
+      --dp-on-accent: #FDFBF9;
+      --dp-radius: 6px;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; margin: 0; padding: 48px 16px; background: var(--dp-surface-sub); color: var(--dp-ink-2); display: flex; justify-content: center; }
+    .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; }
+    .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 20px; }
+    .dp-hero-card { background: var(--dp-surface); border-radius: var(--dp-radius); padding: 16px 18px; max-width: 84%; }
+    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; color: var(--dp-accent); margin: 0 0 6px; }
+    .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--dp-ink-2); }
+    .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
+    .dp-block { padding: 34px 24px; }
+    .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
+    .dp-block.dp-fine { padding: 20px 24px; background: var(--dp-surface-sub); }
+    .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
+    .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
+    .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
+    .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
+    .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
+    .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
+    .dp-statement .dp-headline { font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; }
+    .dp-split { display: flex; align-items: stretch; gap: 0; }
+    .dp-split-right { flex-direction: row-reverse; }
+    .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
+    .dp-split-right .dp-split-media-wrap { margin: 24px 24px 24px 0; }
+    .dp-split-media { flex: 1; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
+    .dp-split-media-wrap .dp-ai-caption { margin: 5px 0 0; }
+    .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
+    .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
+    .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
+    .dp-banner p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dp-ink-2); letter-spacing: -0.1px; }
+    .dp-table-wrap { padding: 20px 24px; }
+    .dp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .dp-table tr { border-bottom: 1px solid var(--dp-line); }
+    .dp-table tr:last-child { border-bottom: none; }
+    .dp-table td { padding: 10px 4px; }
+    .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
+    .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
+    .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>
 </head>
 <body>
   <div class="detailpage">
-    <div class="dp-hero"><span>${productName}</span></div>
     ${sectionsHtml}
     ${imagesHtml}
+    ${aiPageNotice}
     <div class="dp-close">${genResult.disclaimer}</div>
   </div>
 </body>
@@ -523,7 +768,7 @@ function ContentGeneratorContent() {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     if (type === "html") {
-      exportHtml();
+      await exportHtml();
     } else if (type === "png") {
       await exportPng();
     } else if (type === "pdf") {
@@ -625,6 +870,44 @@ function ContentGeneratorContent() {
                 placeholder="예: 글로우 세럼"
                 className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)]"
               />
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">제품 사진 (선택, AI 합성 시 참고 이미지로 사용)</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {createProductPhotos.map((p) => (
+                  <div key={p.id} className="relative w-[76px] h-[76px] border border-[var(--line-2)] bg-[var(--surface-sub)] overflow-hidden">
+                    <img src={p.previewUrl} alt="제품 사진 미리보기" className="w-full h-full object-cover" />
+                    {p.uploading && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-mono">업로드중</div>
+                    )}
+                    {p.error && (
+                      <div className="absolute inset-0 bg-[var(--crit-bg)]/90 flex items-center justify-center text-[var(--crit)] text-[9px] font-mono text-center p-1">업로드 실패</div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeProductPhoto(p.id)}
+                      aria-label="제품 사진 삭제"
+                      className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-black/60 text-white cursor-pointer"
+                    >
+                      <Trash size={10} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <label className="inline-flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer">
+                <Plus size={12} weight="bold" /> 제품 사진 추가
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addProductPhotos(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
@@ -747,6 +1030,27 @@ function ContentGeneratorContent() {
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">색상톤·분위기 (선택, 이미지·문구 생성에 반영)</p>
+              <div className="flex flex-col gap-1.5">
+                <input
+                  type="text"
+                  value={createColorTone}
+                  onChange={(e) => setCreateColorTone(e.target.value)}
+                  placeholder="색상톤 (예: 베이지·아이보리 톤)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+                <input
+                  type="text"
+                  value={createMood}
+                  onChange={(e) => setCreateMood(e.target.value)}
+                  placeholder="분위기 (예: 미니멀하고 차분한)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+              </div>
+              <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">비워두면 상품 종류에 맞춰 기본 톤으로 생성돼요.</p>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
               <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보 (선택)</label>
               <textarea
                 value={createNotes}
@@ -754,6 +1058,20 @@ function ContentGeneratorContent() {
                 placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
                 className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
               />
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <label className="flex items-center gap-2 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createGenerateImages}
+                  onChange={(e) => setCreateGenerateImages(e.target.checked)}
+                />
+                모듈별 배경 이미지도 생성하기
+              </label>
+              <p className="m-[6px_0_0] text-[11px] text-[var(--ink-3)]">
+                제품·라벨·글자는 안 그리고 배경·질감만 만들어요. 이미지 생성은 별도 비용이 발생해서 기본은 꺼져 있어요.
+              </p>
             </div>
           </div>
         </div>
@@ -830,11 +1148,17 @@ function ContentGeneratorContent() {
             {mode === "create" && !createProductName.trim() && (
               <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
             )}
+            {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
+              <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
+            )}
             <button
               className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
               id="startGen"
               ref={startGenRef}
-              disabled={mode === "create" && !createProductName.trim()}
+              disabled={
+                (mode === "create" && !createProductName.trim()) ||
+                createProductPhotos.some((p) => p.uploading)
+              }
               onClick={() => setIsModalOpen(true)}
             >
               확인 후 생성하기 <span className="font-mono">→</span>
@@ -924,15 +1248,37 @@ function ContentGeneratorContent() {
                     </span>
                   </div>
                   <div id="secList">
-                    {genResult.sections.map((s, idx) => (
-                      <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
-                        <div className="flex items-center gap-2 m-[0_0_7px]">
-                          <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
-                          <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                    {genResult.sections.map((s, idx) => {
+                      const moduleImage = genResult.image_plan.module_images.find(
+                        (mi) => mi.module_kind === s.kind && mi.status === "generated" && mi.image_url
+                      );
+                      if (moduleImage?.image_url) {
+                        return (
+                          <div
+                            key={idx}
+                            className="relative border-t border-[var(--line)] bg-cover bg-center flex items-end min-h-[180px]"
+                            style={{ backgroundImage: `url(${resolveImageUrl(moduleImage.image_url)})` }}
+                          >
+                            <div className="w-full bg-gradient-to-t from-black/70 via-black/25 to-transparent p-[16px_18px] pt-10">
+                              <div className="flex items-center gap-2 m-[0_0_7px]">
+                                <b className="text-[11.5px] text-white font-bold">{s.kind}</b>
+                                <span className="font-mono text-[9px] text-white/80 border border-white/40 p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                              </div>
+                              <p className="m-0 text-[13.5px] text-white leading-[1.75]">{s.text}</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
+                          <div className="flex items-center gap-2 m-[0_0_7px]">
+                            <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
+                            <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                          </div>
+                          <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
                         </div>
-                        <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {genResult.image_plan.placed.map((img, idx) => (
                       <div className="p-0 border-t border-[var(--line)] relative" key={`img-${idx}`}>
                         <div className="aspect-[16/10] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] border-t border-[var(--line)] flex items-center justify-center">

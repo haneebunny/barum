@@ -112,10 +112,18 @@ export const RemediationResponseSchema = z.object({
 export type RemediationResponse = z.infer<typeof RemediationResponseSchema>;
 
 // POST /generate 관련
+export const TableRowSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+export type TableRow = z.infer<typeof TableRowSchema>;
+
 export const SectionSchema = z.object({
   kind: z.string(),
   text: z.string(),
   source: z.string(),
+  // table_info layout_type 모듈용 구조화 데이터(제형·용량). 베베 배선 전 구버전 응답엔 없을 수 있어 optional
+  table_rows: z.array(TableRowSchema).nullable().optional(),
 });
 export type Section = z.infer<typeof SectionSchema>;
 
@@ -141,12 +149,22 @@ export const ImageGenResultSchema = z.object({
 });
 export type ImageGenResult = z.infer<typeof ImageGenResultSchema>;
 
+// create 모드 모듈별 배경 이미지 생성 결과(FR-13). 텍스트는 안 굽고 프론트가 위에 얹는다.
+export const ModuleImageSchema = z.object({
+  module_kind: z.string(),
+  status: z.enum(["generated", "skipped"]),
+  reason: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+});
+export type ModuleImage = z.infer<typeof ModuleImageSchema>;
+
 export const ImagePlanSchema = z.object({
   placed: z.array(PlacedImageSchema).default([]),
   generation: ImageGenResultSchema.default({
     requested: false,
     ai_labeled: false,
   }),
+  module_images: z.array(ModuleImageSchema).default([]),
 });
 export type ImagePlan = z.infer<typeof ImagePlanSchema>;
 
@@ -199,6 +217,11 @@ export const GenerateRequestSchema = z.object({
   clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
   notes: z.string().nullable().optional(),
   image_generation: ImageGenRequestSchema.nullable().optional(),
+  // create 모드 이미지 생성 프롬프트에 반영되는 색상톤/분위기(둘 다 선택, 자유 텍스트)
+  color_tone: z.string().nullable().optional(),
+  mood: z.string().nullable().optional(),
+  // /uploads/product-photo로 먼저 올려 받은 photo_id들(AI 합성 참조용)
+  product_photo_ids: z.array(z.string()).nullable().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
@@ -213,6 +236,8 @@ export const LayoutModuleSchema = z.object({
   kind: z.string(),
   purpose: z.string(),
   has_claim_risk: z.boolean().default(false),
+  // _vocabulary.json의 layout_type 12종 중 하나. 베베 배선 전 구버전 응답엔 없을 수 있어 optional
+  layout_type: z.string().nullable().optional(),
 });
 export type LayoutModule = z.infer<typeof LayoutModuleSchema>;
 
@@ -220,6 +245,8 @@ export const LayoutPlanSchema = z.object({
   modules: z.array(LayoutModuleSchema).default([]),
   product_type: z.string().nullable().optional(),
   source: z.string().default("fallback"),
+  // alternation | single_accent | image_led. 마찬가지로 optional(구버전 대응)
+  color_system: z.string().nullable().optional(),
 });
 export type LayoutPlan = z.infer<typeof LayoutPlanSchema>;
 

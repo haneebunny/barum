@@ -37,11 +37,28 @@ _TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
 
 @lru_cache(maxsize=1)
 def load_layout_references() -> tuple[dict, ...]:
-    """레이아웃 레퍼런스 json을 전부 읽는다. 파일명 순으로 고정(실행마다 순서가 흔들리지 않게)."""
+    """레이아웃 레퍼런스 json을 전부 읽는다. 파일명 순으로 고정(실행마다 순서가 흔들리지 않게).
+
+    `_`로 시작하는 파일(`_vocabulary.json`)은 레퍼런스가 아니라 공용 어휘집이라 뺀다.
+    안 빼면 modules 없는 항목이 하나 섞여 들어가 퓨샷 개수·정렬이 흔들린다.
+    """
     refs = []
     for path in sorted(_DATA_DIR.glob("*.json")):
+        if path.stem.startswith("_"):
+            continue
         refs.append(json.loads(path.read_text(encoding="utf-8")))
     return tuple(refs)
+
+
+@lru_cache(maxsize=1)
+def load_layout_vocabulary() -> dict:
+    """공용 레이아웃 어휘(`_vocabulary.json`)를 읽는다.
+
+    layout_type 12종 카탈로그(설명)와 product_type별 컬러톤 기본값 후보
+    (category_base_tone)를 담고 있다. 후자는 템플릿 색이 아니라
+    `GenerateRequest.color_tone` 기본값 후보다(디디·팀장 확정, 2026-08-19).
+    """
+    return json.loads((_DATA_DIR / "_vocabulary.json").read_text(encoding="utf-8"))
 
 
 def infer_product_type(product_name: str | None) -> str | None:

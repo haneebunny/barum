@@ -113,6 +113,8 @@ class Summary(BaseModel):
     n_needs_review: int = 0  # flag=검토필요 건수
     n_unjudged: int = 0  # 판정 실패로 미판정된 문장 수(검토필요와 다른 개념)
     counts_by_type: dict[str, int] = Field(default_factory=dict)  # 위반유형별 건수
+    product_out_of_scope: bool = False  # True면 화장품법 적용 대상 아님(도구·부자재 등), 문장 판정 자체를 안 함
+    out_of_scope_reason: str | None = None  # 대상외로 걸린 키워드. 화면에 사유 표시용
 
 
 class BasisCitation(BaseModel):
@@ -237,12 +239,22 @@ class RemediationResponse(BaseModel):
 # ── 콘텐츠 생성 (FR-11/13) ──────────────────────────────────────────────────
 
 
+class TableRow(BaseModel):
+    """table_info 레이아웃 슬롯 한 줄(label→value). 예: "제형"→"액상"."""
+
+    label: str
+    value: str
+
+
 class Section(BaseModel):
     """생성된 콘텐츠 한 섹션. 화면은 섹션 카드로 렌더한다."""
 
     kind: str  # 제품개요 | 사용법 | 주의사항 | 광고문구
     text: str
-    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구) | approved_claim(인증서-인정문구 매칭, create 모드)
+    source: str  # llm(생성) | remediation(조건표 치환) | template(표준문구) | approved_claim(인증서-인정문구 매칭, create 모드) | product_spec(구조화 상품정보, create 모드)
+    table_rows: list[TableRow] | None = Field(
+        None, description="table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
+    )
 
 
 class Replacement(BaseModel):
@@ -358,6 +370,7 @@ class LayoutModule(BaseModel):
     kind: str  # hero_intro | ingredient_highlight | clinical_result | texture 등
     purpose: str
     has_claim_risk: bool = False
+    layout_type: str = "section_statement"  # 어휘집 12종 카탈로그 중 하나. 프론트 템플릿 선택용
 
 
 class LayoutPlan(BaseModel):
@@ -392,6 +405,23 @@ class GenerateRequest(BaseModel):
         description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
+    color_tone: str | None = Field(
+        None, description="인터뷰에서 받은 컬러톤(create 모드, 이미지 생성용). 예: '베이지·아이보리 톤'"
+    )
+    mood: str | None = Field(
+        None, description="인터뷰에서 받은 분위기(create 모드, 이미지 생성용). 예: '미니멀하고 차분한'"
+    )
+    product_photo_ids: list[str] | None = Field(
+        None,
+        description="`POST /uploads/product-photo`로 먼저 올린 제품사진 ID 목록(create 모드). "
+        "있으면 배경 이미지 생성 시 합성 참조 이미지로 쓴다(AI 배경·연출 합성, 팀장 승인).",
+    )
+    formulation_type: str | None = Field(
+        None, description="인터뷰에서 받은 제형(create 모드, table_info 상품정보 모듈용). 예: '액상', '크림'"
+    )
+    volume: str | None = Field(
+        None, description="인터뷰에서 받은 용량·중량(create 모드, table_info 상품정보 모듈용). 예: '50ml'"
+    )
     image_generation: ImageGenRequest | None = None
 
     @model_validator(mode="after")

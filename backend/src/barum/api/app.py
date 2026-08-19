@@ -5,6 +5,8 @@
 """
 
 import os
+import re
+from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +38,7 @@ from barum.storage.checks_store import (
     sha256_hex,
     upload_image,
 )
-from barum.vlm import get_vlm
+from barum.vlm import get_image_generator, get_vlm
 
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
 _CT_TO_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
@@ -57,10 +59,20 @@ app.add_middleware(
 def _build_judge() -> CosmeticJudge:
     """판정기를 만든다.
 
-    기본은 PromptJudge(VLM 제로샷, JUDGE_PROVIDER). 키가 없거나 오프라인에서
-    돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음). JUDGE_KIND=rag면
-    RagJudge(규칙집 우선 + VLM fallback)를 쓴다 — 검증된 1호 경계표현은 규칙이
-    확정하고 나머지만 VLM에 위임한다.
+    기본은 RagJudge(규칙집 우선 + 규정 grounding + VLM fallback)다. 검증된 경계표현은
+    규칙이 확정하고 나머지만 VLM에 위임한다. 키가 없거나 오프라인에서 돌릴 땐
+    JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음). JUDGE_KIND=prompt면 규칙집·
+    grounding 없는 제로샷 PromptJudge로 내려간다(비교실험·회귀 확인용).
+
+    **기본값 정정(2026-08-19).** 원래 기본은 PromptJudge였다. RagJudge가 없던 시절에
+    정해진 값인데, RagJudge가 배포 파이프라인이 된 뒤에도 기본값만 안 따라왔다.
+    그래서 `JUDGE_KIND=rag`를 손으로 안 주면 규칙집도 grounding도 안 붙은 채로 돌았다.
+    저장소 어디에도 그 값을 설정하는 곳이 없었다(.env·run_api.py·launch.json 전부).
+    ROADMAP·평가 문서가 "배포 파이프라인 = RagJudge"로 서술하고 지표도 전부 RagJudge로
+    쟀으므로, 코드 기본값을 문서화된 의도에 맞춘다.
+
+    RagJudge는 Supabase가 없어도 죽지 않는다(`_maybe_case_retriever`가 None으로
+    degrade, 규정 grounding만 사용). 그래서 기본으로 둬도 안전하다.
 
     기본 provider = openai(gpt-5-mini). 43문장 평가셋 비교(2026-08-11)에서
     Gemini는 미탐 4건(52.5% 일치)으로 recall 우선 정책에 제일 안 맞았고,
@@ -68,13 +80,13 @@ def _build_judge() -> CosmeticJudge:
     전환(ROADMAP.md §3). OCR_PROVIDER는 안 건드림 — 이 비교는 판정 정확도에
     대한 것이지 OCR 품질에 대한 게 아니다.
     """
-    kind = os.environ.get("JUDGE_KIND", "prompt")
+    kind = os.environ.get("JUDGE_KIND", "rag")
     if kind == "stub":
         return StubJudge()
     vlm = get_vlm(os.environ.get("JUDGE_PROVIDER", "openai"))
-    if kind == "rag":
-        return RagJudge(vlm, case_retriever=_maybe_case_retriever())
-    return PromptJudge(vlm)
+    if kind == "prompt":
+        return PromptJudge(vlm)
+    return RagJudge(vlm, case_retriever=_maybe_case_retriever())
 
 
 def _maybe_case_retriever():
@@ -306,10 +318,116 @@ def _section_vlm():
     return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
 
 
+def _image_generator():
+    """모듈별 배경 이미지 생성기. `IMAGE_GENERATION_ENABLED=1`일 때만 켠다.
+
+    기본 비활성이다(이미지 모델이 아직 확정 전이라는 안전장치, 2026-08-18 팀장·PM
+    확정). 켜면 `/generate` 요청마다(create 모드 + 이미지 생성 체크박스 켰을 때)
+    실제 과금(OpenAI gpt-image 계열)이 나간다. None을 내면 build_image_plan이
+    이미지 생성 경로를 아예 안 탄다(content.py 쪽 안전장치, 여기 안 건드림).
+    """
+    if os.environ.get("IMAGE_GENERATION_ENABLED", "0") != "1":
+        return None
+    return get_image_generator()
+
+
+def _image_sink(client):
+    """생성된 모듈 이미지를 private 버킷에 올리고, 스트리밍 프록시 경로를 낸다.
+
+    `/reports/{result_id}/image`와 같은 이유로 직접 버킷 URL을 안 준다(서명 URL
+    안 씀, 버킷 자체가 private). 검사 이미지는 result_id로 찾지만 생성 이미지는
+    딸린 검사 레코드가 없어서, 이미지 하나하나를 UUID로 주소를 매긴다.
+    """
+    def sink(module_kind: str, data: bytes) -> str | None:
+        image_id = uuid4().hex
+        ensure_bucket(client)
+        upload_image(client, f"generated/{image_id}.png", data, "image/png")
+        return f"/generated/{image_id}"
+    return sink
+
+
+# UUID hex(32자 16진수)만 받는다. path traversal 방지(경로 그대로 스토리지 조회에 씀).
+_IMAGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+@app.get("/generated/{image_id}")
+def get_generated_image(image_id: str) -> Response:
+    """`_image_sink`가 저장한 생성 이미지를 스트리밍한다(버킷 private, 서명 URL 없음)."""
+    if not _IMAGE_ID_RE.match(image_id):
+        raise HTTPException(status_code=404, detail="잘못된 이미지 id입니다.")
+    try:
+        data = download_image(_checks_client(), f"generated/{image_id}.png")
+    except Exception:
+        raise HTTPException(status_code=404, detail="해당 생성 이미지를 찾을 수 없습니다.")
+    return Response(content=data, media_type="image/png")
+
+
+# uuid hex(32자) + 확장자(png/jpg/webp)만 받는다. 확장자를 id에 포함시켜서(업로드
+# 원본 포맷을 그대로 보관), 저장 경로도 그대로 재구성한다(path traversal 방지,
+# 화이트리스트 확장자 외엔 전부 거부).
+_PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
+
+
+@app.post("/uploads/product-photo")
+async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
+    """판매자가 올리는 제품사진을 저장하고 photo_id를 낸다(create 모드, AI 합성 참조용).
+
+    `/generate`는 복잡한 JSON 바디(ingredient_amounts 등 중첩 리스트)라 통째로
+    multipart로 바꾸지 않고, `/generated/{image_id}`와 같은 "먼저 올려 id를 받고
+    나중에 그 id로 참조" 패턴을 그대로 따른다(냐냐·PM과 확정, 2026-08-19).
+    응답의 photo_id를 `GenerateRequest.product_photo_ids`에 담아 `/generate`로 보낸다.
+    """
+    ext = _CT_TO_EXT.get(photo.content_type or "")
+    if ext is None:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 이미지 형식입니다: {photo.content_type!r}"
+        )
+    data = await photo.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    photo_id = f"{uuid4().hex}{ext}"
+    client = _checks_client()
+    ensure_bucket(client)
+    upload_image(client, f"uploads/{photo_id}", data, photo.content_type)
+    return {"photo_id": photo_id}
+
+
+def _resolve_product_photos(client):
+    """`product_photo_ids` → 참조 이미지 바이트 목록. `generate_content`에 주입한다.
+
+    id 형식이 안 맞거나 조회에 실패한 사진은 예상된 실패라 건너뛴다(전체 요청을
+    막지 않는다. 참조 없이 배경만 생성되는 쪽으로 계속 진행).
+    """
+    def resolve(photo_ids: list[str]) -> list[bytes]:
+        images: list[bytes] = []
+        for photo_id in photo_ids:
+            if not _PHOTO_ID_RE.match(photo_id):
+                print(f"    [skip] 잘못된 photo_id 형식: {photo_id!r}")
+                continue
+            try:
+                images.append(download_image(client, f"uploads/{photo_id}"))
+            except Exception as e:
+                print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
+        return images
+    return resolve
+
+
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest) -> GenerateResponse:
-    """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve).
+    """검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve+create).
 
     위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.
+    create 모드의 모듈별 배경 이미지 생성은 `IMAGE_GENERATION_ENABLED=1`일 때만
+    실제로 돈다(기본 비활성). 꺼져 있으면 image_generator=None이라 이미지 관련
+    인자를 안 만들고 그대로 통과한다(불필요한 Supabase 클라이언트 생성 회피).
     """
-    return generate_content(req, judge=_build_judge(), vlm=_section_vlm())
+    image_gen = _image_generator()
+    client = _checks_client() if image_gen else None
+    return generate_content(
+        req,
+        judge=_build_judge(),
+        vlm=_section_vlm(),
+        image_generator=image_gen,
+        image_sink=_image_sink(client) if client else None,
+        photo_resolver=_resolve_product_photos(client) if client else None,
+    )

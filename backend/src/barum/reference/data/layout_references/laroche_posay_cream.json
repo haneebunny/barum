@@ -10,7 +10,9 @@
     {
       "kind": "hero_claim",
       "purpose": "즉각 효과 시간 단정 + 브랜드 순위 주장",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "hero_fullbleed"
     }
-  ]
+  ],
+  "color_system": "single_accent"
 }

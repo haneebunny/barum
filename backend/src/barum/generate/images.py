@@ -9,6 +9,11 @@
 
 과금 호출이라 모듈 단위로 실패를 격리한다. 한 모듈이 실패해도 나머지는 계속 만들고,
 실패분은 `ModuleImage.status="skipped"`에 사유를 남긴다(조용히 빠지지 않게).
+
+판매자가 제품사진을 올리면(`req.product_photo_ids`) 얘기가 달라진다. 그때는 그 실제
+사진을 참조로 넘겨 배경과 합성한다(AI 배경·연출 합성, 팀장 승인 방식 A). 이 경우엔
+위 "제품을 안 그린다" 원칙이 뒤집힌다: 상상으로 새로 그리는 대신 참조 사진 속 실제
+제품을 유지하며 그 주위만 합성하므로 가짜 라벨 문제가 없다.
 """
 
 from barum.models import GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
@@ -17,31 +22,136 @@ from barum.reference.impersonation import check_impersonation
 # 한 요청에 만들 이미지 수 상한. 과금 호출이라 모듈이 12개여도 다 만들지 않는다.
 DEFAULT_MAX_IMAGES = 6
 
+# 제품 종류별 질감 예시. 고정 목록 하나를 전부에 쓰면 토너에 크림 이미지가 나오는
+# 식으로 제형이 안 맞는다(2026-08-19 실측, 팀장 지적, "촉촉 히알루론산 토너"인데
+# 흰 크림 덩어리가 그려짐. build_image_prompt가 layout_plan.product_type을 아예
+# 안 받고 예시에 "크림 질감"이 하드코딩돼 있던 게 원인).
+_TEXTURE_HINTS: dict[str | None, str] = {
+    "토너": "투명하거나 옅은 색의 맑은 액체, 튀는 물방울, 촉촉하게 젖은 표면. 걸쭉하거나 불투명한 질감은 넣지 마라",
+    "세럼": "점도 있는 액상 방울, 유리 표면의 광택, 매끈하게 흐르는 액체 질감",
+    "크림": "부드럽게 퍼바른 크림 스월, 뽀얗고 밀도 있는 질감",
+    None: "잎, 물방울, 천, 돌 표면 같은 원료·소재 클로즈업(제품 제형은 특정하지 마라)",
+}
+
+
+def _texture_hint(product_type: str | None) -> str:
+    """product_type에 맞는 질감 예시를 낸다. 모르는 종류거나 None이면 중립 힌트로 폴백."""
+    return _TEXTURE_HINTS.get(product_type, _TEXTURE_HINTS[None])
+
+
+# product_type별 기본 컬러톤·분위기. 인터뷰에서 값을 안 받았을 때 쓴다.
+# 디디가 `layout_references/_vocabulary.json`의 `category_base_tone`으로 확정한 값
+# (2026-08-19, PR #181). 이 파일의 hue_direction은 템플릿 색이 아니라 이 기본값
+# 후보로 쓰라고 명시돼 있다(팀장 정정 커밋 71b3ebb 근거). 어휘집에 없는 종류(product_type
+# 매핑 밖이거나 None)는 기존 중립 기본값으로 폴백.
+_TONE_DEFAULTS: dict[str | None, str] = {
+    "세럼": "투명・산뜻한 톤, 라이트 민트/세이지 계열",
+    "토너": "맑고 산뜻한 톤, 워터 블루/민트 계열",
+    "크림": "부드럽고 편안한 톤, 소프트 아이보리/베이지 계열(연한 톤만, 브라스·에스프레소 계열 금지)",
+    "앰플": "집중・고농축 느낌, 딥그린 또는 딥네이비 + 화이트 대비",
+    None: "투명하고 깨끗한 톤, 미니멀하고 차분한 분위기",
+}
+
+
+def _resolve_tone(req: GenerateRequest, product_type: str | None) -> str:
+    """이번 생성 전체에 쓸 컬러톤·분위기 문구를 하나로 정한다.
+
+    인터뷰에서 받은 값(req.color_tone·mood)이 있으면 그걸 우선한다. 없으면
+    product_type 기본값, 그것도 없으면 전체 기본값(_TONE_DEFAULTS[None])으로
+    폴백한다. **이 함수가 (req, product_type)에 대해 항상 같은 문자열을 내는 게
+    핵심이다.** 그래야 6장 전부가 같은 아트 디렉션 문구를 받아서 한 페이지처럼
+    읽힌다(지금까지는 모듈마다 톤 지정이 아예 없어서 색감·조명이 제각각이었다,
+    2026-08-19 팀장 지적).
+    """
+    parts = [p for p in (req.color_tone, req.mood) if p]
+    if parts:
+        return ", ".join(parts)
+    return _TONE_DEFAULTS.get(product_type, _TONE_DEFAULTS[None])
+
+
 _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어라.
 
-제품 종류: {product_name}
+제품 종류: {product_name}{product_type_line}
 이 배경의 역할: {purpose}
 
+**전체 컬러톤·분위기(이 상세페이지의 다른 배경 이미지들과 반드시 통일할 것): {tone}**
+
 무엇을 그릴지:
-- 원료·질감·소재의 클로즈업(잎, 물방울, 크림 질감, 천, 돌 표면 등)
-- 또는 색·빛·그라데이션 위주의 추상 배경
-- 깨끗하고 차분한 화장품 광고 톤
+- 이 제품 제형에 맞는 질감·소재의 클로즈업: {texture_hint}
+- 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)
+{body_part_line}
+- 위에 명시한 컬러톤·분위기를 따를 것
 
 절대 넣지 말 것:
-- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다.
+{product_instruction}
 - **라벨·글자·문구·숫자·로고를 넣지 마라.** 문구는 나중에 이 배경 위에 얹는다.
-- 사람 얼굴을 클로즈업하지 마라.
+- **사람 얼굴은 어떤 형태로도 넣지 마라**(클로즈업뿐 아니라 원거리·실루엣도 금지).
 - 의사·약사·전문가를 연상시키는 인물이나 소품(가운·청진기 등)을 넣지 마라.
+- **실제 사용 후기·체험담처럼 보이는 연출을 만들지 마라**(사용 전후 비교, 손으로
+  직접 촬영한 듯한 스냅샷 구도 등). 얼굴이 없어도 금지다. 실제 후기로 오인되면
+  안 된다.
 - 시험 결과 그래프나 차트를 만들지 마라.
 
 문구를 얹을 여백이 남도록 화면 한쪽을 비교적 비워 둬라."""
 
+# layout_type별 구도 지시. "손으로 제품 바르는 장면"이 모든 모듈에 예시로 똑같이
+# 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한 페이지
+# 6장이 전부 손 장면으로 나옴). layout_type(LayoutModule에 항상 채워짐, PR #186)으로
+# 손 허용 여부를 갈라서 강제한다. kind는 LLM이 자유롭게 짓는 문자열이라 커버리지를
+# 보장 못 해서 안 쓴다.
+_HAND_ALLOWED_LAYOUT_TYPES = frozenset({"hero_fullbleed", "step_list"})
 
-def build_image_prompt(module: LayoutModule, req: GenerateRequest) -> str:
-    """모듈 하나의 이미지 프롬프트를 만든다."""
+_HAND_ALLOWED_LINE = (
+    "- 필요하면 손·팔·뒷모습 등 얼굴이 안 보이는 신체 일부를 자연스럽게 넣어도 된다\n"
+    "  (예: 손으로 제품을 바르는 장면). 얼굴은 절대 안 됨(아래 금지 목록 참고)"
+)
+_HAND_FORBIDDEN_LINE = (
+    "- 사람 신체(손·팔 포함)는 넣지 마라. 위에 있는 질감 클로즈업이나 추상 배경 중에서만 골라라"
+)
+
+
+def _body_part_line(layout_type: str) -> str:
+    """모듈 구도 지시를 layout_type에 따라 가른다. 대부분은 손을 금지해서
+    나머지 두 선택지(질감 클로즈업·추상 배경)로 다양성을 강제한다."""
+    return _HAND_ALLOWED_LINE if layout_type in _HAND_ALLOWED_LAYOUT_TYPES else _HAND_FORBIDDEN_LINE
+
+
+_NO_PRODUCT_INSTRUCTION = "- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다."
+_COMPOSITE_PRODUCT_INSTRUCTION = (
+    "- **참조로 첨부된 실제 제품 사진 속 병·용기·패키지의 형태·라벨·색상을 그대로 유지하라.** "
+    "제품을 다시 그리거나 상상해서 새로 만들지 마라. 배경·연출만 자연스럽게 그 주위에 합성하라."
+)
+
+
+def build_image_prompt(
+    module: LayoutModule,
+    req: GenerateRequest,
+    product_type: str | None = None,
+    has_product_photo: bool = False,
+) -> str:
+    """모듈 하나의 이미지 프롬프트를 만든다.
+
+    product_type(플래너가 추측한 세럼/토너/크림 등)을 주면 그 제형에 맞는 질감
+    예시를 넣는다. 안 주면 중립 힌트로 폴백한다(제형을 특정하지 않는 원료 클로즈업).
+    컬러톤·분위기는 req와 product_type만으로 결정되므로(_resolve_tone), 같은
+    요청의 모듈들은 전부 같은 톤 문구를 받는다. 호출자가 따로 안 맞춰줘도 된다.
+
+    has_product_photo: 판매자가 올린 제품사진을 참조 이미지로 넘기는 경우(True)엔
+    "제품을 그리지 마라"가 아니라 "참조 사진 속 실제 제품을 유지하며 합성하라"로
+    지시가 바뀐다. 참조가 없을 땐 기존처럼 제품을 아예 안 그린다(가짜 라벨 방지,
+    39b2b54 참고).
+
+    module.layout_type으로 손·팔 허용 여부를 가른다(_body_part_line). 안 가르면
+    모든 모듈이 "손으로 제품 바르는 장면"으로 수렴한다(2026-08-19 실측 버그).
+    """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
+        product_type_line=f" ({product_type})" if product_type else "",
         purpose=module.purpose or module.kind,
+        texture_hint=_texture_hint(product_type),
+        tone=_resolve_tone(req, product_type),
+        body_part_line=_body_part_line(module.layout_type),
+        product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
     )
 
 
@@ -50,9 +160,10 @@ def _user_controlled_text(module: LayoutModule, req: GenerateRequest) -> str:
 
     조립된 프롬프트 전체를 검사하면 안 된다. 프롬프트에는 "의사를 넣지 마라" 같은
     금지 지시문이 들어 있어서, 키워드 가드가 우리 안전장치를 사칭으로 오인한다.
-    가드가 막아야 할 건 사용자·LLM이 넣은 값(상품명, 모듈 목적)이다.
+    가드가 막아야 할 건 사용자·LLM이 넣은 값(상품명, 모듈 목적, 컬러톤·분위기).
+    컬러톤·분위기도 인터뷰 자유서술이라 검사 대상에 넣었다(2026-08-19 추가).
     """
-    return f"{req.product_name or ''} {module.purpose or ''}"
+    return f"{req.product_name or ''} {module.purpose or ''} {req.color_tone or ''} {req.mood or ''}"
 
 
 def generate_module_images(
@@ -60,16 +171,30 @@ def generate_module_images(
     req: GenerateRequest,
     generator,
     max_images: int = DEFAULT_MAX_IMAGES,
+    photo_resolver=None,
 ) -> tuple[list[ModuleImage], dict[str, bytes]]:
     """계획된 모듈마다 이미지를 만든다.
 
     반환: (모듈별 결과 메타, {모듈kind: PNG바이트}). 바이트 저장은 호출자가 정한다.
     generator가 None이면 아무것도 만들지 않는다(생성기 미도입 상태에서도 응답은 나가게).
+
+    photo_resolver: `(photo_id 목록) -> PNG/JPEG 바이트 목록`. 판매자가 올린 제품사진이
+    있으면(req.product_photo_ids) 모든 모듈에 같은 참조 이미지로 넘긴다(합성, 팀장
+    승인 방식 A). 배경마다 다른 사진을 쓰는 기능은 아직 없다. 조회는 한 번만 한다
+    (모듈마다 다시 부르면 저장소를 반복 왕복한다).
     """
     results: list[ModuleImage] = []
     blobs: dict[str, bytes] = {}
     if generator is None:
         return results, blobs
+
+    reference_images: list[bytes] = []
+    if photo_resolver is not None and req.product_photo_ids:
+        try:
+            reference_images = photo_resolver(req.product_photo_ids)
+        except Exception as e:
+            # 예상된 실패(사진 조회 실패)라 참조 없이 계속 진행한다(배경만 생성).
+            print(f"    [skip] 제품사진 조회 실패(참조 없이 진행): {type(e).__name__}: {e}")
 
     made = 0
     for module in plan.modules:
@@ -84,7 +209,9 @@ def generate_module_images(
             )
             continue
 
-        prompt = build_image_prompt(module, req)
+        prompt = build_image_prompt(
+            module, req, plan.product_type, has_product_photo=bool(reference_images)
+        )
         allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
         if not allowed:
             results.append(
@@ -93,7 +220,7 @@ def generate_module_images(
             continue
 
         try:
-            blobs[module.kind] = generator.generate_image(prompt, [])
+            blobs[module.kind] = generator.generate_image(prompt, reference_images)
         except Exception as e:
             # 과금 호출이라 재시도하지 않는다. 이 모듈만 스킵하고 나머지는 계속.
             reason = f"이미지 생성 실패: {type(e).__name__}"
