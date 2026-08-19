@@ -38,6 +38,26 @@ def test_elasticity_alone_is_legal_allow():
     assert m.flag is None
 
 
+def test_sensitive_with_whitening_claim_falls_through_to_vlm():
+    """'예민'이 legal_allow로 먼저 안 걸리고, 같은 문장의 미백(2호) 클레임이
+    VLM 경로로 넘어간다(2026-08-19 실측 사례, 정답셋 963문장 크로스탭 발견:
+    legal_allow가 다른 미판정 클레임까지 통째로 스킵시키던 구조적 문제)."""
+    assert match_rule("예민한 피부도 안심하고 쓰는 순한 미백") is None
+
+
+def test_elasticity_with_wrinkle_claim_falls_through_to_vlm():
+    """'탄력'도 같은 문장에 주름개선(2호) 클레임이 있으면 legal_allow를 취소한다."""
+    assert match_rule("탄력과 주름개선에 도움을 주는 아이크림") is None
+
+
+def test_sensitive_alone_is_still_legal_allow():
+    """2호 클레임이 없으면 '민감'은 여전히 합법 확정(회귀 없음 확인)."""
+    m = match_rule("민감 피부도 안심하고 사용하는 저자극 솔루션")
+    assert m is not None
+    assert m.outcome == RuleOutcome.legal_allow
+    assert m.span == "민감"
+
+
 def test_no_match_returns_none():
     """규칙에 안 걸리는 일반 문장은 None(VLM에 위임)."""
     assert match_rule("촉촉하고 산뜻한 사용감의 데일리 로션") is None
