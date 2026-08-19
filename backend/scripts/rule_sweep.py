@@ -15,7 +15,7 @@
   # 3. 기준선과 비교해 뭐가 바뀌었는지 본다.
   python scripts/rule_sweep.py diff --baseline /tmp/baseline.json
 
-정답셋은 기본으로 label_worksheet_combined.xlsx(996문장, H열 제외 반영)를 쓴다.
+정답셋은 기본으로 label_worksheet_combined.xlsx(H열 '제외사유' 반영 후 963문장)를 쓴다.
 --label-file로 바꿀 수 있다.
 """
 import argparse
@@ -36,6 +36,13 @@ _DEFAULT_LABEL_XLSX = Path("11st_probe_cosmetic/read_test/label_worksheet_combin
 # 나머지(합법·대상외)에 violation이 뜨면 규칙 오탐이다.
 _VIOLATION_LABEL = "위반"
 _SAFE_LABELS = ("합법", "대상외")
+
+# 규칙이 legal_allow·out_of_scope로 확정하면 finding도 안 만들고 VLM에도 안 넘긴다
+# (judge/cosmetic.py). 그래서 판단이 필요한 라벨이 여기 걸리면 통째로 사라지는데,
+# tp(위반->violation)에도 fp(합법->violation)에도 안 잡혀 요약만 보면 안 보인다.
+# "애매"는 tp·fp 어느 쪽 정의에도 안 들어가는 라벨이라 특히 잘 숨는다.
+_SWALLOWING_OUTCOMES = ("legal_allow", "out_of_scope")
+_NEEDS_JUDGMENT_LABELS = ("위반", "검토필요", "애매")
 
 
 def run_sweep(label_xlsx: Path) -> dict[str, list]:
@@ -61,11 +68,34 @@ def run_sweep(label_xlsx: Path) -> dict[str, list]:
 
 
 def summarize(sweep: dict[str, list]) -> dict[str, int]:
-    """정탐(위반->violation)·규칙오탐(합법/대상외->violation) 건수를 센다."""
+    """정탐(위반->violation)·규칙오탐(합법/대상외->violation)·증발 건수를 센다.
+
+    `tp`는 **규칙 단독 커버리지**다. 시스템 recall이 아니다 — 미매칭(`none`)은 증발이
+    아니라 프리스크린·VLM으로 정상 위임되므로(judge/cosmetic.py), 여기 안 잡힌 위반을
+    VLM이 잡을 수 있다. 시스템 성능은 RagJudge를 태워서 따로 재야 한다.
+
+    `swallowed`는 판단이 필요한 라벨(위반·검토필요·애매)이 legal_allow·out_of_scope로
+    확정돼 VLM에도 안 넘어간 건수다. tp에도 fp에도 안 잡히는 사각지대라 따로 센다.
+    """
     tp = sum(1 for lab, out, _ in sweep.values() if lab == _VIOLATION_LABEL and out == "violation")
     total_violation = sum(1 for lab, _, _ in sweep.values() if lab == _VIOLATION_LABEL)
     fp = sum(1 for lab, out, _ in sweep.values() if lab in _SAFE_LABELS and out == "violation")
-    return {"tp": tp, "total_violation": total_violation, "fp": fp}
+    swallowed = sum(
+        1
+        for lab, out, _ in sweep.values()
+        if lab in _NEEDS_JUDGMENT_LABELS and out in _SWALLOWING_OUTCOMES
+    )
+    return {"tp": tp, "total_violation": total_violation, "fp": fp, "swallowed": swallowed}
+
+
+def swallowed_rows(sweep: dict[str, list]) -> list[tuple[str, str, str, str]]:
+    """증발한 문장을 (이미지, 정답라벨, 매칭span, 문장)으로 뽑는다. 요약 숫자의 내역."""
+    rows = []
+    for k, (lab, out, span) in sweep.items():
+        if lab in _NEEDS_JUDGMENT_LABELS and out in _SWALLOWING_OUTCOMES:
+            nn, sentence = k.split("||", 1)
+            rows.append((nn, lab, span, sentence))
+    return sorted(rows)
 
 
 def compute_diff(baseline: dict[str, list], current: dict[str, list]) -> list[dict]:
@@ -113,7 +143,12 @@ def cmd_snapshot(args: argparse.Namespace) -> None:
     Path(args.out).write_text(json.dumps(sweep, ensure_ascii=False), encoding="utf-8")
     s = summarize(sweep)
     print(f"스냅샷 저장: {args.out} ({len(sweep)}문장)")
-    print(f"  위반 탐지: {s['tp']}/{s['total_violation']}, 규칙 오탐: {s['fp']}건")
+    print(f"  규칙 단독 위반탐지: {s['tp']}/{s['total_violation']} (시스템 recall 아님, 미매칭은 VLM행)")
+    print(f"  규칙 오탐: {s['fp']}건")
+    print(f"  증발(VLM에도 안 감): {s['swallowed']}건")
+    if args.show_swallowed:
+        for nn, lab, span, sentence in swallowed_rows(sweep):
+            print(f"    [{nn}] 정답={lab} <- {span}: {sentence[:60]}")
 
 
 def cmd_diff(args: argparse.Namespace) -> None:
@@ -122,8 +157,9 @@ def cmd_diff(args: argparse.Namespace) -> None:
     changed = compute_diff(baseline, current)
 
     sb, sc = summarize(baseline), summarize(current)
-    print(f"위반 탐지: {sb['tp']}/{sb['total_violation']} -> {sc['tp']}/{sc['total_violation']}")
+    print(f"규칙 단독 위반탐지: {sb['tp']}/{sb['total_violation']} -> {sc['tp']}/{sc['total_violation']}")
     print(f"규칙 오탐: {sb['fp']}건 -> {sc['fp']}건")
+    print(f"증발(VLM에도 안 감): {sb['swallowed']}건 -> {sc['swallowed']}건")
     print(f"판정 바뀐 문장: {len(changed)}건\n")
     for c in changed:
         tag = f"  <== {c['tag']}" if c["tag"] else ""
@@ -147,6 +183,8 @@ def main() -> None:
 
     p_snap = sub.add_parser("snapshot", help="현재 규칙집 상태를 스냅샷으로 저장")
     p_snap.add_argument("--out", required=True, help="스냅샷 저장 경로(json)")
+    p_snap.add_argument("--show-swallowed", action="store_true",
+                        help="증발한 문장 내역을 같이 출력")
     p_snap.set_defaults(func=cmd_snapshot)
 
     p_diff = sub.add_parser("diff", help="스냅샷 대비 지금 상태를 비교")

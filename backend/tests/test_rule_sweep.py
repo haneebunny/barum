@@ -7,7 +7,12 @@ xlsx·match_rule 실호출은 안 한다(run_sweep은 스모크로 확인, backe
 import sys
 
 sys.path.insert(0, "scripts")
-from rule_sweep import _classify_change, compute_diff, summarize  # noqa: E402
+from rule_sweep import (  # noqa: E402
+    _classify_change,
+    compute_diff,
+    summarize,
+    swallowed_rows,
+)
 
 
 def test_위반_라벨_탐지_건수를_센다():
@@ -17,7 +22,31 @@ def test_위반_라벨_탐지_건수를_센다():
         "02||문장C": ["합법", "none", ""],
     }
     s = summarize(sweep)
-    assert s == {"tp": 1, "total_violation": 2, "fp": 0}
+    assert s == {"tp": 1, "total_violation": 2, "fp": 0, "swallowed": 0}
+
+
+def test_판단필요_라벨이_legal_allow로_확정되면_증발로_센다():
+    """legal_allow·out_of_scope는 finding도 안 만들고 VLM에도 안 넘긴다.
+
+    tp(위반->violation)에도 fp(합법->violation)에도 안 잡혀 요약만 보면 안 보이던
+    사각지대다. '애매'는 tp·fp 어느 정의에도 없는 라벨이라 특히 잘 숨는다.
+    """
+    sweep = {
+        "01||문장A": ["검토필요", "legal_allow", "민감"],
+        "02||문장B": ["애매", "legal_allow", "탄력"],
+        "03||문장C": ["위반", "out_of_scope", "짜개"],
+        "04||문장D": ["합법", "legal_allow", "탄력"],  # 합법은 증발이 아니라 정상 동작
+        "05||문장E": ["검토필요", "none", ""],  # 미매칭은 VLM행이라 증발 아님
+    }
+    assert summarize(sweep)["swallowed"] == 3
+
+
+def test_증발_내역을_뽑는다():
+    sweep = {
+        "01||문장A": ["검토필요", "legal_allow", "민감"],
+        "02||문장B": ["합법", "legal_allow", "탄력"],
+    }
+    assert swallowed_rows(sweep) == [("01", "검토필요", "민감", "문장A")]
 
 
 def test_합법_대상외에_violation_뜨면_규칙오탐으로_센다():
