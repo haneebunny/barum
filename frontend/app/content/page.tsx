@@ -157,6 +157,7 @@ function ContentGeneratorContent() {
     Array<ClinicalEvidence & { id: string }>
   >([]);
   const [createNotes, setCreateNotes] = useState("");
+  const [createGenerateImages, setCreateGenerateImages] = useState(false);
 
   const addIngredientAmount = () => {
     setCreateIngredientAmounts((prev) => [
@@ -356,6 +357,7 @@ function ContentGeneratorContent() {
                 }))
             : undefined,
           notes: createNotes || undefined,
+          image_generation: createGenerateImages ? { requested: true } : undefined,
         });
       } else {
         let rawContent = "";
@@ -754,6 +756,20 @@ function ContentGeneratorContent() {
                 placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
                 className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
               />
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <label className="flex items-center gap-2 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createGenerateImages}
+                  onChange={(e) => setCreateGenerateImages(e.target.checked)}
+                />
+                모듈별 배경 이미지도 생성하기
+              </label>
+              <p className="m-[6px_0_0] text-[11px] text-[var(--ink-3)]">
+                제품·라벨·글자는 안 그리고 배경·질감만 만들어요. 이미지 생성은 별도 비용이 발생해서 기본은 꺼져 있어요.
+              </p>
             </div>
           </div>
         </div>
