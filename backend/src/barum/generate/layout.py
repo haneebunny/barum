@@ -26,6 +26,11 @@ _FALLBACK_MODULES: tuple[tuple[str, str, str], ...] = (
 # 임상 계열 모듈. 기능성 인증서로는 못 받치고 실증자료가 있어야 한다.
 _CLINICAL_PREFIX = "clinical"
 
+# 상품 스펙표(제형·용량) 모듈 kind. LLM 퓨샷 예시엔 이 kind가 없어서(8건 레퍼런스에
+# 없는 개념) 플래너가 스스로 못 만든다. req에 데이터가 있으면 계획에 결정적으로
+# 끼워넣는다(2026-08-19, 팀장 확정: table_info 지원 범위 = 제형·용량만).
+PRODUCT_SPEC_KIND = "product_spec"
+
 # LLM이 카탈로그 밖 값을 내거나 layout_type을 빠뜨렸을 때 쓰는 안전한 기본값.
 # 텍스트 블록 하나짜리라 어떤 모듈에 붙어도 어색하지 않다.
 _DEFAULT_LAYOUT_TYPE = "section_statement"
@@ -174,6 +179,22 @@ def filter_risky_modules(
             )
     filtered = LayoutPlan(modules=kept, product_type=plan.product_type, source=plan.source)
     return filtered, skipped
+
+
+def ensure_product_spec_module(plan: LayoutPlan, req: GenerateRequest) -> LayoutPlan:
+    """제형·용량 데이터가 있으면 상품 스펙표 모듈을 계획에 끼워넣는다.
+
+    둘 다 없으면 아무것도 안 한다(채울 내용 없는 빈 테이블을 만들지 않는다,
+    filter_risky_modules와 같은 원칙). 이미 같은 kind가 있으면 중복 추가 안 함.
+    """
+    if not (req.formulation_type or req.volume):
+        return plan
+    if any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules):
+        return plan
+    module = LayoutModule(
+        kind=PRODUCT_SPEC_KIND, purpose="상품 기본 정보", has_claim_risk=False, layout_type="table_info"
+    )
+    return LayoutPlan(modules=[*plan.modules, module], product_type=plan.product_type, source=plan.source)
 
 
 def clinical_sections_text(evidence: list[ClinicalEvidence]) -> str:

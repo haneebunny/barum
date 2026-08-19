@@ -4,6 +4,7 @@
 from barum.generate.layout import (
     _format_examples,
     clinical_sections_text,
+    ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
 )
@@ -200,3 +201,38 @@ def test_실증자료를_입력값_그대로_문장화한다():
 def test_선택항목이_없어도_문장이_나온다():
     text = clinical_sections_text([ClinicalEvidence(claim="보습력 개선", value="2.1배")])
     assert text == "보습력 개선 2.1배"
+
+
+# ── 상품 스펙표 모듈 (2026-08-19, 팀장 확정: table_info 지원범위 = 제형·용량) ──
+
+
+def test_제형이나_용량이_있으면_스펙_모듈을_끼워넣는다():
+    plan = _plan(SAFE)
+    req = _req(formulation_type="액상")
+    result = ensure_product_spec_module(plan, req)
+    assert any(m.kind == "product_spec" and m.layout_type == "table_info" for m in result.modules)
+
+
+def test_용량만_있어도_스펙_모듈을_끼워넣는다():
+    plan = _plan(SAFE)
+    req = _req(volume="50ml")
+    result = ensure_product_spec_module(plan, req)
+    assert any(m.kind == "product_spec" for m in result.modules)
+
+
+def test_제형_용량_둘다_없으면_스펙_모듈을_안_넣는다():
+    plan = _plan(SAFE)
+    result = ensure_product_spec_module(plan, _req())
+    assert not any(m.kind == "product_spec" for m in result.modules)
+    assert result.modules == plan.modules
+
+
+def test_이미_있으면_중복으로_안_넣는다():
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="product_spec", purpose="상품 기본 정보", layout_type="table_info")],
+        product_type="세럼",
+        source="planner",
+    )
+    req = _req(formulation_type="크림")
+    result = ensure_product_spec_module(plan, req)
+    assert len([m for m in result.modules if m.kind == "product_spec"]) == 1
