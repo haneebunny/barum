@@ -157,6 +157,8 @@ function ContentGeneratorContent() {
     Array<ClinicalEvidence & { id: string }>
   >([]);
   const [createNotes, setCreateNotes] = useState("");
+  const [createColorTone, setCreateColorTone] = useState("");
+  const [createMood, setCreateMood] = useState("");
   const [createGenerateImages, setCreateGenerateImages] = useState(false);
 
   const addIngredientAmount = () => {
@@ -357,6 +359,8 @@ function ContentGeneratorContent() {
                 }))
             : undefined,
           notes: createNotes || undefined,
+          color_tone: createColorTone || undefined,
+          mood: createMood || undefined,
           image_generation: createGenerateImages ? { requested: true } : undefined,
         });
       } else {
@@ -787,6 +791,27 @@ function ContentGeneratorContent() {
                   <Plus size={12} weight="bold" /> 실증자료 추가
                 </button>
               </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">색상톤·분위기 (선택, 이미지·문구 생성에 반영)</p>
+              <div className="flex flex-col gap-1.5">
+                <input
+                  type="text"
+                  value={createColorTone}
+                  onChange={(e) => setCreateColorTone(e.target.value)}
+                  placeholder="색상톤 (예: 베이지·아이보리 톤)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+                <input
+                  type="text"
+                  value={createMood}
+                  onChange={(e) => setCreateMood(e.target.value)}
+                  placeholder="분위기 (예: 미니멀하고 차분한)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+              </div>
+              <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">비워두면 상품 종류에 맞춰 기본 톤으로 생성돼요.</p>
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
