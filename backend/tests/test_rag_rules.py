@@ -58,6 +58,35 @@ def test_sensitive_alone_is_still_legal_allow():
     assert m.span == "민감"
 
 
+def test_legal_allow_markers_cover_pack_synonyms():
+    """마커가 '미백'만이 아니라 팩이 같이 묶어 놓은 표기까지 봐야 한다.
+
+    `prohibited_expressions.md` §1 T2가 "미백·화이트닝(whitening)·주름(wrinkle)개선"을
+    한 항목으로 명시하는데 마커엔 한글 대표어만 있었다. 영문·한글 변형으로 쓴 광고가
+    그대로 증발한다(2026-08-19 정답셋 크로스탭 발견).
+    """
+    for s in [
+        "탄력 케어와 화이트닝을 한 번에",
+        "탄력에 좋은 whitening 세럼",
+        "민감 피부를 위한 wrinkle care",
+    ]:
+        assert match_rule(s) is None, s
+
+
+def test_legal_allow_marker_covers_pigmentation():
+    """정답셋 53번 실사례. '색소침착'은 §1 T1(기미·주근깨=과색소침착증) 근거로,
+    T2 계열과 조항은 다르지만 마찬가지로 판단이 필요한 클레임이라 증발시키면 안 된다."""
+    assert match_rule("색소침착&탄력개선&저자극에 뛰어난 크림") is None
+
+
+def test_uv_abbreviation_is_not_a_marker():
+    """'UV'는 마커에 안 넣는다. 정답셋에서 인증기관 표기(Bureau Veritas ... 대상외)에
+    부분일치했다 — 마커는 `_keyword_present`를 안 거쳐 영단어 경계 보호조차 없다."""
+    m = match_rule("탄력 케어 UV 인증 완료 제품")
+    assert m is not None
+    assert m.outcome == RuleOutcome.legal_allow
+
+
 def test_no_match_returns_none():
     """규칙에 안 걸리는 일반 문장은 None(VLM에 위임)."""
     assert match_rule("촉촉하고 산뜻한 사용감의 데일리 로션") is None
