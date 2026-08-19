@@ -455,3 +455,21 @@ def test_low_irritation_alone_is_not_flagged():
     for s in ["저자극 딥클렌징", "✓ 지성, 문제성 피부용 저자극 토너"]:
         m = match_rule(s)
         assert m is None or m.outcome != RuleOutcome.needs_review, s
+
+
+# ── 콜라겐 표방 — 2026-08-19 정정(violation -> needs_review) ──────────────────
+
+
+def test_collagen_claim_is_needs_review_not_violation():
+    """콜라겐은 실증대상이라 위반 단정 대상이 아니다.
+
+    `prohibited_expressions.md` §3(실증대상, 관리지침 별표2)이 "콜라겐·효소 증가·감소·
+    활성화"를 조건부 목록에 싣고, §3 머리말이 "우리 판정에선 검토필요, 위반 단정 금지"
+    라고 못박는다. §3 형제 표현(피부노화·붓기·다크서클·피부장벽·진정)은 전부
+    needs_review인데 콜라겐만 violation에 혼자 있었다(5ab0942 일괄 추가분).
+    """
+    for s in ["콜라겐 증가에 도움을 주는 크림", "콜라겐 활성화 앰플"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+        assert m.violation_type == ViolationType.type_1_drug_misperception, s
