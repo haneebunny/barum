@@ -112,10 +112,18 @@ export const RemediationResponseSchema = z.object({
 export type RemediationResponse = z.infer<typeof RemediationResponseSchema>;
 
 // POST /generate 관련
+export const TableRowSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+export type TableRow = z.infer<typeof TableRowSchema>;
+
 export const SectionSchema = z.object({
   kind: z.string(),
   text: z.string(),
   source: z.string(),
+  // table_info layout_type 모듈용 구조화 데이터(제형·용량). 베베 배선 전 구버전 응답엔 없을 수 있어 optional
+  table_rows: z.array(TableRowSchema).nullable().optional(),
 });
 export type Section = z.infer<typeof SectionSchema>;
 
