@@ -568,6 +568,13 @@ function ContentGeneratorContent() {
         return `<div class="dp-banner"><p>${escapeHtml(s.text)}</p></div>`;
       }
 
+      if (layoutType === "table_info" && s.table_rows && s.table_rows.length > 0) {
+        const rowsHtml = s.table_rows
+          .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`)
+          .join("");
+        return `<div class="dp-table-wrap"><table class="dp-table">${rowsHtml}</table></div>`;
+      }
+
       if (dataUri) {
         // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
         return `${swapComment}
@@ -651,6 +658,13 @@ function ContentGeneratorContent() {
     .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
     .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
     .dp-banner p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dp-ink-2); letter-spacing: -0.1px; }
+    .dp-table-wrap { padding: 20px 24px; }
+    .dp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .dp-table tr { border-bottom: 1px solid var(--dp-line); }
+    .dp-table tr:last-child { border-bottom: none; }
+    .dp-table td { padding: 10px 4px; }
+    .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
+    .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>
 </head>
