@@ -6,7 +6,7 @@ VLM은 가짜 객체(캔드 results 반환/예외)를 주입한다. 진짜 판�
 """
 
 from barum.judge.cosmetic import JUDGE_PROMPT, JudgeResult, PromptJudge, StubJudge, _loc
-from barum.models import JudgmentFlag
+from barum.models import JudgmentFlag, ViolationType
 
 
 class CapturingVLM:
@@ -482,3 +482,60 @@ def test_last_dropped_resets_between_runs():
     judge._vlm = _PrescreenVLM([True])
     judge.judge(_sents(["촉촉한 사용감"]), "KR")
     assert judge.last_dropped == []
+
+
+# ── needs_review 확정 + 2호 표방 동반 → VLM에도 넘긴다 (2026-08-19) ───────────
+# 규칙이 1호 경계표현으로 먼저 확정하면 같은 문장의 2호 클레임이 평가될 기회를 잃던
+# 문제. PR#142에서 고친 legal_allow 삼킴과 같은 계열인데, 이쪽은 finding은 나오므로
+# 규칙 판정을 빼지 않고 VLM 판정을 "더한다".
+
+
+class _RecordingVLM:
+    """1차 필터는 전부 통과시키고, 판정 호출에 넘어온 문장을 기록한다."""
+
+    def __init__(self, label="2호_기능성오인", flag="검토필요"):
+        self.judged_prompts = []
+        self._label, self._flag = label, flag
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        if "효능/효과를 주장하는지" in prompt:
+            return {"results": [{"n": i, "claim": True} for i in range(20)]}
+        self.judged_prompts.append(prompt)
+        return {"results": [{"n": 0, "label": self._label,
+                             "flag": self._flag, "reason": "미백 표방"}]}
+
+
+def test_needs_review_with_functional_claim_also_goes_to_vlm():
+    """'진정에 도움을 주는 미백 크림'은 규칙(진정)으로 끝나지 않고 VLM에도 간다."""
+    from barum.judge.cosmetic import RagJudge
+
+    vlm = _RecordingVLM()
+    judge = RagJudge(vlm)
+    res = judge.judge(_sents(["진정에 도움을 주는 미백 크림"]), "KR")
+    assert vlm.judged_prompts, "2호 표방이 섞였는데 VLM에 안 넘어갔다"
+    types = {f.violation_type for f in res.findings}
+    assert ViolationType.type_1_drug_misperception in types  # 규칙 판정 유지
+    assert ViolationType.type_2_functional_misperception in types  # VLM이 2호 추가
+
+
+def test_needs_review_without_functional_claim_stays_rule_only():
+    """2호 표방이 없으면 기존대로 규칙에서 끝난다(불필요한 VLM 호출 안 늘린다)."""
+    from barum.judge.cosmetic import RagJudge
+
+    vlm = _RecordingVLM()
+    judge = RagJudge(vlm)
+    res = judge.judge(_sents(["진정에 도움을 주는 크림"]), "KR")
+    assert vlm.judged_prompts == []
+    assert len(res.findings) == 1
+    assert res.findings[0].violation_type == ViolationType.type_1_drug_misperception
+
+
+def test_violation_rule_with_functional_claim_stays_rule_only():
+    """위반 확정(needs_review 아님)은 그대로 규칙에서 끝낸다. 이미 무거운 판정이라
+    VLM을 더 부를 이유가 없다."""
+    from barum.judge.cosmetic import RagJudge
+
+    vlm = _RecordingVLM()
+    judge = RagJudge(vlm)
+    judge.judge(_sents(["상처를 치료하는 미백 크림"]), "KR")
+    assert vlm.judged_prompts == []

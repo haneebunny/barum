@@ -29,7 +29,7 @@ from barum.reference.ingredients import (
     match_ingredient,
 )
 from barum.reference.mapping import legal_basis_for, legal_basis_text_for
-from barum.reference.rules import RuleOutcome, match_rule
+from barum.reference.rules import RuleOutcome, has_functional_claim, match_rule
 from barum.vlm import VLM
 
 
@@ -522,6 +522,20 @@ class RagJudge:
                     location=_loc(s),
                 )
             )
+            # 규칙이 실증대상(검토필요)으로 확정했는데 같은 문장에 2호 표방까지
+            # 섞여 있으면 VLM에도 함께 넘긴다. 안 넘기면 "진정에 도움을 주는 미백
+            # 크림"이 needs_review(진정, 1호)에서 끝나 미백 클레임이 평가될 기회를
+            # 잃는다. 유형이 1호로만 보고돼 legal_basis가 어긋나고, 2호 성분 대조
+            # (_functional_evidence)도 안 돈다(전성분에 고시원료가 없으면 위반이어야
+            # 하는데 검토필요로 고정된다).
+            #
+            # 규칙 finding을 빼고 VLM에 넘기는 방식은 안 쓴다. VLM이 합법이라고 하면
+            # 통째로 놓치기 때문이다. 규칙 판정은 그대로 두고 VLM 판정을 더한다
+            # (한 문장에 실제로 두 갈래 위반이 있으니 둘 다 보고하는 게 맞다).
+            if match.outcome == RuleOutcome.needs_review and has_functional_claim(
+                s["text"]
+            ):
+                remaining.append(s)
 
         if remaining:
             # 1차 필터: 효능/효과 주장인 문장만 골라낸다(RAG 없는 싼 VLM 호출).
