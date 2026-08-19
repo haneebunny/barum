@@ -9,47 +9,57 @@
     {
       "kind": "hero_intro",
       "purpose": "문제 제기로 시작하는 도입부",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "hero_fullbleed"
     },
     {
       "kind": "value_prop",
       "purpose": "제품 핵심가치를 한 줄로 요약",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "section_statement"
     },
     {
       "kind": "ingredient_highlight",
       "purpose": "핵심 성분 소개",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "image_text_split"
     },
     {
       "kind": "clinical_result",
       "purpose": "시험 그래픽으로 근거 제시(침투력 비교)",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "clinical_bar_compare"
     },
     {
       "kind": "clinical_stat",
       "purpose": "사용 전후 수치 변화 강조",
-      "has_claim_risk": true
+      "has_claim_risk": true,
+      "layout_type": "icon_grid"
     },
     {
       "kind": "texture",
       "purpose": "제형·발림성 소개",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "mood_macro"
     },
     {
       "kind": "safety_formula",
       "purpose": "무자극·무첨가 등 안전 처방 강조",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "icon_grid"
     },
     {
       "kind": "target_audience",
       "purpose": "추천 대상 리스트",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "icon_grid"
     },
     {
       "kind": "caution",
       "purpose": "사용 시 주의사항",
-      "has_claim_risk": false
+      "has_claim_risk": false,
+      "layout_type": "table_info"
     }
-  ]
+  ],
+  "color_system": "alternation"
 }

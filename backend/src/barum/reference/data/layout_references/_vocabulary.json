@@ -1,0 +1,32 @@
+{
+  "_note": "layout_references/*.json 이 참조하는 공용 레이아웃 어휘. 냐냐가 HTML 템플릿 세트를 만들 때 이 카탈로그의 layout_type별로 1개씩 컴포넌트를 만들면 된다. 2026-08-19, 팀장이 망고보드 AI 디자이너로 뽑은 히알루론산 세럼 상세페이지를 품질 기준으로 제시(터미널/미니멀 톤 금지, 섹션마다 레이아웃 다양화 + 배경색 교차 필수)한 것을 반영해 스키마를 확장함. 실측 근거: 홀리추얼(아임웹) 상세페이지에서 크림배경→블루그레이→검정+그린 막대그래프→크림→그레이 순으로 배경톤이 교차하는 것과 설화수 비포/애프터 사진 모듈을 직접 확인. 나머지는 8건 텍스트 조사 기록 + 일반적 K-뷰티 상세페이지 관례로 합리적 배정(완전 재검증 아님, layout_type이 애매한 모듈은 note에 표시).",
+
+  "layout_types": {
+    "hero_fullbleed": "풀블리드 배경(제품/모델/무드 사진) + 대형 헤드라인을 화이트 카드형 텍스트 박스로 하단에 얹음. 페이지당 1회, 히어로 전용. 슬롯: bg_image, headline, subcopy(선택)",
+    "section_statement": "이미지 없이(또는 최소) 헤드라인+짧은 서브카피만. 배경색 블록 하나로 존재감. 슬롯: headline, subcopy, bg_tone",
+    "image_text_split": "좌우 분할, 한쪽은 이미지 한쪽은 텍스트. 원인설명·성분소개·효능설명에 적합. 슬롯: image, headline, body, image_side(left|right)",
+    "clinical_bar_compare": "진한 배경(검정/딥톤) 위에 막대그래프로 before/after 수치 비교. 슬롯: bg_tone(dark), bars[{label, before_pct, after_pct}], footnote",
+    "clinical_photo_compare": "사용 전/후 비교 사진 나란히 + 수치 라벨. 슬롯: photo_before, photo_after, stat_label, footnote",
+    "icon_grid": "아이콘 또는 원형 스와치 2~4칸 그리드, 짧은 라벨+수치. 성분함량·추천대상·스펙에 적합. 슬롯: items[{icon, label, value}]",
+    "card_list_repeat": "카드형 반복(이미지+텍스트) 세로 나열. Q&A·후기·번들제안·텍스처비교. 슬롯: cards[{image, title, body}]",
+    "step_list": "번호 매긴 스텝 리스트. 사용법(STEP1/2)·체크포인트(01/02/03). 슬롯: steps[{number, title, body}]",
+    "lineup_strip": "가로 스크롤형 제품 라인업 스트립. 슬롯: items[{image, name}]",
+    "table_info": "표 형식 정보. 전성분·배송/반품·FAQ·주의사항. 슬롯: rows[{label, value}] 또는 qa[{q, a}]",
+    "banner_strip": "얇은 전체폭 배너, 짧은 텍스트 한 줄. 공지·프로모션. 슬롯: text",
+    "mood_macro": "텍스처/원료 클로즈업 무드컷, 텍스트 최소 또는 없음. 슬롯: bg_image, caption(선택)"
+  },
+
+  "color_system_patterns": {
+    "alternation": "섹션마다 배경 톤을 교차(진한 톤 ↔ 연한 톤 ↔ 화이트)해서 스크롤 리듬을 만든다. 망고보드 레퍼런스·홀리추얼 실측에서 확인된 핵심 패턴. hero_fullbleed·clinical_bar_compare 같은 강조 섹션에 진한 톤을 배정하고, 나머지는 연한 톤/화이트로 순환.",
+    "single_accent": "배경은 화이트로 고정, accent 색 하나만 아이콘·라벨·포인트 텍스트에 일관되게. alternation보다 차분함.",
+    "image_led": "색보다 제품/모델 사진이 주도, 배경은 중성(화이트/그레이). 텍스트는 무채색."
+  },
+
+  "category_base_tone": {
+    "_why": "팀장 지시: 사용자 인터뷰 미입력 시 스킨케어는 '투명, 깨끗' 기본값. product_type별로 이 원칙 위에서 세분화.",
+    "세럼": { "tone": "투명・산뜻", "hue_direction": "라이트 민트/세이지", "color_system": "alternation" },
+    "토너": { "tone": "맑고 산뜻", "hue_direction": "워터 블루/민트", "color_system": "alternation" },
+    "크림": { "tone": "부드럽고 편안", "hue_direction": "소프트 아이보리/베이지(연한 톤만, 브라스·에스프레소 계열 금지)", "color_system": "single_accent" },
+    "앰플": { "tone": "집중・고농축", "hue_direction": "딥그린 또는 딥네이비 + 화이트 대비", "color_system": "alternation" }
+  }
+}
