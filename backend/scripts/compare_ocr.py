@@ -128,18 +128,10 @@ def load_answer_key(label_xlsx: Path | None = None) -> dict[str, list[dict]]:
         nn = str(ws.cell(r, 1).value or "").strip()
         sentence = str(ws.cell(r, 4).value or "").strip()
         judgment = str(ws.cell(r, 5).value or "").strip()
+        vtype = str(ws.cell(r, 6).value or "").strip()
         # G열 "검토필요_사유"는 "분류 — 판단근거" 형식이라 분류만 잘라 쓴다.
         # 정보부족형: 데이터(전성분·인증서 등)를 주면 해소되는 것.
         # 위반의심형: 데이터를 줘도 안 풀리는 것(일반수식어·절대적 표현 등).
-        review_kind = str(ws.cell(r, 7).value or "").split("—")[0].strip()
-        # H열 "제외사유"가 채워진 행은 채점 대상이 아니다. 화장품이 아닌 상품
-        # (잡화·도구)이라 화장품법 판정 자체가 성립 안 한다(하니 확정 2026-08-18).
-        # 컬럼이 없는 예전 정답셋에서도 돌아가야 하므로 빈칸이면 그냥 포함한다.
-        excluded = bool(str(ws.cell(r, 8).value or "").strip())
-        if excluded:
-            n_excluded += 1
-            continue
-        vtype = str(ws.cell(r, 6).value or "").strip()
         review_kind = (
             str(ws.cell(r, review_kind_col).value or "").split("—")[0].strip()
             if review_kind_col else ""

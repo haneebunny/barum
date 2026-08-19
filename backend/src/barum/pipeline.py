@@ -16,6 +16,7 @@ from barum.judge.us_sunscreen import DISCLAIMER, USSunscreenJudge
 from barum.models import CheckReport, JudgmentFlag, Region, Summary, USPreflightReport, USPreflightSummary
 from barum.preprocess.ocr import extract_product_sentences
 from barum.reference.citations import build_regulatory_basis
+from barum.reference.scope import check_product_scope
 from barum.vlm import VLM
 
 # 문장 분리: 줄바꿈과 문장부호(한/영) 기준. 광고 카피라 완벽한 분리보다 단순·안정을 택한다.
@@ -146,6 +147,26 @@ def run_check(
         base = len(sentences)
         for s in _split_text_to_sentences(ad_text, source="ad_text"):
             sentences.append({**s, "order": base + s["order"]})
+
+    # 상품 단위 대상외 게이트. 문장 판정 전에 한 번만 본다 — 짜개(도구)류 상품의
+    # "짜개"라는 단어가 없는 다른 문장("흠집이 생기지 않아요")까지 효능주장으로
+    # 오판되는 걸 막는다(cosmetic_scope.md). 애매하면 화장품 쪽으로 판단하므로
+    # False(대상외 확정)일 때만 문장 판정을 건너뛴다.
+    in_scope, oos_reason = check_product_scope([s["text"] for s in sentences])
+    if not in_scope:
+        summary = Summary(
+            region=Region(region),
+            n_sentences=len(sentences),
+            n_findings=0,
+            product_out_of_scope=True,
+            out_of_scope_reason=oos_reason,
+        )
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=summary,
+            basis=build_regulatory_basis(region),
+        )
 
     ingredient_list = _split_ingredients(ingredients) if ingredients else None
     amount_list = _parse_ingredient_amounts(ingredient_amounts) if ingredient_amounts else None
