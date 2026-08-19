@@ -484,11 +484,25 @@ function ContentGeneratorContent() {
   const isFinePrintKind = (kind: string) => kind.includes("caution") || kind.includes("주의");
 
   const escapeAttr = (s: string) => s.replace(/'/g, "&#39;");
+  const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+
+  // 문장 하나짜리 text를 헤드라인(첫 문장)+서브카피(나머지)로 휴리스틱 분리.
+  // 백엔드가 headline/subcopy를 따로 안 줘서 쓰는 임시 방편(디디 B안 대기, 팀장·PM 확인).
+  const splitHeadline = (text: string): { headline: string; subcopy: string } => {
+    const match = text.match(/^([\s\S]+?[.!?])\s*([\s\S]*)$/);
+    if (!match) return { headline: text, subcopy: "" };
+    const [, headline, subcopy] = match;
+    return { headline: headline.trim(), subcopy: subcopy.trim() };
+  };
 
   const exportHtml = async () => {
     if (!genResult) return;
     const productName = displayProductName;
     const hasAnyGeneratedImage = genResult.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
+    const layoutModulesByKind: Record<string, string | null | undefined> = {};
+    for (const m of genResult.layout_plan?.modules || []) {
+      layoutModulesByKind[m.kind] = m.layout_type;
+    }
 
     // 섹션별로 매칭되는 module_image가 있으면 이미지 data URI로 인라인
     const moduleImageDataUris: Record<string, string | null> = {};
@@ -499,23 +513,46 @@ function ContentGeneratorContent() {
     }
 
     const aiImageBadge = `<span class="dp-ai-tag">AI 생성</span>`;
+    let statementAltIndex = 0;
 
-    // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 무드컷(이미지)과 카피(텍스트)를 분리한 블록으로.
+    // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
+    // 없으면(백엔드 미배선 구버전) 무드컷(이미지)+카피(텍스트) 분리 블록으로 폴백.
     const sectionsHtml = genResult.sections.map((s, idx) => {
       const dataUri = moduleImageDataUris[s.kind];
       const finePrint = isFinePrintKind(s.kind) ? " dp-fine" : "";
+      const layoutType = layoutModulesByKind[s.kind];
+      const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->`;
 
-      if (idx === 0 && dataUri) {
-        // 히어로: 그라디언트 없이 화이트 카드 텍스트 박스
-        return `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->
+      if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
+        const { headline, subcopy } = splitHeadline(s.text);
+        return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
       ${aiImageBadge}
-      <div class="dp-hero-card"><span>${productName}</span><p>${s.text}</p></div>
+      <div class="dp-hero-card"><span>${productName}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
     </div>`;
       }
+
+      if (layoutType === "image_text_split" && dataUri) {
+        const { headline, subcopy } = splitHeadline(s.text);
+        const side = statementAltIndex % 2 === 0 ? "left" : "right";
+        statementAltIndex++;
+        return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">${aiImageBadge}</div>
+      <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
+    </div>`;
+      }
+
+      if (layoutType === "section_statement") {
+        const { headline, subcopy } = splitHeadline(s.text);
+        const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
+        statementAltIndex++;
+        return `<div class="dp-statement${tone}${finePrint}"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>`;
+      }
+
       if (dataUri) {
-        // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리
-        return `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->
+        // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
+        return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
       ${aiImageBadge}
     </div>
@@ -582,6 +619,16 @@ function ContentGeneratorContent() {
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
     .dp-ai-tag { position: absolute; top: 10px; right: 10px; font-size: 9.5px; font-weight: 600; letter-spacing: .2px; color: #fff; background: rgba(29,27,24,.62); padding: 4px 8px; border-radius: 999px; }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
+    .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
+    .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
+    .dp-statement .dp-headline { font-size: 21px; }
+    .dp-split { display: flex; align-items: stretch; gap: 0; }
+    .dp-split-right { flex-direction: row-reverse; }
+    .dp-split-media { flex: 0 0 42%; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); margin: 24px 0 24px 24px; }
+    .dp-split-right .dp-split-media { margin: 24px 24px 24px 0; }
+    .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>
 </head>
