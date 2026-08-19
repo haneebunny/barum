@@ -59,10 +59,20 @@ app.add_middleware(
 def _build_judge() -> CosmeticJudge:
     """판정기를 만든다.
 
-    기본은 PromptJudge(VLM 제로샷, JUDGE_PROVIDER). 키가 없거나 오프라인에서
-    돌릴 땐 JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음). JUDGE_KIND=rag면
-    RagJudge(규칙집 우선 + VLM fallback)를 쓴다 — 검증된 1호 경계표현은 규칙이
-    확정하고 나머지만 VLM에 위임한다.
+    기본은 RagJudge(규칙집 우선 + 규정 grounding + VLM fallback)다. 검증된 경계표현은
+    규칙이 확정하고 나머지만 VLM에 위임한다. 키가 없거나 오프라인에서 돌릴 땐
+    JUDGE_KIND=stub로 StubJudge를 쓴다(VLM 호출 없음). JUDGE_KIND=prompt면 규칙집·
+    grounding 없는 제로샷 PromptJudge로 내려간다(비교실험·회귀 확인용).
+
+    **기본값 정정(2026-08-19).** 원래 기본은 PromptJudge였다. RagJudge가 없던 시절에
+    정해진 값인데, RagJudge가 배포 파이프라인이 된 뒤에도 기본값만 안 따라왔다.
+    그래서 `JUDGE_KIND=rag`를 손으로 안 주면 규칙집도 grounding도 안 붙은 채로 돌았다.
+    저장소 어디에도 그 값을 설정하는 곳이 없었다(.env·run_api.py·launch.json 전부).
+    ROADMAP·평가 문서가 "배포 파이프라인 = RagJudge"로 서술하고 지표도 전부 RagJudge로
+    쟀으므로, 코드 기본값을 문서화된 의도에 맞춘다.
+
+    RagJudge는 Supabase가 없어도 죽지 않는다(`_maybe_case_retriever`가 None으로
+    degrade, 규정 grounding만 사용). 그래서 기본으로 둬도 안전하다.
 
     기본 provider = openai(gpt-5-mini). 43문장 평가셋 비교(2026-08-11)에서
     Gemini는 미탐 4건(52.5% 일치)으로 recall 우선 정책에 제일 안 맞았고,
@@ -70,13 +80,13 @@ def _build_judge() -> CosmeticJudge:
     전환(ROADMAP.md §3). OCR_PROVIDER는 안 건드림 — 이 비교는 판정 정확도에
     대한 것이지 OCR 품질에 대한 게 아니다.
     """
-    kind = os.environ.get("JUDGE_KIND", "prompt")
+    kind = os.environ.get("JUDGE_KIND", "rag")
     if kind == "stub":
         return StubJudge()
     vlm = get_vlm(os.environ.get("JUDGE_PROVIDER", "openai"))
-    if kind == "rag":
-        return RagJudge(vlm, case_retriever=_maybe_case_retriever())
-    return PromptJudge(vlm)
+    if kind == "prompt":
+        return PromptJudge(vlm)
+    return RagJudge(vlm, case_retriever=_maybe_case_retriever())
 
 
 def _maybe_case_retriever():
