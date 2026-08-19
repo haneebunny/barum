@@ -394,6 +394,12 @@ class GenerateRequest(BaseModel):
         description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
+    color_tone: str | None = Field(
+        None, description="인터뷰에서 받은 컬러톤(create 모드, 이미지 생성용). 예: '베이지·아이보리 톤'"
+    )
+    mood: str | None = Field(
+        None, description="인터뷰에서 받은 분위기(create 모드, 이미지 생성용). 예: '미니멀하고 차분한'"
+    )
     image_generation: ImageGenRequest | None = None
 
     @model_validator(mode="after")
