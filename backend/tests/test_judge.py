@@ -428,7 +428,9 @@ class _PrescreenVLM:
 
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
         self.calls += 1
-        if "효능/효과를 주장하는지" in prompt:  # 1차 필터 호출
+        # 1차 필터 호출 판별은 출력 스펙("claim")으로 한다. 질문 문구로 판별하면
+        # 프롬프트를 고칠 때마다 테스트가 조용히 깨진다(2026-08-19 실제로 겪음).
+        if "claim" in prompt:
             return {"results": [{"n": i, "claim": c} for i, c in enumerate(self._claims)]}
         return {"results": []}  # 판정 호출
 
@@ -498,7 +500,7 @@ class _RecordingVLM:
         self._label, self._flag = label, flag
 
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
-        if "효능/효과를 주장하는지" in prompt:
+        if "claim" in prompt:  # 1차 필터 호출(출력 스펙으로 판별)
             return {"results": [{"n": i, "claim": True} for i in range(20)]}
         self.judged_prompts.append(prompt)
         return {"results": [{"n": 0, "label": self._label,
