@@ -79,8 +79,7 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 무엇을 그릴지:
 - 이 제품 제형에 맞는 질감·소재의 클로즈업: {texture_hint}
 - 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)
-- 필요하면 손·팔·뒷모습 등 얼굴이 안 보이는 신체 일부를 자연스럽게 넣어도 된다
-  (예: 손으로 제품을 바르는 장면). 얼굴은 절대 안 됨(아래 금지 목록 참고)
+{body_part_line}
 - 위에 명시한 컬러톤·분위기를 따를 것
 
 절대 넣지 말 것:
@@ -94,6 +93,28 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 - 시험 결과 그래프나 차트를 만들지 마라.
 
 문구를 얹을 여백이 남도록 화면 한쪽을 비교적 비워 둬라."""
+
+# layout_type별 구도 지시. "손으로 제품 바르는 장면"이 모든 모듈에 예시로 똑같이
+# 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한 페이지
+# 6장이 전부 손 장면으로 나옴). layout_type(LayoutModule에 항상 채워짐, PR #186)으로
+# 손 허용 여부를 갈라서 강제한다. kind는 LLM이 자유롭게 짓는 문자열이라 커버리지를
+# 보장 못 해서 안 쓴다.
+_HAND_ALLOWED_LAYOUT_TYPES = frozenset({"hero_fullbleed", "step_list"})
+
+_HAND_ALLOWED_LINE = (
+    "- 필요하면 손·팔·뒷모습 등 얼굴이 안 보이는 신체 일부를 자연스럽게 넣어도 된다\n"
+    "  (예: 손으로 제품을 바르는 장면). 얼굴은 절대 안 됨(아래 금지 목록 참고)"
+)
+_HAND_FORBIDDEN_LINE = (
+    "- 사람 신체(손·팔 포함)는 넣지 마라. 위에 있는 질감 클로즈업이나 추상 배경 중에서만 골라라"
+)
+
+
+def _body_part_line(layout_type: str) -> str:
+    """모듈 구도 지시를 layout_type에 따라 가른다. 대부분은 손을 금지해서
+    나머지 두 선택지(질감 클로즈업·추상 배경)로 다양성을 강제한다."""
+    return _HAND_ALLOWED_LINE if layout_type in _HAND_ALLOWED_LAYOUT_TYPES else _HAND_FORBIDDEN_LINE
+
 
 _NO_PRODUCT_INSTRUCTION = "- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다."
 _COMPOSITE_PRODUCT_INSTRUCTION = (
@@ -119,6 +140,9 @@ def build_image_prompt(
     "제품을 그리지 마라"가 아니라 "참조 사진 속 실제 제품을 유지하며 합성하라"로
     지시가 바뀐다. 참조가 없을 땐 기존처럼 제품을 아예 안 그린다(가짜 라벨 방지,
     39b2b54 참고).
+
+    module.layout_type으로 손·팔 허용 여부를 가른다(_body_part_line). 안 가르면
+    모든 모듈이 "손으로 제품 바르는 장면"으로 수렴한다(2026-08-19 실측 버그).
     """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
@@ -126,6 +150,7 @@ def build_image_prompt(
         purpose=module.purpose or module.kind,
         texture_hint=_texture_hint(product_type),
         tone=_resolve_tone(req, product_type),
+        body_part_line=_body_part_line(module.layout_type),
         product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
     )
 
