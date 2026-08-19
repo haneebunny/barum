@@ -1,6 +1,5 @@
 {
-  "_note": "layout_references/*.json 이 참조하는 공용 레이아웃 어휘. 냐냐가 HTML 템플릿 세트를 만들 때 이 카탈로그의 layout_type별로 1개씩 컴포넌트를 만들면 된다. 2026-08-19, 팀장이 망고보드 AI 디자이너로 뽑은 히알루론산 세럼 상세페이지를 품질 기준으로 제시(터미널/미니멀 톤 금지, 섹션마다 레이아웃 다양화 + 배경색 교차 필수)한 것을 반영해 스키마를 확장함. 실측 근거: 홀리추얼(아임웹) 상세페이지에서 크림배경→블루그레이→검정+그린 막대그래프→크림→그레이 순으로 배경톤이 교차하는 것과 설화수 비포/애프터 사진 모듈을 직접 확인. 나머지는 8건 텍스트 조사 기록 + 일반적 K-뷰티 상세페이지 관례로 합리적 배정(완전 재검증 아님, layout_type이 애매한 모듈은 note에 표시).",
-
+  "_note": "layout_references/*.json 이 참조하는 공용 레이아웃 어휘. 냐냐가 HTML 템플릿 세트를 만들 때 이 카탈로그의 layout_type별로 1개씩 컴포넌트를 만들면 된다. 2026-08-19, 팀장이 망고보드 AI 디자이너로 뽑은 히알루론산 세럼 상세페이지를 품질 기준으로 제시(터미널/미니멀 톤 금지, 섹션마다 레이아웃 다양화 + 배경색 교차 필수)한 것을 반영해 스키마를 확장함. 실측 근거: 홀리추얼(아임웹) 상세페이지에서 크림배경→블루그레이→검정+그린 막대그래프→크림→그레이 순으로 배경톤이 교차하는 것과 설화수 비포/애프터 사진 모듈을 직접 확인. 나머지는 8건 텍스트 조사 기록 + 일반적 K-뷰티 상세페이지 관례로 합리적 배정(완전 재검증 아님, layout_type이 애매한 모듈은 note에 표시). **정정(같은 날)**: color_system·category_base_tone은 export HTML 템플릿의 UI 크롬(테두리·배지·안내문구)에 강제 적용하는 팔레트가 아니다. 그건 별도로 PR #180에서 확정된 export 전용 고정 팔레트(오프화이트/오프블랙/딥로즈, `--dp-*` 토큰)를 쓴다. 여기 색 정보는 `GenerateRequest.color_tone`/`mood`(create 모드 인터뷰, 사용자 미입력 시 카테고리 기본값)로 흘러가 AI 배경 이미지 생성 프롬프트의 시드가 된다 — 실제 페이지에 보이는 색감은 그렇게 생성된 이미지가 결정하지, 템플릿이 결정하지 않는다(PM이 냐냐 PR #170/#163, 백엔드 images.py의 color_tone/mood 반영을 근거로 정정, 코드로 재검증 완료).",
   "layout_types": {
     "hero_fullbleed": "풀블리드 배경(제품/모델/무드 사진) + 대형 헤드라인을 화이트 카드형 텍스트 박스로 하단에 얹음. 페이지당 1회, 히어로 전용. 슬롯: bg_image, headline, subcopy(선택)",
     "section_statement": "이미지 없이(또는 최소) 헤드라인+짧은 서브카피만. 배경색 블록 하나로 존재감. 슬롯: headline, subcopy, bg_tone",
@@ -15,18 +14,33 @@
     "banner_strip": "얇은 전체폭 배너, 짧은 텍스트 한 줄. 공지·프로모션. 슬롯: text",
     "mood_macro": "텍스처/원료 클로즈업 무드컷, 텍스트 최소 또는 없음. 슬롯: bg_image, caption(선택)"
   },
-
   "color_system_patterns": {
-    "alternation": "섹션마다 배경 톤을 교차(진한 톤 ↔ 연한 톤 ↔ 화이트)해서 스크롤 리듬을 만든다. 망고보드 레퍼런스·홀리추얼 실측에서 확인된 핵심 패턴. hero_fullbleed·clinical_bar_compare 같은 강조 섹션에 진한 톤을 배정하고, 나머지는 연한 톤/화이트로 순환.",
-    "single_accent": "배경은 화이트로 고정, accent 색 하나만 아이콘·라벨·포인트 텍스트에 일관되게. alternation보다 차분함.",
-    "image_led": "색보다 제품/모델 사진이 주도, 배경은 중성(화이트/그레이). 텍스트는 무채색."
+    "_scope": "템플릿 UI 크롬이 아니라 AI 배경 이미지 생성 프롬프트(color_tone/mood)의 참고 방향. 실제 배경색은 생성된 이미지가 결정한다.",
+    "alternation": "섹션마다 배경 이미지의 톤을 교차(진한 톤 ↔ 연한 톤 ↔ 화이트)해서 스크롤 리듬을 만드는 방향으로 요청. 망고보드 레퍼런스·홀리추얼 실측에서 확인된 핵심 패턴. hero_fullbleed·clinical_bar_compare 같은 강조 섹션은 진한 톤으로, 나머지는 연한 톤/화이트로 요청하는 걸 권장.",
+    "single_accent": "배경은 화이트/중성으로 요청, accent 색 하나만.",
+    "image_led": "색보다 제품/모델 사진이 주도, 배경은 중성(화이트/그레이)으로 요청."
   },
-
   "category_base_tone": {
-    "_why": "팀장 지시: 사용자 인터뷰 미입력 시 스킨케어는 '투명, 깨끗' 기본값. product_type별로 이 원칙 위에서 세분화.",
-    "세럼": { "tone": "투명・산뜻", "hue_direction": "라이트 민트/세이지", "color_system": "alternation" },
-    "토너": { "tone": "맑고 산뜻", "hue_direction": "워터 블루/민트", "color_system": "alternation" },
-    "크림": { "tone": "부드럽고 편안", "hue_direction": "소프트 아이보리/베이지(연한 톤만, 브라스·에스프레소 계열 금지)", "color_system": "single_accent" },
-    "앰플": { "tone": "집중・고농축", "hue_direction": "딥그린 또는 딥네이비 + 화이트 대비", "color_system": "alternation" }
+    "_why": "팀장 지시: 사용자 인터뷰 미입력 시 스킨케어는 '투명, 깨끗' 기본값. product_type별로 이 원칙 위에서 세분화. hue_direction은 GenerateRequest.color_tone 필드의 기본값 후보(사용자가 인터뷰에 입력 안 했을 때 이걸로 채운다), 템플릿 색이 아니다.",
+    "세럼": {
+      "tone": "투명・산뜻",
+      "hue_direction": "라이트 민트/세이지",
+      "color_system": "alternation"
+    },
+    "토너": {
+      "tone": "맑고 산뜻",
+      "hue_direction": "워터 블루/민트",
+      "color_system": "alternation"
+    },
+    "크림": {
+      "tone": "부드럽고 편안",
+      "hue_direction": "소프트 아이보리/베이지(연한 톤만, 브라스·에스프레소 계열 금지)",
+      "color_system": "single_accent"
+    },
+    "앰플": {
+      "tone": "집중・고농축",
+      "hue_direction": "딥그린 또는 딥네이비 + 화이트 대비",
+      "color_system": "alternation"
+    }
   }
 }
