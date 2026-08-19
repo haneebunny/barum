@@ -283,3 +283,28 @@ def test_resolver_실패해도_참조없이_생성을_계속한다():
     results, blobs = generate_module_images(_plan("hero_intro"), req, gen, photo_resolver=resolver)
     assert results[0].status == "generated"
     assert gen.images_received == [[]]
+
+
+# ── 모델샷 범위 (2026-08-19, 팀장 확정: 손·팔·뒷모습 허용, 얼굴은 계속 금지) ──
+
+
+def test_얼굴은_여전히_금지다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "얼굴" in prompt
+    assert "넣지 마라" in prompt
+
+
+def test_손_팔_뒷모습은_허용_문구가_있다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "손" in prompt and "팔" in prompt
+
+
+def test_실사용_후기_연출_금지가_명시된다():
+    """별표5 사·아항(거짓·기만) 근거. 얼굴 유무와 무관하게 금지."""
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "사용 후기" in prompt or "체험담" in prompt
+
+
+def test_의사_전문가_연상_금지는_그대로_유지된다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "의사" in prompt and "전문가" in prompt
