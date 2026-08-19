@@ -62,3 +62,55 @@ def test_12개_넘으면_배치가_나뉜다():
     out = run_prescreen(vlm, sentences)
     assert len(out) == 13
     assert out[12]["prescreen_claim"] is False
+
+
+# ── 누적 로그 ──
+
+
+import json as _json
+
+from prescreen_conflict_check import _log_key, append_log, load_log  # noqa: E402
+
+
+def _rec(nn="01", text="문장", claim=False):
+    return {"nn": nn, "text": text, "span": "kw", "label": "위반",
+            "prescreen_claim": claim, "prescreen_failed": False}
+
+
+def test_로그가_없으면_빈_딕셔너리(tmp_path):
+    assert load_log(tmp_path / "없는파일.jsonl") == {}
+
+
+def test_기록하고_다시_읽으면_그대로_나온다(tmp_path):
+    p = tmp_path / "log.jsonl"
+    append_log(p, [_rec(text="약국 입점")])
+    log = load_log(p)
+    assert len(log) == 1
+    assert log[_log_key(_rec(text="약국 입점"))]["prescreen_claim"] is False
+
+
+def test_같은_문장을_다시_실행하면_최신값으로_덮어쓴다(tmp_path):
+    """규칙이 안 바뀐 채 재실행해도 분모가 부풀면 안 된다."""
+    p = tmp_path / "log.jsonl"
+    append_log(p, [_rec(text="약국 입점", claim=False)])
+    append_log(p, [_rec(text="약국 입점", claim=True)])  # 재실행, 결과가 바뀜
+    log = load_log(p)
+    assert len(log) == 1  # 문장 수는 그대로
+    assert log[_log_key(_rec(text="약국 입점"))]["prescreen_claim"] is True  # 최신값
+
+
+def test_새_문장은_누적에_더해진다(tmp_path):
+    """06번 갈래 신설처럼 새 규칙 위반 문장이 생기면 로그가 늘어난다."""
+    p = tmp_path / "log.jsonl"
+    append_log(p, [_rec(text="약국 입점")])
+    append_log(p, [_rec(text="시중 제품 대비 3배")])
+    log = load_log(p)
+    assert len(log) == 2
+
+
+def test_observed_at이_각_기록에_붙는다(tmp_path):
+    p = tmp_path / "log.jsonl"
+    append_log(p, [_rec()])
+    line = p.read_text(encoding="utf-8").strip()
+    record = _json.loads(line)
+    assert "observed_at" in record
