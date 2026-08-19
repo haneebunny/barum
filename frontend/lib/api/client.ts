@@ -302,6 +302,15 @@ export function getReportImageUrl(resultId: string): string {
   return `${getApiUrl()}/reports/${resultId}/image`;
 }
 
+// 백엔드가 절대 URL(외부 스토리지)이나 백엔드 상대 경로("/..." 프록시 라우트) 중
+// 어느 쪽으로 image_url을 줘도 그대로 쓸 수 있게 정규화한다.
+export function resolveImageUrl(url: string): string {
+  if (/^https?:\/\//.test(url)) {
+    return url;
+  }
+  return `${getApiUrl()}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 // 지금 시점 적용 기준 (푸터 등 검사 이력 없는 화면용). 리포트 화면은 report.basis(검사 시점 스냅샷)를 쓴다
 export async function getReferenceBasis(): Promise<Record<string, RegulatoryBasis>> {
   const url = `${getApiUrl()}/reference/basis`;

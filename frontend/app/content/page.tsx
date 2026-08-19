@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport, generateContent } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -949,7 +949,7 @@ function ContentGeneratorContent() {
                           <div
                             key={idx}
                             className="relative border-t border-[var(--line)] bg-cover bg-center flex items-end min-h-[180px]"
-                            style={{ backgroundImage: `url(${moduleImage.image_url})` }}
+                            style={{ backgroundImage: `url(${resolveImageUrl(moduleImage.image_url)})` }}
                           >
                             <div className="w-full bg-gradient-to-t from-black/70 via-black/25 to-transparent p-[16px_18px] pt-10">
                               <div className="flex items-center gap-2 m-[0_0_7px]">
