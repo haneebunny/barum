@@ -617,6 +617,13 @@ function ContentGeneratorContent() {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
   <style>
+    @font-face {
+      font-family: "Cafe24Ssurround";
+      src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2105_2@1.0/Cafe24Ssurround.woff") format("woff");
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
     :root {
       --dp-surface: #FAF9F6;
       --dp-surface-sub: #F1EFEA;
@@ -633,7 +640,7 @@ function ContentGeneratorContent() {
     .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; }
     .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 20px; }
     .dp-hero-card { background: var(--dp-surface); border-radius: var(--dp-radius); padding: 16px 18px; max-width: 84%; }
-    .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; color: var(--dp-accent); margin: 0 0 6px; }
+    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; color: var(--dp-accent); margin: 0 0 6px; }
     .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--dp-ink-2); }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
@@ -647,7 +654,7 @@ function ContentGeneratorContent() {
     .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
     .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
     .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
-    .dp-statement .dp-headline { font-size: 21px; }
+    .dp-statement .dp-headline { font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; }
     .dp-split { display: flex; align-items: stretch; gap: 0; }
     .dp-split-right { flex-direction: row-reverse; }
     .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
