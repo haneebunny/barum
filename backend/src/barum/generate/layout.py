@@ -8,19 +8,27 @@ LLM이 계획하게 한다. 계획은 **구조만** 정한다. 실제 문구는 
 """
 
 from barum.models import ClinicalEvidence, GenerateRequest, LayoutModule, LayoutPlan, SkippedClaim
+from barum.reference.layout_references import load_layout_vocabulary
 
 # 근거 없이도 안전한 기본 구성. LLM 계획이 실패하면 이걸로 간다.
-_FALLBACK_MODULES: tuple[tuple[str, str], ...] = (
-    ("hero_intro", "제품 도입부"),
-    ("ingredient_highlight", "핵심 성분 소개"),
-    ("texture", "제형·발림성 소개"),
-    ("how_to_use", "사용법 안내"),
-    ("target_audience", "추천 대상 소개"),
-    ("caution", "사용 시 주의사항"),
+# layout_type은 어휘집(_vocabulary.json) 12종 카탈로그 중 각 모듈 성격에 맞는 걸 배정했다
+# (2026-08-19, 냐냐·PM 확인). 이래야 LLM 플래너를 안 타는 폴백 경로에서도 프론트가
+# 항상 layout_type을 받는다.
+_FALLBACK_MODULES: tuple[tuple[str, str, str], ...] = (
+    ("hero_intro", "제품 도입부", "hero_fullbleed"),
+    ("ingredient_highlight", "핵심 성분 소개", "image_text_split"),
+    ("texture", "제형·발림성 소개", "mood_macro"),
+    ("how_to_use", "사용법 안내", "step_list"),
+    ("target_audience", "추천 대상 소개", "icon_grid"),
+    ("caution", "사용 시 주의사항", "table_info"),
 )
 
 # 임상 계열 모듈. 기능성 인증서로는 못 받치고 실증자료가 있어야 한다.
 _CLINICAL_PREFIX = "clinical"
+
+# LLM이 카탈로그 밖 값을 내거나 layout_type을 빠뜨렸을 때 쓰는 안전한 기본값.
+# 텍스트 블록 하나짜리라 어떤 모듈에 붙어도 어색하지 않다.
+_DEFAULT_LAYOUT_TYPE = "section_statement"
 
 _PLAN_PROMPT = """너는 화장품 상세페이지의 구조를 설계한다.
 아래는 실제 상세페이지들의 모듈 구성 예시다.
@@ -34,14 +42,33 @@ _PLAN_PROMPT = """너는 화장품 상세페이지의 구조를 설계한다.
 
 위 예시를 참고해 이번 상품의 상세페이지 모듈 구성을 순서대로 제안하라.
 
+각 모듈의 layout_type은 반드시 아래 카탈로그 중 하나로 골라라:
+{layout_type_catalog}
+
 규칙:
 - 구조만 정한다. 실제 광고 카피나 수치는 절대 쓰지 마라.
 - kind는 예시에 나온 것을 우선 쓴다.
 - 효능·수치·시험결과를 주장하는 모듈은 has_claim_risk를 true로 표시하라.
+- layout_type은 위 카탈로그에 있는 값만 써라. 카탈로그에 없는 값은 안 된다.
 - 6~12개 모듈이 적당하다.
 
 JSON으로만 답하라:
-{{"modules": [{{"kind": "...", "purpose": "...", "has_claim_risk": false}}]}}"""
+{{"modules": [{{"kind": "...", "purpose": "...", "has_claim_risk": false, "layout_type": "..."}}]}}"""
+
+
+def _layout_type_catalog() -> dict[str, str]:
+    """어휘집의 layout_type 12종 카탈로그(키→설명)를 낸다."""
+    return load_layout_vocabulary()["layout_types"]
+
+
+def _format_layout_type_catalog() -> str:
+    return "\n".join(f"- {k}: {v}" for k, v in _layout_type_catalog().items())
+
+
+def _valid_layout_type(value) -> str:
+    """카탈로그에 있는 값만 그대로 쓰고, 아니면 안전한 기본값으로 바꾼다."""
+    v = str(value).strip() if value else ""
+    return v if v in _layout_type_catalog() else _DEFAULT_LAYOUT_TYPE
 
 
 def _format_examples(refs: list[dict]) -> str:
@@ -51,7 +78,8 @@ def _format_examples(refs: list[dict]) -> str:
         lines = [f"[예시: {ref.get('product_type', '?')}]"]
         for module in ref.get("modules", []):
             risk = "위반소지있음" if module.get("has_claim_risk") else "안전"
-            lines.append(f"- {module['kind']} / {module['purpose']} / {risk}")
+            layout_type = module.get("layout_type", _DEFAULT_LAYOUT_TYPE)
+            lines.append(f"- {module['kind']} / {module['purpose']} / {risk} / layout_type={layout_type}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -59,7 +87,10 @@ def _format_examples(refs: list[dict]) -> str:
 def _fallback_plan(product_type: str | None) -> LayoutPlan:
     """LLM 없이 쓰는 고정 플랜. 전부 위반소지 없는 모듈이라 근거가 필요없다."""
     return LayoutPlan(
-        modules=[LayoutModule(kind=k, purpose=p, has_claim_risk=False) for k, p in _FALLBACK_MODULES],
+        modules=[
+            LayoutModule(kind=k, purpose=p, has_claim_risk=False, layout_type=lt)
+            for k, p, lt in _FALLBACK_MODULES
+        ],
         product_type=product_type,
         source="fallback",
     )
@@ -78,6 +109,7 @@ def plan_layout(req: GenerateRequest, refs: list[dict], product_type: str | None
         product_name=req.product_name or "(미상)",
         product_type=product_type or "(미상)",
         notes=req.notes or "(없음)",
+        layout_type_catalog=_format_layout_type_catalog(),
     )
     try:
         res = vlm.generate_json(prompt, [])
@@ -87,6 +119,7 @@ def plan_layout(req: GenerateRequest, refs: list[dict], product_type: str | None
                 kind=str(m["kind"]).strip(),
                 purpose=str(m.get("purpose", "")).strip(),
                 has_claim_risk=bool(m.get("has_claim_risk", False)),
+                layout_type=_valid_layout_type(m.get("layout_type")),
             )
             for m in raw
             if isinstance(m, dict) and str(m.get("kind", "")).strip()

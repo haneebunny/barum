@@ -185,11 +185,47 @@ def test_인터뷰_분위기가_프롬프트에_들어간다():
 
 
 def test_컬러톤_분위기_둘다_없으면_기본값으로_폴백한다():
-    """디디 확정 전 임시 기본값. 값이 비어 있어도 프롬프트에 톤 지시 자체는 있어야 한다."""
+    """product_type도 없을 때(어휘집 4종 밖) 쓰는 중립 기본값. 값이 비어 있어도
+    프롬프트에 톤 지시 자체는 있어야 한다."""
     req = GenerateRequest(mode="create", product_name="테스트")
     prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req)
     assert "컬러톤" in prompt
-    assert "투명하고 깨끗한" in prompt  # 현재 임시 기본값
+    assert "투명하고 깨끗한" in prompt
+
+
+# ── 디디 확정 컬러톤 기본값 (2026-08-19, _vocabulary.json category_base_tone) ──
+
+
+def test_세럼_기본톤은_민트_세이지다():
+    req = GenerateRequest(mode="create", product_name="테스트")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "세럼")
+    assert "민트" in prompt or "세이지" in prompt
+
+
+def test_토너_기본톤은_워터블루_민트다():
+    req = GenerateRequest(mode="create", product_name="테스트")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "토너")
+    assert "워터 블루" in prompt or "민트" in prompt
+
+
+def test_크림_기본톤은_아이보리_베이지다():
+    req = GenerateRequest(mode="create", product_name="테스트")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "크림")
+    assert "아이보리" in prompt or "베이지" in prompt
+
+
+def test_앰플_기본톤은_딥그린_딥네이비다():
+    req = GenerateRequest(mode="create", product_name="테스트")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "앰플")
+    assert "딥그린" in prompt or "딥네이비" in prompt
+
+
+def test_사용자_컬러톤_입력이_디디_기본값보다_우선한다():
+    """인터뷰 값이 있으면 카테고리 기본값을 덮어써야 한다(기존 우선순위 유지)."""
+    req = GenerateRequest(mode="create", product_name="테스트", color_tone="완전 다른 톤")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "세럼")
+    assert "완전 다른 톤" in prompt
+    assert "민트" not in prompt
 
 
 def test_같은_요청의_모든_모듈이_같은_톤_문구를_받는다():

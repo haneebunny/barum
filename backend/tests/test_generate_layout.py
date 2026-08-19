@@ -2,6 +2,7 @@
 
 
 from barum.generate.layout import (
+    _format_examples,
     clinical_sections_text,
     filter_risky_modules,
     plan_layout,
@@ -71,6 +72,49 @@ def test_레퍼런스가_없으면_LLM을_안_부른다():
     # 부르면 raises=True라 예외가 나겠지만, 안 부르므로 폴백으로 조용히 간다.
     plan = plan_layout(_req(), [], None, FakeVlm(raises=True))
     assert plan.source == "fallback"
+
+
+# ── layout_type (2026-08-19, 냐냐·PM 확인, PR #181 어휘집 연동) ──
+
+
+def test_폴백_플랜의_모든_모듈이_layout_type을_받는다():
+    """LLM을 안 타는 경로에서도 프론트가 항상 layout_type을 받아야 한다."""
+    plan = plan_layout(_req(), [], None, FakeVlm(raises=True))
+    assert all(m.layout_type for m in plan.modules)
+
+
+def test_LLM이_카탈로그_안의_layout_type을_주면_그대로_쓴다():
+    vlm = FakeVlm(
+        {"modules": [{"kind": "hero_intro", "purpose": "도입", "layout_type": "hero_fullbleed"}]}
+    )
+    plan = plan_layout(_req(), REFS, "세럼", vlm)
+    assert plan.modules[0].layout_type == "hero_fullbleed"
+
+
+def test_LLM이_카탈로그_밖_layout_type을_주면_기본값으로_바뀐다():
+    vlm = FakeVlm(
+        {"modules": [{"kind": "hero_intro", "purpose": "도입", "layout_type": "존재하지않는유형"}]}
+    )
+    plan = plan_layout(_req(), REFS, "세럼", vlm)
+    assert plan.modules[0].layout_type == "section_statement"
+
+
+def test_LLM이_layout_type을_빠뜨리면_기본값으로_채운다():
+    vlm = FakeVlm({"modules": [{"kind": "hero_intro", "purpose": "도입"}]})
+    plan = plan_layout(_req(), REFS, "세럼", vlm)
+    assert plan.modules[0].layout_type == "section_statement"
+
+
+def test_퓨샷_예시에_layout_type이_들어간다():
+    refs = [
+        {
+            "product_type": "세럼",
+            "modules": [
+                {"kind": "hero_intro", "purpose": "도입", "has_claim_risk": False, "layout_type": "hero_fullbleed"}
+            ],
+        }
+    ]
+    assert "layout_type=hero_fullbleed" in _format_examples(refs)
 
 
 # ── 위반소지 가드 ──
