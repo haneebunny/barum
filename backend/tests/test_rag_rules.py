@@ -317,3 +317,38 @@ def test_exclusive_superlative_choego_is_needs_review():
         m = match_rule(f"{kw}의 보습 크림")
         assert m is not None, kw
         assert m.outcome == RuleOutcome.needs_review, kw
+
+
+# ── 근거 없는 검증방법 주장(별표5 "사"·"아"항) — 2026-08-19 신설 ──────────────
+# type_5_deception.md #38 근거(cases.md #38 실사례). 의도적으로 좁게: 구체적 검증방법
+# (임상시험 등)을 근거없이 단정할 때만 위반, 막연한 자기주장형은 대상 아님.
+
+
+def test_verification_claim_with_clinical_trial_is_violation():
+    """cases.md #38 원문 그대로. 임상시험+검증받았다는 단정은 위반."""
+    m = match_rule("신뢰도 높은 여러 기관의 임상시험으로 철저히 검증받은 제품입니다")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.violation_type == ViolationType.type_5_deception
+    assert m.span == "검증방법단정"
+
+
+def test_verification_claim_generalizes_to_other_method_terms():
+    """임상시험이 아니어도(인체적용시험 등) 같은 패턴이면 걸려야 한다."""
+    m = match_rule("인체적용시험으로 안전성이 입증된 순한 세럼")
+    assert m is not None
+    assert m.outcome == RuleOutcome.violation
+    assert m.span == "검증방법단정"
+
+
+def test_vague_self_claim_without_method_is_not_flagged_by_this_rule():
+    """'효과로 증명합니다'처럼 구체적 검증방법 언급이 없는 막연한 자기주장형은 이 규칙 대상이
+    아니다(2026-08-19 하니 재확인 — 이 규칙을 의도적으로 좁게 유지하는 핵심 근거)."""
+    m = match_rule("거짓 없는 화장품, 효과로 증명하는 화장품입니다")
+    assert m is None or m.span != "검증방법단정"
+
+
+def test_method_term_alone_without_certainty_marker_is_not_flagged():
+    """검증방법 용어가 있어도 '검증/입증' 단정이 없으면 이 규칙에 안 걸린다."""
+    m = match_rule("임상시험 참가자를 모집합니다")
+    assert m is None or m.span != "검증방법단정"
