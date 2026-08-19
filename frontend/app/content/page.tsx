@@ -550,6 +550,18 @@ function ContentGeneratorContent() {
         return `<div class="dp-statement${tone}${finePrint}"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>`;
       }
 
+      if (layoutType === "mood_macro" && dataUri) {
+        // 텍스처/원료 클로즈업 무드컷. 텍스트는 짧은 캡션 하나만(또는 생략).
+        const { headline } = splitHeadline(s.text);
+        return `${swapComment}
+    <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">${aiImageBadge}</div>
+    ${headline ? `<p class="dp-caption">${escapeHtml(headline)}</p>` : ""}`;
+      }
+
+      if (layoutType === "banner_strip") {
+        return `<div class="dp-banner"><p>${escapeHtml(s.text)}</p></div>`;
+      }
+
       if (dataUri) {
         // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
         return `${swapComment}
@@ -629,6 +641,9 @@ function ContentGeneratorContent() {
     .dp-split-media { flex: 0 0 42%; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); margin: 24px 0 24px 24px; }
     .dp-split-right .dp-split-media { margin: 24px 24px 24px 0; }
     .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
+    .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
+    .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
+    .dp-banner p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>
 </head>
