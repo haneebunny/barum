@@ -312,3 +312,103 @@ def test_공백이_있어도_약국_변형이_잡힌다():
 
     for s in ["약국입점 화장품", "약국  입점 화장품"]:
         assert match_rule(s).outcome is RuleOutcome.violation, s
+
+
+# ── 확정도(flag)를 모델이 직접 답한다 — 2026-08-19 ────────────────────────────
+# 예전엔 1호·5호를 무조건 위반으로 고정했는데, 근거 문서는 §3 실증대상을 "검토필요,
+# 위반 단정 금지"로 안내하는 반면 답변 라벨엔 그 선택지가 없어서 모델이 합법(미탐)
+# 아니면 위반(과잉)으로 몰렸다. 이제 유형과 확정도를 각각 답하게 한다.
+
+
+class _FlagVLM:
+    """지정한 label·flag를 그대로 돌려주는 가짜."""
+
+    def __init__(self, label: str, flag=None):
+        self._item = {"n": 0, "label": label, "reason": "사유"}
+        if flag is not None:
+            self._item["flag"] = flag
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        return {"results": [self._item]}
+
+
+def _one(text="문구"):
+    return [{"order": 0, "tile": None, "text": text}]
+
+
+def test_model_can_mark_type_1_as_needs_review():
+    """1호도 검토필요로 내려갈 수 있다(예전엔 무조건 위반이었다)."""
+    res = PromptJudge(_FlagVLM("1호_의약품오인", "검토필요")).judge(_one(), "KR")
+    assert len(res.findings) == 1
+    assert res.findings[0].flag == JudgmentFlag.needs_review
+
+
+def test_model_can_mark_type_5_as_needs_review():
+    """5호도 마찬가지."""
+    res = PromptJudge(_FlagVLM("5호_거짓과장기만", "검토필요")).judge(_one(), "KR")
+    assert res.findings[0].flag == JudgmentFlag.needs_review
+
+
+def test_explicit_violation_flag_stays_violation():
+    res = PromptJudge(_FlagVLM("1호_의약품오인", "위반")).judge(_one(), "KR")
+    assert res.findings[0].flag == JudgmentFlag.violation
+
+
+def test_missing_flag_defaults_to_violation():
+    """flag가 없는 구버전 응답은 위반으로 둔다(recall 우선, 회귀 방지)."""
+    res = PromptJudge(_FlagVLM("1호_의약품오인")).judge(_one(), "KR")
+    assert res.findings[0].flag == JudgmentFlag.violation
+
+
+def test_garbage_flag_defaults_to_violation():
+    """오타·규격 밖 값도 위반으로 떨어뜨린다. 모르면 무거운 쪽."""
+    res = PromptJudge(_FlagVLM("5호_거짓과장기만", "몰라요")).judge(_one(), "KR")
+    assert res.findings[0].flag == JudgmentFlag.violation
+
+
+def test_type_2_ignores_model_flag_and_uses_ingredient_evidence():
+    """2호는 성분 정합이라는 실제 대조 수단이 있다. 모델의 자기 판단보다 대조 결과가
+    우선한다 — 모델이 검토필요라고 해도 고시원료가 전성분에 없으면 위반이다."""
+    res = PromptJudge(_FlagVLM("2호_기능성오인", "검토필요")).judge(
+        _one("미백에 도움을 줍니다"), "KR", ingredients=["정제수", "글리세린"]
+    )
+    assert res.findings[0].flag == JudgmentFlag.violation
+
+
+def test_needs_review_label_is_not_a_valid_type():
+    """'검토필요'는 label이 아니라 flag다. label로 오면 유형을 못 정하니 미판정으로
+    남긴다(안전으로 삼키지 않는다)."""
+    res = PromptJudge(_FlagVLM("검토필요", "검토필요")).judge(_one(), "KR")
+    assert res.findings == []
+    assert len(res.unjudged) == 1
+
+
+def test_prompt_asks_for_flag_field():
+    """프롬프트가 flag를 요구하는지 못박는다(프롬프트 회귀 방지)."""
+    assert "검토필요" in JUDGE_PROMPT
+    assert "flag" in JUDGE_PROMPT
+
+
+# ── 캐시 계측 (2026-08-19) ────────────────────────────────────────────────────
+# 판정은 근거 문서(2만자)를 배치마다 다시 실어 보낸다. 앞부분이 매번 같아 자동
+# 프롬프트 캐싱 대상인데, 적중 여부를 재는 수단이 없어 최적화 판단을 못 했다.
+
+
+def test_cache_report_computes_hit_rate():
+    """cached/prompt 비율을 낸다. 이 숫자를 보고서야 최적화 필요 여부를 말할 수 있다."""
+    from barum.vlm import OpenAIVLM
+
+    vlm = OpenAIVLM.__new__(OpenAIVLM)  # 네트워크·키 없이 계측 로직만 본다
+    vlm.prompt_tokens, vlm.cached_tokens, vlm.total_tokens = 10_000, 7_500, 12_000
+    rep = vlm.cache_report()
+    assert rep["hit_rate"] == 0.75
+    assert rep["cached_tokens"] == 7_500
+
+
+def test_cache_report_handles_zero_calls():
+    """호출 전에도 0으로 나눠 터지지 않는다."""
+    from barum.vlm import OpenAIVLM
+
+    vlm = OpenAIVLM.__new__(OpenAIVLM)
+    vlm.prompt_tokens, vlm.cached_tokens, vlm.total_tokens = 0, 0, 0
+    assert vlm.cache_report()["hit_rate"] == 0.0

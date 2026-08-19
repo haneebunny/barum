@@ -155,6 +155,22 @@ _LABEL_TO_TYPE = {
 # 위반 아님(=finding 안 만듦)인 유형.
 _NON_VIOLATION = {ViolationType.legal, ViolationType.out_of_scope}
 
+
+def _parse_flag(raw: object) -> JudgmentFlag:
+    """모델이 답한 확정도를 JudgmentFlag로 바꾼다. 못 읽으면 위반(recall 우선).
+
+    누락·오타·구버전 응답(flag 필드 자체가 없음)은 전부 위반으로 떨어뜨린다.
+    검토필요로 잘못 내리면 위험을 낮게 보여주는 미탐 쪽 실수가 되므로, 모르면
+    무거운 쪽으로 둔다.
+    """
+    if not isinstance(raw, str):
+        return JudgmentFlag.violation
+    return (
+        JudgmentFlag.needs_review
+        if raw.strip() == JudgmentFlag.needs_review.value
+        else JudgmentFlag.violation
+    )
+
 # score_eval.py와 공유하는 판정 프롬프트. 여기가 원본이고 score_eval이 import한다.
 JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·광고 규정을 위반하는지 판정한다.
 아래 문장 각각에 라벨 하나와 짧은 근거를 매겨라.
@@ -166,14 +182,24 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 - 5호_거짓과장기만 : 근거 없는 수치·최상급·비교우위·후기 단정·경쟁사 비방
 - 대상외 : 광고 문구가 아님(성분명 나열, 거래·배송 안내, 인증서 표시, 단순 제품정보·브랜드명)
 
+확정도(label이 1호·2호·5호일 때만. 합법·대상외면 "위반"으로 두고 무시된다):
+- 위반 : 근거에 비추어 위반이 분명하다.
+- 검토필요 : 위반일 수 있으나 단정하려면 확인이 필요하다. 아래에 하나라도 해당하면 이쪽이다.
+  · 근거 문서 §3 "실증대상" 목록에 해당한다(실증자료가 있으면 쓸 수 있는 표현).
+  · 기능성(미백·주름개선·자외선차단) 표방이라 심사·보고 여부를 확인해야 한다.
+  · 객관적 근거를 제시했는지에 따라 합법·위반이 갈리는 표현이다(최상급·수치 등).
+  근거 문서가 "실증 자료 확인 필요"·"검토필요"라고 안내하는 표현은 위반으로 단정하지 마라.
+
 규칙:
 - 한 문장에 여러 개 해당하면 가장 무거운 것 하나. 우선순위 1호 > 2호 > 5호 > 합법.
-- 미탐(위반을 합법으로 놓침)이 제일 나쁘다. 애매하면 위반 쪽으로 판단한다.
+- 미탐(위반을 합법으로 놓침)이 제일 나쁘다. **애매하면 합법이 아니라, 유형을 붙이고
+  확정도를 "검토필요"로 하라.** 합법으로 흘리는 것이 가장 나쁜 실수다.
+- label에 "검토필요"를 쓰지 마라. 검토필요는 label이 아니라 flag다.
 
 문장:
 {items}
 
-JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "reason": "..."}}]}}"""
+JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "flag": "위반|검토필요", "reason": "..."}}]}}"""
 
 
 def _functional_evidence(
@@ -304,10 +330,14 @@ class PromptJudge:
                 if vtype in _NON_VIOLATION:
                     continue  # 합법·대상외 → finding 없음
                 explanation = item.get("reason") or f"{vtype.value} 소지"
-                # 근거 대조 수단이 있는 유형(2호)만 검토필요로 내려갈 수 있다.
-                # 1호·5호는 RagJudge 붙기 전엔 대조 수단이 없어 잠정 위반(recall 우선).
-                flag = JudgmentFlag.violation
+                # 확정도는 모델이 직접 답한다(2026-08-19). 예전엔 1호·5호를 무조건
+                # 위반으로 고정했는데, 근거 문서는 §3 실증대상을 "검토필요, 위반 단정
+                # 금지"로 안내하는 반면 답변 라벨엔 그 선택지가 없어 모델이 합법(미탐)
+                # 아니면 위반(과잉)으로 몰렸다. 파싱 실패·누락은 위반으로 둔다(recall 우선).
+                flag = _parse_flag(item.get("flag"))
                 if vtype == ViolationType.type_2_functional_misperception:
+                    # 2호는 성분 정합이라는 실제 근거 대조 수단이 있다. 모델의 자기
+                    # 판단보다 대조 결과를 우선한다.
                     note, flag = _functional_evidence(s["text"], ingredients, ingredient_amounts)
                     if note:
                         explanation = f"{explanation} {note}"
