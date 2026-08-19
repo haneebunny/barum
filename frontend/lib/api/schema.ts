@@ -209,6 +209,11 @@ export const GenerateRequestSchema = z.object({
   clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
   notes: z.string().nullable().optional(),
   image_generation: ImageGenRequestSchema.nullable().optional(),
+  // create 모드 이미지 생성 프롬프트에 반영되는 색상톤/분위기(둘 다 선택, 자유 텍스트)
+  color_tone: z.string().nullable().optional(),
+  mood: z.string().nullable().optional(),
+  // /uploads/product-photo로 먼저 올려 받은 photo_id들(AI 합성 참조용)
+  product_photo_ids: z.array(z.string()).nullable().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
