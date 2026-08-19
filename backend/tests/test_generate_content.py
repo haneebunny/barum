@@ -354,6 +354,17 @@ def test_제형_용량이_있으면_스펙_섹션이_생긴다():
     assert module.layout_type == "table_info"
 
 
+def test_스펙_섹션은_맨_뒤에_온다():
+    """ensure_product_spec_module이 plan.modules 맨 뒤에 붙이므로, sections도 맨
+    뒤여야 실제 렌더 순서(히어로가 먼저)가 계획된 모듈 순서와 어긋나지 않는다.
+    실제 export HTML에서 표가 히어로보다 앞서 나오던 결함의 회귀 테스트."""
+    req = GenerateRequest(
+        mode="create", product_name="테스트 세럼", formulation_type="액상", volume="50ml"
+    )
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
+    assert resp.sections[-1].kind == "product_spec"
+
+
 def test_제형_용량_둘다_없으면_스펙_섹션이_안_생긴다():
     req = GenerateRequest(mode="create", product_name="테스트 세럼")
     resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN, _MODULE_TEXT))
