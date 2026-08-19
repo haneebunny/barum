@@ -92,9 +92,10 @@
       "law_name": "화장품 표시·광고 관리 지침 (민원인안내서)",
       "citation_id": null,
       "effective_date": "2025-08-14",
-      "checked_date": "2026-08-10",
-      "purpose": "[별표1] 금지표현 / [별표2] 실증대상. prohibited_expressions.md §1·§3의 핵심 근거",
+      "checked_date": "2026-08-19",
+      "purpose": "[별표1] 금지표현 / [별표2] 실증대상. prohibited_expressions.md §1·§3의 핵심 근거. 2026-08-19 WebFetch로 원문 PDF 직접 대조, §3 전 항목(시험·검사 표현 포함) 문구 일치 확인",
       "source_url": "https://www.mfds.go.kr/brd/m_1060/view.do?seq=15700",
+      "known_issue": "다운로드 링크의 file_seq=1은 2024.5.7 구버전(안내서-0086-05)이라 잘못 받기 쉬움. 실제 2025.8.14 최신본(안내서-0086-07)은 file_seq=2",
       "used_by": [
         "reference/cosmetic_kr/prohibited_expressions.md",
         "reference/cosmetic_sources.md",
