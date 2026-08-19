@@ -10,9 +10,11 @@ class FakeGenerator:
     def __init__(self, *results):
         self._results = list(results)
         self.prompts: list[str] = []
+        self.images_received: list[list] = []
 
     def generate_image(self, prompt, images):
         self.prompts.append(prompt)
+        self.images_received.append(images)
         result = self._results.pop(0) if self._results else b"PNG"
         if isinstance(result, Exception):
             raise result
@@ -224,3 +226,60 @@ def test_오케스트레이션에서도_모든_생성_이미지가_같은_톤을
     generate_module_images(plan, req, gen)
     assert "딥그린" in gen.prompts[0]
     assert "딥그린" in gen.prompts[1]
+
+
+# ── 제품사진 업로드 → AI 합성 (2026-08-19, 팀장 승인 방식 A) ──
+
+
+def test_참조사진_없으면_제품을_그리지_말라는_지시가_들어간다():
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ)
+    assert "제품" in prompt and "그리지 마라" in prompt
+
+
+def test_참조사진_있으면_합성_지시로_바뀐다():
+    prompt = build_image_prompt(
+        LayoutModule(kind="hero_intro", purpose="도입"), _REQ, has_product_photo=True
+    )
+    assert "참조로 첨부된" in prompt
+    assert "그대로 유지" in prompt
+
+
+def test_photo_resolver가_있고_product_photo_ids가_있으면_참조이미지를_생성기에_넘긴다():
+    req = GenerateRequest(mode="create", product_name="테스트 세럼", product_photo_ids=["abc123"])
+    resolver_calls = []
+
+    def resolver(photo_ids):
+        resolver_calls.append(photo_ids)
+        return [b"PHOTO"]
+
+    gen = FakeGenerator(b"A")
+    generate_module_images(_plan("hero_intro"), req, gen, photo_resolver=resolver)
+    assert resolver_calls == [["abc123"]]
+    assert gen.images_received == [[b"PHOTO"]]
+    assert "참조로 첨부된" in gen.prompts[0]
+
+
+def test_product_photo_ids가_없으면_resolver를_안_부른다():
+    resolver_calls = []
+
+    def resolver(photo_ids):
+        resolver_calls.append(photo_ids)
+        return [b"PHOTO"]
+
+    gen = FakeGenerator(b"A")
+    generate_module_images(_plan("hero_intro"), _REQ, gen, photo_resolver=resolver)
+    assert resolver_calls == []
+    assert gen.images_received == [[]]
+
+
+def test_resolver_실패해도_참조없이_생성을_계속한다():
+    """사진 조회는 예상된 실패다. 배경 생성 자체를 막으면 안 된다."""
+    req = GenerateRequest(mode="create", product_name="테스트", product_photo_ids=["abc123"])
+
+    def resolver(photo_ids):
+        raise RuntimeError("storage down")
+
+    gen = FakeGenerator(b"A")
+    results, blobs = generate_module_images(_plan("hero_intro"), req, gen, photo_resolver=resolver)
+    assert results[0].status == "generated"
+    assert gen.images_received == [[]]

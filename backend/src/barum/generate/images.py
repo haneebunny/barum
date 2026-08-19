@@ -9,6 +9,11 @@
 
 과금 호출이라 모듈 단위로 실패를 격리한다. 한 모듈이 실패해도 나머지는 계속 만들고,
 실패분은 `ModuleImage.status="skipped"`에 사유를 남긴다(조용히 빠지지 않게).
+
+판매자가 제품사진을 올리면(`req.product_photo_ids`) 얘기가 달라진다. 그때는 그 실제
+사진을 참조로 넘겨 배경과 합성한다(AI 배경·연출 합성, 팀장 승인 방식 A). 이 경우엔
+위 "제품을 안 그린다" 원칙이 뒤집힌다: 상상으로 새로 그리는 대신 참조 사진 속 실제
+제품을 유지하며 그 주위만 합성하므로 가짜 라벨 문제가 없다.
 """
 
 from barum.models import GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
@@ -72,7 +77,7 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 - 위에 명시한 컬러톤·분위기를 따를 것
 
 절대 넣지 말 것:
-- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다.
+{product_instruction}
 - **라벨·글자·문구·숫자·로고를 넣지 마라.** 문구는 나중에 이 배경 위에 얹는다.
 - 사람 얼굴을 클로즈업하지 마라.
 - 의사·약사·전문가를 연상시키는 인물이나 소품(가운·청진기 등)을 넣지 마라.
@@ -80,14 +85,30 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 
 문구를 얹을 여백이 남도록 화면 한쪽을 비교적 비워 둬라."""
 
+_NO_PRODUCT_INSTRUCTION = "- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다."
+_COMPOSITE_PRODUCT_INSTRUCTION = (
+    "- **참조로 첨부된 실제 제품 사진 속 병·용기·패키지의 형태·라벨·색상을 그대로 유지하라.** "
+    "제품을 다시 그리거나 상상해서 새로 만들지 마라. 배경·연출만 자연스럽게 그 주위에 합성하라."
+)
 
-def build_image_prompt(module: LayoutModule, req: GenerateRequest, product_type: str | None = None) -> str:
+
+def build_image_prompt(
+    module: LayoutModule,
+    req: GenerateRequest,
+    product_type: str | None = None,
+    has_product_photo: bool = False,
+) -> str:
     """모듈 하나의 이미지 프롬프트를 만든다.
 
     product_type(플래너가 추측한 세럼/토너/크림 등)을 주면 그 제형에 맞는 질감
     예시를 넣는다. 안 주면 중립 힌트로 폴백한다(제형을 특정하지 않는 원료 클로즈업).
     컬러톤·분위기는 req와 product_type만으로 결정되므로(_resolve_tone), 같은
     요청의 모듈들은 전부 같은 톤 문구를 받는다. 호출자가 따로 안 맞춰줘도 된다.
+
+    has_product_photo: 판매자가 올린 제품사진을 참조 이미지로 넘기는 경우(True)엔
+    "제품을 그리지 마라"가 아니라 "참조 사진 속 실제 제품을 유지하며 합성하라"로
+    지시가 바뀐다. 참조가 없을 땐 기존처럼 제품을 아예 안 그린다(가짜 라벨 방지,
+    39b2b54 참고).
     """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
@@ -95,6 +116,7 @@ def build_image_prompt(module: LayoutModule, req: GenerateRequest, product_type:
         purpose=module.purpose or module.kind,
         texture_hint=_texture_hint(product_type),
         tone=_resolve_tone(req, product_type),
+        product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
     )
 
 
@@ -114,16 +136,30 @@ def generate_module_images(
     req: GenerateRequest,
     generator,
     max_images: int = DEFAULT_MAX_IMAGES,
+    photo_resolver=None,
 ) -> tuple[list[ModuleImage], dict[str, bytes]]:
     """계획된 모듈마다 이미지를 만든다.
 
     반환: (모듈별 결과 메타, {모듈kind: PNG바이트}). 바이트 저장은 호출자가 정한다.
     generator가 None이면 아무것도 만들지 않는다(생성기 미도입 상태에서도 응답은 나가게).
+
+    photo_resolver: `(photo_id 목록) -> PNG/JPEG 바이트 목록`. 판매자가 올린 제품사진이
+    있으면(req.product_photo_ids) 모든 모듈에 같은 참조 이미지로 넘긴다(합성, 팀장
+    승인 방식 A). 배경마다 다른 사진을 쓰는 기능은 아직 없다. 조회는 한 번만 한다
+    (모듈마다 다시 부르면 저장소를 반복 왕복한다).
     """
     results: list[ModuleImage] = []
     blobs: dict[str, bytes] = {}
     if generator is None:
         return results, blobs
+
+    reference_images: list[bytes] = []
+    if photo_resolver is not None and req.product_photo_ids:
+        try:
+            reference_images = photo_resolver(req.product_photo_ids)
+        except Exception as e:
+            # 예상된 실패(사진 조회 실패)라 참조 없이 계속 진행한다(배경만 생성).
+            print(f"    [skip] 제품사진 조회 실패(참조 없이 진행): {type(e).__name__}: {e}")
 
     made = 0
     for module in plan.modules:
@@ -138,7 +174,9 @@ def generate_module_images(
             )
             continue
 
-        prompt = build_image_prompt(module, req, plan.product_type)
+        prompt = build_image_prompt(
+            module, req, plan.product_type, has_product_photo=bool(reference_images)
+        )
         allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
         if not allowed:
             results.append(
@@ -147,7 +185,7 @@ def generate_module_images(
             continue
 
         try:
-            blobs[module.kind] = generator.generate_image(prompt, [])
+            blobs[module.kind] = generator.generate_image(prompt, reference_images)
         except Exception as e:
             # 과금 호출이라 재시도하지 않는다. 이 모듈만 스킵하고 나머지는 계속.
             reason = f"이미지 생성 실패: {type(e).__name__}"
