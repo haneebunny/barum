@@ -75,8 +75,29 @@ function FindingCard({
     setSuggestions([]);
     setLoading(false);
     setHasFetched(false);
-    setShowSuggestionsArea(false);
-  }, [finding]);
+    
+    if (tier !== "FREE") {
+      setShowSuggestionsArea(true);
+      setLoading(true);
+      getRemediation({
+        sentence: finding.sentence,
+        violation_type: finding.violation_type,
+        span: finding.span,
+      })
+        .then((res) => {
+          setSuggestions(res.suggestions);
+          setHasFetched(true);
+          setLoading(false);
+          onFetchRemediation();
+        })
+        .catch((err) => {
+          console.error("Failed to fetch remediation suggestion", err);
+          setLoading(false);
+        });
+    } else {
+      setShowSuggestionsArea(false);
+    }
+  }, [finding, tier]);
 
   const handleFetchSuggestions = () => {
     setLoading(true);
