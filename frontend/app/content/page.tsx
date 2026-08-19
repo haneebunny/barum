@@ -3,12 +3,21 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport, generateContent, resolveImageUrl } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl, uploadProductPhoto } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
+
+interface ProductPhotoItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  photoId: string | null;
+  uploading: boolean;
+  error: string | null;
+}
 
 interface ContentMockData {
   productName: string;
@@ -94,6 +103,12 @@ function nextIngredientAmountId() {
   return `ia-${ingredientAmountSeq}`;
 }
 
+let productPhotoSeq = 0;
+function nextProductPhotoId() {
+  productPhotoSeq += 1;
+  return `pp-${productPhotoSeq}`;
+}
+
 function getRemediationProposal(violationType: string, span: string): string {
   if (span.includes("아토피 피부염")) return "순화된 보습 표현으로 대체";
   if (span.includes("3배 빠른 흡수")) return "근거 없는 비교 수치 제거";
@@ -160,6 +175,43 @@ function ContentGeneratorContent() {
   const [createColorTone, setCreateColorTone] = useState("");
   const [createMood, setCreateMood] = useState("");
   const [createGenerateImages, setCreateGenerateImages] = useState(false);
+  const [createProductPhotos, setCreateProductPhotos] = useState<ProductPhotoItem[]>([]);
+
+  // 선택 즉시 업로드해서 photo_id를 미리 받아둔다(생성 버튼 누를 때 다시 기다리지 않게).
+  const addProductPhotos = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const id = nextProductPhotoId();
+      const previewUrl = URL.createObjectURL(file);
+      setCreateProductPhotos((prev) => [
+        ...prev,
+        { id, file, previewUrl, photoId: null, uploading: true, error: null },
+      ]);
+      uploadProductPhoto(file)
+        .then((res) => {
+          setCreateProductPhotos((prev) =>
+            prev.map((p) => (p.id === id ? { ...p, photoId: res.photo_id, uploading: false } : p))
+          );
+        })
+        .catch((err) => {
+          console.error("Failed to upload product photo", err);
+          setCreateProductPhotos((prev) =>
+            prev.map((p) =>
+              p.id === id
+                ? { ...p, uploading: false, error: err instanceof Error ? err.message : String(err) }
+                : p
+            )
+          );
+        });
+    });
+  };
+  const removeProductPhoto = (id: string) => {
+    setCreateProductPhotos((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+  };
 
   const addIngredientAmount = () => {
     setCreateIngredientAmounts((prev) => [
@@ -361,6 +413,9 @@ function ContentGeneratorContent() {
           notes: createNotes || undefined,
           color_tone: createColorTone || undefined,
           mood: createMood || undefined,
+          product_photo_ids: createProductPhotos.length
+            ? createProductPhotos.map((p) => p.photoId).filter((id): id is string => !!id)
+            : undefined,
           image_generation: createGenerateImages ? { requested: true } : undefined,
         });
       } else {
@@ -675,6 +730,44 @@ function ContentGeneratorContent() {
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">제품 사진 (선택, AI 합성 시 참고 이미지로 사용)</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {createProductPhotos.map((p) => (
+                  <div key={p.id} className="relative w-[76px] h-[76px] border border-[var(--line-2)] bg-[var(--surface-sub)] overflow-hidden">
+                    <img src={p.previewUrl} alt="제품 사진 미리보기" className="w-full h-full object-cover" />
+                    {p.uploading && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-mono">업로드중</div>
+                    )}
+                    {p.error && (
+                      <div className="absolute inset-0 bg-[var(--crit-bg)]/90 flex items-center justify-center text-[var(--crit)] text-[9px] font-mono text-center p-1">업로드 실패</div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeProductPhoto(p.id)}
+                      aria-label="제품 사진 삭제"
+                      className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-black/60 text-white cursor-pointer"
+                    >
+                      <Trash size={10} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <label className="inline-flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer">
+                <Plus size={12} weight="bold" /> 제품 사진 추가
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addProductPhotos(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
               <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">전성분 + 함량 (선택, 인정문구 함량기준 대조용)</p>
               <div className="flex flex-col gap-1.5">
                 {createIngredientAmounts.map((row) => (
@@ -912,11 +1005,17 @@ function ContentGeneratorContent() {
             {mode === "create" && !createProductName.trim() && (
               <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
             )}
+            {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
+              <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
+            )}
             <button
               className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
               id="startGen"
               ref={startGenRef}
-              disabled={mode === "create" && !createProductName.trim()}
+              disabled={
+                (mode === "create" && !createProductName.trim()) ||
+                createProductPhotos.some((p) => p.uploading)
+              }
               onClick={() => setIsModalOpen(true)}
             >
               확인 후 생성하기 <span className="font-mono">→</span>

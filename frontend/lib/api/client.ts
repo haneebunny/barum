@@ -387,6 +387,24 @@ export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<US
   return response.json();
 }
 
+export async function uploadProductPhoto(file: File): Promise<{ photo_id: string }> {
+  const url = `${getApiUrl()}/uploads/product-photo`;
+  const formData = new FormData();
+  formData.append("photo", file);
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to upload product photo: ${response.status} - ${errText}`);
+  }
+
+  return response.json();
+}
+
 export async function generateContent(req: GenerateRequest): Promise<GenerateResponse> {
   const url = `${getApiUrl()}/generate`;
   const response = await fetch(url, {
