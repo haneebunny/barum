@@ -1,6 +1,6 @@
 """모듈별 이미지 생성 오케스트레이션 유닛테스트. 실제 생성기는 안 부른다(가짜 주입)."""
 
-from barum.generate.images import build_image_prompt, generate_module_images
+from barum.generate.images import _user_controlled_text, build_image_prompt, generate_module_images
 from barum.models import GenerateRequest, LayoutModule, LayoutPlan
 
 
@@ -165,3 +165,62 @@ def test_오케스트레이션이_plan의_product_type을_실제로_전달한다
     generate_module_images(plan, _REQ, gen)
     assert "크림" not in gen.prompts[0]
     assert "토너" in gen.prompts[0]
+
+
+# ── 컬러톤·분위기 (2026-08-19, 팀장 요청: 인터뷰 값 반영 + 6장 톤 통일) ──
+
+
+def test_인터뷰_컬러톤이_프롬프트에_들어간다():
+    req = GenerateRequest(mode="create", product_name="테스트", color_tone="베이지·아이보리")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req)
+    assert "베이지·아이보리" in prompt
+
+
+def test_인터뷰_분위기가_프롬프트에_들어간다():
+    req = GenerateRequest(mode="create", product_name="테스트", mood="미니멀하고 차분한")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req)
+    assert "미니멀하고 차분한" in prompt
+
+
+def test_컬러톤_분위기_둘다_없으면_기본값으로_폴백한다():
+    """디디 확정 전 임시 기본값. 값이 비어 있어도 프롬프트에 톤 지시 자체는 있어야 한다."""
+    req = GenerateRequest(mode="create", product_name="테스트")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req)
+    assert "컬러톤" in prompt
+    assert "투명하고 깨끗한" in prompt  # 현재 임시 기본값
+
+
+def test_같은_요청의_모든_모듈이_같은_톤_문구를_받는다():
+    """이게 핵심이다. 6장이 제각각이던 문제(2026-08-19 팀장 지적)를
+    "매번 같은 입력엔 같은 톤"으로 푼다. 모듈이 달라도 톤 줄은 동일해야 한다."""
+    req = GenerateRequest(mode="create", product_name="테스트", mood="비비드하고 화사한")
+    p1 = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), req, "세럼")
+    p2 = build_image_prompt(LayoutModule(kind="ingredient_highlight", purpose="성분"), req, "세럼")
+
+    def _tone_line(p):
+        return next(line for line in p.splitlines() if "컬러톤" in line)
+
+    assert _tone_line(p1) == _tone_line(p2)
+
+
+def test_컬러톤_분위기도_사칭_가드_검사_대상이다():
+    """자유서술 필드라 impersonation 가드가 이것도 봐야 한다."""
+    req = GenerateRequest(mode="create", product_name="테스트", mood="의사 가운을 입은 전문가 느낌")
+    text = _user_controlled_text(LayoutModule(kind="hero_intro", purpose="도입"), req)
+    assert "의사" in text
+
+
+def test_오케스트레이션에서도_모든_생성_이미지가_같은_톤을_받는다():
+    plan = LayoutPlan(
+        modules=[
+            LayoutModule(kind="hero_intro", purpose="도입"),
+            LayoutModule(kind="texture", purpose="제형"),
+        ],
+        product_type="크림",
+        source="planner",
+    )
+    req = GenerateRequest(mode="create", product_name="테스트", color_tone="딥그린")
+    gen = FakeGenerator(b"A", b"B")
+    generate_module_images(plan, req, gen)
+    assert "딥그린" in gen.prompts[0]
+    assert "딥그린" in gen.prompts[1]

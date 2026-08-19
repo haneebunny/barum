@@ -34,15 +34,42 @@ def _texture_hint(product_type: str | None) -> str:
     return _TEXTURE_HINTS.get(product_type, _TEXTURE_HINTS[None])
 
 
+# product_type별 기본 컬러톤·분위기. 인터뷰에서 값을 안 받았을 때 쓴다.
+# **디디(디자이너) 확정 전 임시값이다.** PM이 준 예시("스킨케어→투명·깨끗")만
+# 반영했고 토너/세럼/크림 세부 구분은 아직 없다(2026-08-19). 디디가 타입별
+# 값을 주면 이 딕셔너리만 바꾸면 된다. 나머지 코드는 안 건드려도 됨.
+_TONE_DEFAULTS: dict[str | None, str] = {
+    None: "투명하고 깨끗한 톤, 미니멀하고 차분한 분위기",
+}
+
+
+def _resolve_tone(req: GenerateRequest, product_type: str | None) -> str:
+    """이번 생성 전체에 쓸 컬러톤·분위기 문구를 하나로 정한다.
+
+    인터뷰에서 받은 값(req.color_tone·mood)이 있으면 그걸 우선한다. 없으면
+    product_type 기본값, 그것도 없으면 전체 기본값(_TONE_DEFAULTS[None])으로
+    폴백한다. **이 함수가 (req, product_type)에 대해 항상 같은 문자열을 내는 게
+    핵심이다.** 그래야 6장 전부가 같은 아트 디렉션 문구를 받아서 한 페이지처럼
+    읽힌다(지금까지는 모듈마다 톤 지정이 아예 없어서 색감·조명이 제각각이었다,
+    2026-08-19 팀장 지적).
+    """
+    parts = [p for p in (req.color_tone, req.mood) if p]
+    if parts:
+        return ", ".join(parts)
+    return _TONE_DEFAULTS.get(product_type, _TONE_DEFAULTS[None])
+
+
 _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어라.
 
 제품 종류: {product_name}{product_type_line}
 이 배경의 역할: {purpose}
 
+**전체 컬러톤·분위기(이 상세페이지의 다른 배경 이미지들과 반드시 통일할 것): {tone}**
+
 무엇을 그릴지:
 - 이 제품 제형에 맞는 질감·소재의 클로즈업: {texture_hint}
 - 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)
-- 깨끗하고 차분한 화장품 광고 톤
+- 위에 명시한 컬러톤·분위기를 따를 것
 
 절대 넣지 말 것:
 - **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다.
@@ -59,12 +86,15 @@ def build_image_prompt(module: LayoutModule, req: GenerateRequest, product_type:
 
     product_type(플래너가 추측한 세럼/토너/크림 등)을 주면 그 제형에 맞는 질감
     예시를 넣는다. 안 주면 중립 힌트로 폴백한다(제형을 특정하지 않는 원료 클로즈업).
+    컬러톤·분위기는 req와 product_type만으로 결정되므로(_resolve_tone), 같은
+    요청의 모듈들은 전부 같은 톤 문구를 받는다. 호출자가 따로 안 맞춰줘도 된다.
     """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
         product_type_line=f" ({product_type})" if product_type else "",
         purpose=module.purpose or module.kind,
         texture_hint=_texture_hint(product_type),
+        tone=_resolve_tone(req, product_type),
     )
 
 
@@ -73,9 +103,10 @@ def _user_controlled_text(module: LayoutModule, req: GenerateRequest) -> str:
 
     조립된 프롬프트 전체를 검사하면 안 된다. 프롬프트에는 "의사를 넣지 마라" 같은
     금지 지시문이 들어 있어서, 키워드 가드가 우리 안전장치를 사칭으로 오인한다.
-    가드가 막아야 할 건 사용자·LLM이 넣은 값(상품명, 모듈 목적)이다.
+    가드가 막아야 할 건 사용자·LLM이 넣은 값(상품명, 모듈 목적, 컬러톤·분위기).
+    컬러톤·분위기도 인터뷰 자유서술이라 검사 대상에 넣었다(2026-08-19 추가).
     """
-    return f"{req.product_name or ''} {module.purpose or ''}"
+    return f"{req.product_name or ''} {module.purpose or ''} {req.color_tone or ''} {req.mood or ''}"
 
 
 def generate_module_images(
