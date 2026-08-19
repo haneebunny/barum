@@ -17,14 +17,31 @@ from barum.reference.impersonation import check_impersonation
 # 한 요청에 만들 이미지 수 상한. 과금 호출이라 모듈이 12개여도 다 만들지 않는다.
 DEFAULT_MAX_IMAGES = 6
 
+# 제품 종류별 질감 예시. 고정 목록 하나를 전부에 쓰면 토너에 크림 이미지가 나오는
+# 식으로 제형이 안 맞는다(2026-08-19 실측, 팀장 지적, "촉촉 히알루론산 토너"인데
+# 흰 크림 덩어리가 그려짐. build_image_prompt가 layout_plan.product_type을 아예
+# 안 받고 예시에 "크림 질감"이 하드코딩돼 있던 게 원인).
+_TEXTURE_HINTS: dict[str | None, str] = {
+    "토너": "투명하거나 옅은 색의 맑은 액체, 튀는 물방울, 촉촉하게 젖은 표면. 걸쭉하거나 불투명한 질감은 넣지 마라",
+    "세럼": "점도 있는 액상 방울, 유리 표면의 광택, 매끈하게 흐르는 액체 질감",
+    "크림": "부드럽게 퍼바른 크림 스월, 뽀얗고 밀도 있는 질감",
+    None: "잎, 물방울, 천, 돌 표면 같은 원료·소재 클로즈업(제품 제형은 특정하지 마라)",
+}
+
+
+def _texture_hint(product_type: str | None) -> str:
+    """product_type에 맞는 질감 예시를 낸다. 모르는 종류거나 None이면 중립 힌트로 폴백."""
+    return _TEXTURE_HINTS.get(product_type, _TEXTURE_HINTS[None])
+
+
 _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어라.
 
-제품 종류: {product_name}
+제품 종류: {product_name}{product_type_line}
 이 배경의 역할: {purpose}
 
 무엇을 그릴지:
-- 원료·질감·소재의 클로즈업(잎, 물방울, 크림 질감, 천, 돌 표면 등)
-- 또는 색·빛·그라데이션 위주의 추상 배경
+- 이 제품 제형에 맞는 질감·소재의 클로즈업: {texture_hint}
+- 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)
 - 깨끗하고 차분한 화장품 광고 톤
 
 절대 넣지 말 것:
@@ -37,11 +54,17 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 문구를 얹을 여백이 남도록 화면 한쪽을 비교적 비워 둬라."""
 
 
-def build_image_prompt(module: LayoutModule, req: GenerateRequest) -> str:
-    """모듈 하나의 이미지 프롬프트를 만든다."""
+def build_image_prompt(module: LayoutModule, req: GenerateRequest, product_type: str | None = None) -> str:
+    """모듈 하나의 이미지 프롬프트를 만든다.
+
+    product_type(플래너가 추측한 세럼/토너/크림 등)을 주면 그 제형에 맞는 질감
+    예시를 넣는다. 안 주면 중립 힌트로 폴백한다(제형을 특정하지 않는 원료 클로즈업).
+    """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
+        product_type_line=f" ({product_type})" if product_type else "",
         purpose=module.purpose or module.kind,
+        texture_hint=_texture_hint(product_type),
     )
 
 
@@ -84,7 +107,7 @@ def generate_module_images(
             )
             continue
 
-        prompt = build_image_prompt(module, req)
+        prompt = build_image_prompt(module, req, plan.product_type)
         allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
         if not allowed:
             results.append(
