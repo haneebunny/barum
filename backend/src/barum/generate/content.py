@@ -336,6 +336,9 @@ def _generate_create_content(
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
     #    product_spec도 LLM을 안 태운다. 사업자 입력값을 표로 그대로 옮길 뿐이다.
+    #    ensure_product_spec_module이 항상 plan.modules 맨 뒤에 붙이므로, 여기서도
+    #    맨 뒤에 붙여야 렌더 순서가 계획된 모듈 순서와 어긋나지 않는다(2026-08-19,
+    #    실제 export에서 표가 히어로보다 앞에 나오던 결함, 팀장 지시로 즉시 수정).
     safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     clinical_planned = any(m.kind.startswith("clinical") for m in plan.modules)
     product_spec_planned = any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules)
@@ -344,9 +347,9 @@ def _generate_create_content(
         sections.append(
             Section(kind="실증자료", text=clinical_sections_text(evidence), source="clinical_evidence")
         )
+    sections += generate_module_sections(req, safe_modules, vlm)
     if product_spec_planned:
         sections.append(build_product_spec_section(req))
-    sections += generate_module_sections(req, safe_modules, vlm)
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
