@@ -630,7 +630,7 @@ function ContentGeneratorContent() {
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
-    .dp-ai-tag { position: absolute; top: 10px; right: 10px; font-size: 9.5px; font-weight: 600; letter-spacing: .2px; color: #fff; background: rgba(29,27,24,.62); padding: 4px 8px; border-radius: 999px; }
+    .dp-ai-tag { position: absolute; top: 10px; right: 10px; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: #fff; background: rgba(29,27,24,.62); padding: 3px 6px; border-radius: 3px; }
     .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
     .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
     .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
