@@ -12,12 +12,23 @@ from pathlib import Path
 from PIL import Image
 
 from barum.judge.cosmetic import CosmeticJudge
+from barum.judge.evidence_verify import crop_band, verify_evidence
 from barum.judge.us_sunscreen import DISCLAIMER, USSunscreenJudge
-from barum.models import CheckReport, JudgmentFlag, Region, Summary, USPreflightReport, USPreflightSummary
+from barum.models import (
+    CheckReport,
+    Finding,
+    JudgmentFlag,
+    Region,
+    Summary,
+    USPreflightReport,
+    USPreflightSummary,
+    ViolationType,
+)
 from barum.preprocess.ocr import extract_product_sentences
 from barum.reference.citations import build_regulatory_basis
+from barum.reference.evidence_claim import claims_documentary_evidence
 from barum.reference.scope import check_product_scope
-from barum.vlm import VLM
+from barum.vlm import VLM, get_vlm
 
 # 문장 분리: 줄바꿈과 문장부호(한/영) 기준. 광고 카피라 완벽한 분리보다 단순·안정을 택한다.
 _SENT_SPLIT = re.compile(r"[\n。.!?！？]+")
@@ -106,6 +117,71 @@ def _ocr_image(
     return _attach_bands(record["sentences"], band_by_tile, source_w, source_h)
 
 
+def _verify_functional_evidence(
+    findings: list[Finding],
+    image_bytes: bytes | None,
+    product_name: str | None,
+    verbose: bool = False,
+    vlm: VLM | None = None,
+) -> list[Finding]:
+    """2호(기능성오인) findings 중 증빙 문서를 내세우는 것만 원본 이미지로 재대조한다.
+
+    에스코 위조 사례 대응(에이전틱 판정 2단계, 상세: judge/evidence_verify.py).
+    문서가 제품·주장과 어긋나면(위조 의심) 위반으로 격상하고, 문서가 진짜로
+    확인되면 finding을 빼 합법으로 강등한다(팀장 승인 2026-08-19,
+    type_2_functional_misperception.md 근거). 그 외(unknown 포함)는 대조 없이
+    돌린 것처럼 기존 판정을 그대로 둔다 — 강등은 위험한 방향이라 확정될 때만 한다.
+    이미지가 없으면 대조할 원본이 없어 그대로 돌려준다.
+    vlm: 테스트 주입용. 안 주면 첫 대조 필요 시점에 Gemini를 지연 생성한다.
+    """
+    if not image_bytes:
+        return findings
+
+    evidence_vlm: VLM | None = vlm
+    kept: list[Finding] = []
+    for f in findings:
+        needs_check = (
+            f.violation_type == ViolationType.type_2_functional_misperception
+            and claims_documentary_evidence(f.sentence)
+            and f.location.y_start is not None
+            and f.location.y_end is not None
+        )
+        if not needs_check:
+            kept.append(f)
+            continue
+
+        # 판정 기본 provider는 증빙서 잔글씨를 못 읽는다. 이 단계는 반드시
+        # OCR provider(Gemini)로 호출한다(judge/evidence_verify.py 실측 확인).
+        if evidence_vlm is None:
+            evidence_vlm = get_vlm(provider="gemini")
+
+        band = crop_band(image_bytes, f.location.y_start, f.location.y_end)
+        verdict = verify_evidence(evidence_vlm, band, f.sentence, product_name)
+        if verdict is None:
+            kept.append(f)  # 대조 실패(예상된 실패) — 기존 판정 유지
+            continue
+
+        if verdict.is_verified:
+            if verbose:
+                print(f"    [evidence downgrade] 증빙 진짜 확인, 합법 강등: {f.sentence[:60]}")
+            continue  # 강등 = finding 자체를 뺀다
+
+        if verdict.is_mismatch and f.flag != JudgmentFlag.violation:
+            if verbose:
+                print(f"    [evidence upgrade] 증빙 불일치, 위반 격상: {f.sentence[:60]}")
+            f = f.model_copy(update={
+                "flag": JudgmentFlag.violation,
+                "explanation": (
+                    f"{f.explanation} (증빙 대조: 첨부 문서가 제품·주장과 불일치 — "
+                    f"문서상 제품명 '{verdict.doc_product_name}', "
+                    f"시험항목 '{verdict.doc_test_item}')"
+                ),
+            })
+        kept.append(f)
+
+    return kept
+
+
 def run_check(
     region: str,
     ad_text: str | None,
@@ -171,7 +247,9 @@ def run_check(
     ingredient_list = _split_ingredients(ingredients) if ingredients else None
     amount_list = _parse_ingredient_amounts(ingredient_amounts) if ingredient_amounts else None
     result = judge.judge(sentences, region, ingredients=ingredient_list, ingredient_amounts=amount_list)
-    findings = result.findings
+    findings = _verify_functional_evidence(
+        result.findings, image_bytes, product_name, verbose=verbose
+    )
 
     counts: dict[str, int] = {}
     for f in findings:
