@@ -360,6 +360,7 @@ class LayoutModule(BaseModel):
     kind: str  # hero_intro | ingredient_highlight | clinical_result | texture 등
     purpose: str
     has_claim_risk: bool = False
+    layout_type: str = "section_statement"  # 어휘집 12종 카탈로그 중 하나. 프론트 템플릿 선택용
 
 
 class LayoutPlan(BaseModel):

@@ -3,6 +3,7 @@
 from barum.reference.layout_references import (
     infer_product_type,
     load_layout_references,
+    load_layout_vocabulary,
     select_references,
 )
 
@@ -69,3 +70,25 @@ def test_폴백도_모듈_많은_레퍼런스가_앞에_온다():
 
 def test_limit으로_퓨샷_개수를_제한한다():
     assert len(select_references("세럼", limit=2)) == 2
+
+
+# ── 공용 어휘집 (2026-08-19, PR #181) ──
+
+
+def test_vocabulary_파일은_레퍼런스_로더에_안_섞인다():
+    """_vocabulary.json은 modules가 없어서 섞이면 퓨샷 정렬·개수가 흔들린다."""
+    refs = load_layout_references()
+    assert all("modules" in r and r["modules"] for r in refs)
+
+
+def test_vocabulary가_layout_type_12종_카탈로그를_담고_있다():
+    vocab = load_layout_vocabulary()
+    assert len(vocab["layout_types"]) == 12
+    assert "hero_fullbleed" in vocab["layout_types"]
+    assert "table_info" in vocab["layout_types"]
+
+
+def test_vocabulary가_category_base_tone을_담고_있다():
+    vocab = load_layout_vocabulary()
+    for category in ("세럼", "토너", "크림", "앰플"):
+        assert "hue_direction" in vocab["category_base_tone"][category]
