@@ -196,8 +196,11 @@ def match_rule(sentence: str) -> RuleMatch | None:
                 )
 
     for kw in rules["legal_allow"]:
-        if _keyword_present(kw, norm):
-            return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
+        if not _keyword_present(kw, norm):
+            continue
+        if kw in rules.get("context_exceptions", {}) and not _has_context_exception(norm, kw, rules):
+            continue
+        return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
 
     for kw in rules.get("out_of_scope", []):
         if _keyword_present(kw, norm):
