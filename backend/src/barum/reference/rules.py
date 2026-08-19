@@ -91,6 +91,20 @@ def _is_unsubstantiated_comparison(norm: str) -> bool:
     return any(marker in norm for marker in _COMPARISON_MARKERS)
 
 
+# 근거 없는 검증방법 주장("임상시험으로 철저히 검증받은") — type_5_deception.md #38 근거
+# (cases.md #38 실사례로 인용 재검증됨, 2026-08-19). 의도적으로 좁게: "효과로 증명합니다"
+# 처럼 구체적 검증방법 언급 없는 막연한 자기주장형은 이 규칙 대상이 아니다(하니 재확인).
+_VERIFICATION_METHOD_TERMS = ("임상시험", "인체적용시험", "인체외시험", "임상실험", "시험분석")
+_VERIFICATION_CLAIM_MARKERS = ("검증", "입증")
+
+
+def _is_unsubstantiated_verification_claim(norm: str) -> bool:
+    """구체적 검증방법(임상시험 등)과 '검증/입증' 단정이 같이 있으면 근거 없는 주장으로 본다."""
+    if not any(t in norm for t in _VERIFICATION_METHOD_TERMS):
+        return False
+    return any(m in norm for m in _VERIFICATION_CLAIM_MARKERS)
+
+
 def _keyword_present(kw: str, norm: str) -> bool:
     """정규화된 문장에 키워드가 있는지 본다.
 
@@ -175,8 +189,9 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
 def match_rule(sentence: str) -> RuleMatch | None:
     """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
 
-    가장 먼저 근거 없는 비교수치(정규식, "대비/보다"+"N배")를 본다. 그다음 키워드 갈래를
-    우선순위대로 스캔한다: violation > needs_review > legal_allow > out_of_scope.
+    가장 먼저 근거 없는 비교수치(정규식, "대비/보다"+"N배")와 근거 없는 검증방법 주장
+    ("임상시험"+"검증" 공출현)을 본다. 그다음 키워드 갈래를 우선순위대로 스캔한다:
+    violation > needs_review > legal_allow > out_of_scope.
     앞 갈래에서 먼저 걸리면 뒤는 안 본다. 이 순서가 경계표현 조합을 자연히
     처리한다(예: '시술'이 violation에 있어 '시술 후 진정'은 진정보다 시술이
     먼저 hit). 대표어로 안 걸리면 동의어 사전(synonyms.json)의 변형 표현도
@@ -195,6 +210,11 @@ def match_rule(sentence: str) -> RuleMatch | None:
     if _is_unsubstantiated_comparison(norm):
         return RuleMatch(
             RuleOutcome.violation, "비교수치", ViolationType.type_5_deception, JudgmentFlag.violation
+        )
+
+    if _is_unsubstantiated_verification_claim(norm):
+        return RuleMatch(
+            RuleOutcome.violation, "검증방법단정", ViolationType.type_5_deception, JudgmentFlag.violation
         )
 
     for type_label, keywords in rules["violation"].items():
