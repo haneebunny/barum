@@ -317,3 +317,35 @@ def has_functional_claim(sentence: str) -> bool:
     """
     norm = _normalize(sentence)
     return any(_normalize(m) in norm for m in _functional_markers())
+
+
+# 절대적·과장 수식어의 **어간**. `prohibited_expressions.md:85`("완벽한·최적의·파워·
+# 탁월한·최고·최상 등 절대적·과장 표현은 객관적 근거 없으면 검토필요") 근거.
+#
+# **judge_rules.json의 5호 키워드보다 일부러 넓게 잡는다. 드리프트가 아니라 의도된 차이다**
+# (2026-08-20 실측으로 폭을 정했다).
+# - 규칙집(5호 키워드 + synonyms)은 **좁게**: 거기서 매칭되면 곧바로 finding이 생기므로,
+#   어간까지 넓히면 "최적 온도에서 보관하세요"·"완벽 방수 파우치" 같은 배송·보관 안내가
+#   검토필요로 잡힌다(실측 확인). 그래서 활용형만 동의어로 등록했다.
+# - 여기(합법 강등 게이트)는 **넓게**: 이 함수는 VLM이 이미 2호로 판정하고 성분 대조까지
+#   통과한 문장에만 돌아간다. 그런 문장이 "최적 온도 보관" 같은 문구일 가능성은 낮고,
+#   틀리는 방향도 안전하다(강등을 막아 검토필요로 남길 뿐, 없는 위반을 만들지 않는다).
+#   반대로 놓치면 과장이 통째로 새는 미탐이 된다 — 두 방향의 비용이 다르므로 폭도 다르다.
+_EXAGGERATION_STEMS: tuple[str, ...] = (
+    "완벽", "최적", "탁월", "최고", "최상", "유일", "파워", "기적",
+)
+
+
+def has_exaggeration(sentence: str) -> bool:
+    """문장에 절대적·과장 수식어가 섞여 있는지 본다(어간 기준).
+
+    2호 합법 강등의 안전장치로 쓴다. 한 문장에 라벨이 하나뿐이라, 성분 대조로 2호를
+    합법으로 내리면 같은 문장의 과장 표현이 통째로 빠진다(누수 실측 확인, 상세는
+    `judge/cosmetic.py:_functional_evidence`). `approved_efficacy_statements.md`
+    "판정에 쓰는 법" 4항도 "인정문구를 벗어난 과장 표현이 붙으면 별개로 T5 판정 가능"
+    이라고 안내한다 — 성분이 맞아도 과장은 따로 봐야 한다는 뜻이다.
+
+    규칙집보다 넓게 잡는 이유는 위 `_EXAGGERATION_STEMS` 주석 참고.
+    """
+    norm = _normalize(sentence)
+    return any(stem in norm for stem in _EXAGGERATION_STEMS)

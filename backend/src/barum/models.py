@@ -255,6 +255,12 @@ class Section(BaseModel):
     table_rows: list[TableRow] | None = Field(
         None, description="table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
     )
+    module_kind: str | None = Field(
+        None,
+        description="이 섹션이 채우는 layout_plan 모듈의 kind. 프론트가 모듈 이미지를 "
+        "찾을 때 쓴다. kind와 다를 수 있다 — 위반소지 모듈(hero_intro 등)의 내용은 "
+        "LLM이 아니라 인정문구·실증자료가 채우므로 kind가 '광고문구'·'실증자료'로 나온다.",
+    )
 
 
 class Replacement(BaseModel):
@@ -299,6 +305,27 @@ class ModuleImage(BaseModel):
     image_url: str | None = None
 
 
+class CanvasBackground(BaseModel):
+    """상세페이지 전체에 깔리는 긴 배경 이미지 1장 (레이어 구조 1단계).
+
+    구조: 이 배경 위에 모듈 이미지·표·설문 결과·문구가 얹힌다(팀장 확정, 2026-08-20).
+    모듈 이미지를 **대신하지 않는다** — 둘 다 쓰인다.
+
+    `placements`는 **2단계 자리다.** 어느 모듈이 배경의 몇 % 지점에 앉는지를 담게
+    되는데, 그 규칙은 프론트 렌더 구조가 바뀌는 일이라 디자이너·프론트와 같이
+    정한다. 지금은 항상 비어 있고, 프론트는 이 값이 비면 기존 방식(모듈마다 자기
+    이미지를 쓰는 렌더)으로 폴백하면 된다.
+    """
+
+    status: str  # generated(생성됨) | skipped(실패·거부·미요청)
+    reason: str | None = None
+    image_url: str | None = None
+    placements: list[dict] = Field(
+        default_factory=list,
+        description="2단계 예약 필드. 모듈별 배치 좌표(배경 대비 %). 지금은 항상 빈 목록.",
+    )
+
+
 class ImagePlan(BaseModel):
     """이미지 배치 + 생성 가드레일 결과(FR-13)."""
 
@@ -306,6 +333,10 @@ class ImagePlan(BaseModel):
     generation: ImageGenResult = Field(default_factory=ImageGenResult)
     module_images: list[ModuleImage] = Field(
         default_factory=list, description="create 모드 모듈별 이미지 생성 결과"
+    )
+    canvas: CanvasBackground | None = Field(
+        None,
+        description="긴 배경 이미지 1장(옵트인). None이면 요청 안 했거나 생성기가 없다는 뜻.",
     )
 
 
@@ -332,6 +363,12 @@ class ImageGenRequest(BaseModel):
 
     requested: bool = False
     prompt: str | None = None
+    canvas_requested: bool = Field(
+        False,
+        description="긴 배경 이미지 1장을 추가로 만들지(레이어 구조 1단계). "
+        "모듈 이미지를 대신하지 않고 더해지므로 이미지가 한 장 늘고 과금도 는다. "
+        "그래서 기본은 꺼져 있다.",
+    )
 
 
 class IngredientAmount(BaseModel):
@@ -362,6 +399,38 @@ class ClinicalEvidence(BaseModel):
     institution: str | None = Field(None, description="시험기관명")
     period: str | None = Field(None, description='시험기간, 예: "4주", "8주"')
     note: str | None = Field(None, description="피험자 수·조건 등 부연")
+
+
+class SurveyEvidence(BaseModel):
+    """create 모드 전용: 사업자가 입력한 **소비자 설문조사** 결과.
+
+    **`ClinicalEvidence`와 절대 섞지 않는다.** 관리지침 [별표2]가 인정하는 실증
+    수단은 인체적용시험·인체외시험·시험분석·기능성심사 자료뿐이고 **설문조사는
+    목록에 없다.** 그래서 이 값이 아무리 많아도 임상 계열 모듈(clinical_*)은
+    열리지 않는다(2026-08-20 팀장 확정).
+
+    쓸 수 있는 건 효능이 아닌 항목뿐이다(향·발림성·용기·재구매의향 등). 피부
+    변화를 말하는 순간 효능 주장이라 설문으로는 못 받친다. 판별은
+    `reference.survey.is_efficacy_survey`가 한다.
+
+    메타데이터를 전부 필수로 받는 이유: 판정기가 "사용자 96% 만족"을 5호(거짓·과장)
+    검토필요로 잡으면서 사유를 이렇게 냈다 — "설문방법·표본·시기·출처 등 근거
+    제시가 없어 객관적 확인 필요"(2026-08-20 실측). 수치만 있고 출처가 없으면
+    그 자체로 위반 소지라, 선택 필드로 두면 위반 소지 문구를 우리가 만들어주게 된다.
+
+    **다만 메타데이터를 다 넣어도 5호 검토필요는 해소되지 않는다**(2026-08-20 실측으로
+    확인, 처음엔 해소될 거라 봤으나 틀렸다). 판정기는 조사기관·시기·표본이 있어도
+    원자료(조사방법·무작위성·질문 문항)를 봐야 한다고 본다. 그래서 이 필드들은
+    "합법으로 만들어주는 장치"가 아니라 **검토 범위를 좁히고 사용자에게 무엇을
+    준비해야 하는지 알려주는 장치**다. 그 사실은 `risk_confirmations`로 고지한다.
+    """
+
+    claim: str = Field(..., description='무엇에 대한 응답인지, 예: "향에 만족"')
+    value: str = Field(..., description='결과 수치 원문 표기, 예: "96%"')
+    sample_size: str = Field(..., description='표본 수, 예: "200명"')
+    institution: str = Field(..., description="조사기관명")
+    period: str = Field(..., description='조사 시기, 예: "2026년 3월"')
+    method: str = Field(..., description='조사 방법, 예: "온라인 자기기입식 설문"')
 
 
 class LayoutModule(BaseModel):
@@ -403,6 +472,11 @@ class GenerateRequest(BaseModel):
     clinical_evidence: list[ClinicalEvidence] | None = Field(
         None,
         description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
+    )
+    survey_evidence: list[SurveyEvidence] | None = Field(
+        None,
+        description="사업자 입력 소비자 설문조사 결과(create 모드 전용). "
+        "**실증자료가 아니다** — 임상 모듈을 열지 못하고, 피부 변화(효능) 주장은 거부된다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
     color_tone: str | None = Field(

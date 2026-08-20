@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell/AppShell";
+import { ErrorProvider } from "@/lib/error/ErrorContext";
 import { JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 
@@ -58,7 +59,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <ErrorProvider>
+          <AppShell>{children}</AppShell>
+        </ErrorProvider>
       </body>
     </html>
   );

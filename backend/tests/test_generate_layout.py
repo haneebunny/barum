@@ -236,3 +236,105 @@ def test_이미_있으면_중복으로_안_넣는다():
     req = _req(formulation_type="크림")
     result = ensure_product_spec_module(plan, req)
     assert len([m for m in result.modules if m.kind == "product_spec"]) == 1
+
+
+# ── kind 유일성 (2026-08-20, 같은 이미지가 두 번 나오던 버그 회귀방지) ──
+
+
+class _DupVLM:
+    """같은 kind를 두 번 내는 플래너 응답(실제로 관측된 상황)."""
+
+    def generate_json(self, prompt, images):
+        return {
+            "modules": [
+                {"kind": "clinical_result", "purpose": "사진 비교", "layout_type": "clinical_photo_compare"},
+                {"kind": "clinical_result", "purpose": "수치 비교", "layout_type": "clinical_bar_compare"},
+                {"kind": "hero_intro", "purpose": "도입", "layout_type": "hero_fullbleed"},
+            ]
+        }
+
+
+def test_중복된_kind에_순번을_붙인다():
+    """kind는 blobs·이미지URL·프론트 매핑의 키다. 겹치면 이미지가 서로 덮어쓴다."""
+    plan = plan_layout(GenerateRequest(mode="create"), [{"modules": []}], "세럼", _DupVLM())
+    kinds = [m.kind for m in plan.modules]
+    assert len(kinds) == len(set(kinds)), f"kind가 중복된다: {kinds}"
+    assert kinds == ["clinical_result", "clinical_result_2", "hero_intro"]
+
+
+def test_순번이_붙어도_clinical_판정이_유지된다():
+    """filter_risky_modules는 startswith('clinical')로 가른다. 순번 때문에 새면 안 된다."""
+    plan = plan_layout(GenerateRequest(mode="create"), [{"modules": []}], "세럼", _DupVLM())
+    filtered, skipped = filter_risky_modules(
+        LayoutPlan(
+            modules=[
+                LayoutModule(kind=m.kind, purpose=m.purpose, has_claim_risk=True, layout_type=m.layout_type)
+                for m in plan.modules
+                if m.kind.startswith("clinical")
+            ],
+            product_type="세럼",
+            source="planner",
+        ),
+        has_approved_claim=True,
+        has_clinical_evidence=False,
+    )
+    # 실증자료가 없으므로 둘 다 임상 사유로 빠져야 한다(인정문구로 통과되면 안 된다).
+    assert filtered.modules == []
+    assert len(skipped) == 2
+    assert all("실증자료" in s.reason for s in skipped)
+
+
+# ── 근거 부족 시 대체 히어로 (2026-08-20, 도입부 없는 페이지가 나오던 문제) ──
+
+
+def _risky_plan(*kinds):
+    return LayoutPlan(
+        modules=[LayoutModule(kind=k, purpose=f"{k} 목적", has_claim_risk=True, layout_type="hero_fullbleed") for k in kinds],
+        product_type="세럼",
+        source="planner",
+    )
+
+
+def test_근거_없으면_히어로가_안전한_버전으로_대체된다():
+    """A/B 실측: 근거 없는 상품은 hero_intro가 통째로 사라져 도입부 없는 페이지가 나왔다."""
+    filtered, skipped = filter_risky_modules(
+        _risky_plan("hero_intro"), has_approved_claim=False, has_clinical_evidence=False
+    )
+    assert [m.kind for m in filtered.modules] == ["hero_intro"]
+    hero = filtered.modules[0]
+    assert hero.has_claim_risk is False
+    assert "효능 주장 없이" in hero.purpose
+    # 대체했다고 해서 스킵 사실을 감추면 안 된다. 주장은 여전히 빠진 것이다.
+    assert len(skipped) == 1
+    assert skipped[0].category == "hero_intro"
+
+
+def test_대체는_히어로만_한다():
+    """나머지는 없어도 페이지가 성립한다. 아무거나 채우면 빈 모듈이 늘어난다."""
+    filtered, skipped = filter_risky_modules(
+        _risky_plan("value_prop", "bundle_suggestion"),
+        has_approved_claim=False,
+        has_clinical_evidence=False,
+    )
+    assert filtered.modules == []
+    assert len(skipped) == 2
+
+
+def test_근거가_있으면_원래_히어로가_그대로_남는다():
+    """대체 로직이 근거 있는 경우까지 건드리면 회귀다."""
+    filtered, skipped = filter_risky_modules(
+        _risky_plan("hero_intro"), has_approved_claim=True, has_clinical_evidence=False
+    )
+    assert [m.kind for m in filtered.modules] == ["hero_intro"]
+    assert filtered.modules[0].has_claim_risk is True  # 원본 그대로
+    assert skipped == []
+
+
+def test_대체_히어로는_layout_type을_유지한다():
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="hero_intro", purpose="도입", has_claim_risk=True, layout_type="mood_macro")],
+        product_type="세럼",
+        source="planner",
+    )
+    filtered, _ = filter_risky_modules(plan, has_approved_claim=False, has_clinical_evidence=False)
+    assert filtered.modules[0].layout_type == "mood_macro"

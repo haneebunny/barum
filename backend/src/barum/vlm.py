@@ -4,6 +4,7 @@
 `VLM` 프로토콜을 만족하는 클래스를 추가하고 `get_vlm()`에 등록하면 된다.
 """
 
+import base64
 import json
 import os
 import time
@@ -20,11 +21,61 @@ class VLM(Protocol):
         ...
 
 
+def _model_path(model: str) -> str:
+    """interactions API는 모델명에 `models/` 접두사를 요구한다. 이미 붙어 있으면 그대로 둔다."""
+    return model if model.startswith("models/") else f"models/{model}"
+
+
+def _interaction_parts(interaction, part_type: str) -> list:
+    """interactions 응답에서 원하는 종류의 파트만 순서대로 모은다.
+
+    응답 구조가 candidates/content가 아니라 steps/content라 기존 헬퍼를 못 쓴다.
+    비어 있어도 터지지 않게 하고, 판단은 호출자가 한다.
+    """
+    out = []
+    for step in getattr(interaction, "steps", None) or []:
+        if getattr(step, "type", None) != "model_output":
+            continue
+        for part in getattr(step, "content", None) or []:
+            if getattr(part, "type", None) == part_type:
+                out.append(part)
+    return out
+
+
+def _is_content_filter_refusal(exc: Exception) -> bool:
+    """나노 바나나의 콘텐츠 필터 거부인지 본다.
+
+    실제 메시지: `400 Image generation blocked due to copyright/recitation.`
+    이 거부만 재시도 대상이다. 인증 실패·네트워크 오류·할당량 초과를 재시도하면
+    같은 실패를 반복하며 시간만 쓴다.
+    """
+    msg = str(exc).lower()
+    return "copyright" in msg or "recitation" in msg
+
+
+def _strip_json_fence(text: str) -> str:
+    """```json 펜스를 벗긴다.
+
+    구 API는 `response_mime_type="application/json"`으로 JSON을 강제할 수 있었는데
+    interactions API의 `response_format`은 스키마를 요구해서 그대로 못 옮긴다.
+    프롬프트로 JSON을 요청하고 펜스만 방어적으로 벗기는 쪽이 단순하고 안전하다.
+    """
+    t = text.strip()
+    if not t.startswith("```"):
+        return t
+    t = t.split("\n", 1)[1] if "\n" in t else ""
+    return t.rsplit("```", 1)[0].strip()
+
+
 class GeminiVLM:
     """Google Gemini 어댑터.
 
     입력: 프롬프트 문자열 + PNG 바이트 리스트 / 출력: 파싱된 dict.
     호출 실패는 여기서 삼키지 않고 그대로 올려보낸다 — 스킵 여부는 호출자가 정한다.
+
+    **`interactions` API를 쓴다(2026-08-20 이관).** 구 `models.generate_content`는
+    새 형식 API 키(`AQ.`로 시작)에서 401 `ACCESS_TOKEN_TYPE_UNSUPPORTED`로 거부된다.
+    같은 키가 interactions에서는 정상 동작한다(실측). `google-genai>=2.19.0` 필요.
     """
 
     def __init__(
@@ -38,11 +89,14 @@ class GeminiVLM:
 
         load_dotenv()
         self.model = model or os.environ.get("MODEL_NAME", "gemini-3.5-flash-lite")
-        key = api_key or os.environ.get("GOOGLE_API_KEY")
+        # GEMINI_API_KEY를 먼저 본다. AI Studio가 새로 발급하는 키 변수명이라 이쪽이 최신일
+        # 확률이 높고, 없으면 기존 GOOGLE_API_KEY로 폴백한다(회귀 없음).
+        key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not key:
-            raise RuntimeError("GOOGLE_API_KEY가 없다. .env를 확인할 것.")
-        raw_client = genai.Client(api_key=key)
-        self.client = wrappers.wrap_gemini(raw_client)
+            raise RuntimeError("GEMINI_API_KEY(또는 GOOGLE_API_KEY)가 없다. .env를 확인할 것.")
+        # interactions API에서도 래핑이 통과되는 걸 확인하고 유지했다(2026-08-20). 관측성을
+        # 잃지 않게 이관 후에도 남긴다.
+        self.client = wrappers.wrap_gemini(genai.Client(api_key=key))
         self.total_tokens = 0
         # 무료 티어는 분당 요청 수가 막혀 있다(기본 15 RPM). 초과하면 429로
         # 통째로 스킵되므로, 재시도 대신 호출 간격을 벌려 애초에 안 걸리게 한다.
@@ -58,26 +112,41 @@ class GeminiVLM:
             time.sleep(wait)
         self._last_call = time.monotonic()
 
-    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
-        from google.genai import types
+    def _build_input(self, prompt: str, images: list[bytes]) -> list[dict]:
+        """interactions API 입력(텍스트 + 이미지 파트)을 만든다."""
+        parts: list[dict] = [{"type": "text", "text": prompt}]
+        for blob in images:
+            parts.append(
+                {
+                    "type": "image",
+                    "data": base64.b64encode(blob).decode(),
+                    "mime_type": "image/png",
+                }
+            )
+        return parts
 
+    def _record_usage(self, interaction) -> None:
+        """토큰 사용량을 누적한다. 구조가 바뀌어도 집계 때문에 터지지 않게 방어한다."""
+        usage = getattr(interaction, "usage", None)
+        if usage is not None:
+            self.total_tokens += getattr(usage, "total_tokens", 0) or 0
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
         self._throttle()
 
-        parts = [types.Part.from_bytes(data=b, mime_type="image/png") for b in images]
-        resp = self.client.models.generate_content(
-            model=self.model,
-            contents=[*parts, prompt],
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        interaction = self.client.interactions.create(
+            model=_model_path(self.model),
+            input=self._build_input(prompt, images),
+            generation_config={"temperature": 0, "max_output_tokens": 8192},
         )
-        if resp.usage_metadata:
-            self.total_tokens += resp.usage_metadata.total_token_count or 0
+        self._record_usage(interaction)
 
-        text = (resp.text or "").strip()
+        text = "".join(p.text or "" for p in _interaction_parts(interaction, "text")).strip()
         if not text:
             # 안전필터 차단·빈 응답은 '예상된 실패'로 본다. 호출자가 스킵 처리.
             raise ValueError("VLM이 빈 응답을 반환했다")
         # 스키마 위반(JSON 아님)은 예상 못 한 실패 — 삼키지 않고 터뜨린다.
-        return json.loads(text)
+        return json.loads(_strip_json_fence(text))
 
 
 def _extract_json(text: str) -> dict:
@@ -184,52 +253,63 @@ class GeminiImageGenerator(GeminiVLM):
     """Gemini 이미지 생성 어댑터.
 
     인증·클라이언트 초기화·throttle은 `GeminiVLM`에서 그대로 물려받고, 생성 경로만
-    새로 만든다(응답 모달리티가 JSON이 아니라 IMAGE라 기존 메서드를 못 쓴다).
+    새로 만든다(응답 모달리티가 텍스트가 아니라 이미지라 기존 메서드를 못 쓴다).
 
     텍스트는 이미지에 굽지 않는다. 프론트가 이미지 위에 얹는 구조라, 배경·연출만
     만들면 된다(하니·PM 확정, 2026-08-18).
+
+    **참조 사진의 라벨 보존력이 gpt-image 계열보다 확실히 낫다**(2026-08-20 실측).
+    gpt-image는 mini든 상위 모델이든 라벨 글자를 뭉갰는데 이쪽은 브랜드명·번호까지
+    지켰다. 다만 참조 사진에 있던 배경 카피도 같이 따라 그리는 경향이 있어서,
+    프롬프트에서 "제품 라벨은 유지 / 배경 글자는 금지"를 구분해줘야 한다.
     """
 
     def __init__(self, model: str | None = None, **kwargs):
         super().__init__(
-            model=model or os.environ.get("IMAGE_MODEL_NAME", "gemini-2.5-flash-image"),
+            model=model or os.environ.get("IMAGE_MODEL_NAME", "gemini-3.1-flash-lite-image"),
             **kwargs,
         )
 
     def generate_image(self, prompt: str, images: list[bytes]) -> bytes:
         """프롬프트로 이미지 1장을 만든다. 참고 이미지를 주면 그걸 편집·합성한다.
 
-        호출 실패는 삼키지 않고 그대로 올려보낸다. 스킵 여부는 호출자가 정한다
-        (과금 호출이라 재시도하지 않는다).
-        """
-        from google.genai import types
+        **콘텐츠 필터 거부만 1회 재시도한다.** 그 외 실패는 그대로 올려보내고 호출자가
+        스킵한다.
 
+        CLAUDE.md E절은 "과금 호출은 재시도하지 않는다"인데, 이 거부는 **과금이 되지
+        않는다**(2026-08-20 실측: 거부 시점 누적 토큰 2267 → 재시도 성공 후 4393,
+        차이 2126이 성공분 한 장 몫. 거부된 호출은 토큰을 안 먹었다). 그 원칙이
+        막으려던 이유(재시도로 비용이 배로 드는 것)가 성립하지 않아 예외로 둔다.
+
+        재시도가 유효한 근거도 실측이다: 거부율 3.1%(32회 중 1회), 같은 프롬프트를
+        그대로 다시 부르니 통과했다(1회 재시도로 잔존 0%). 필터가 비결정적이다.
+        """
+        try:
+            return self._generate_once(prompt, images)
+        except Exception as e:
+            if not _is_content_filter_refusal(e):
+                raise
+            print(f"    [retry] 콘텐츠 필터 거부(과금 없음) → 1회 재시도: {str(e)[:80]}")
+        return self._generate_once(prompt, images)
+
+    def _generate_once(self, prompt: str, images: list[bytes]) -> bytes:
+        """실제 호출 1회. 재시도 판단은 `generate_image`가 한다."""
         self._throttle()
 
-        parts = [types.Part.from_bytes(data=b, mime_type="image/png") for b in images]
-        resp = self.client.models.generate_content(
-            model=self.model,
-            contents=[*parts, prompt],
-            config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+        interaction = self.client.interactions.create(
+            model=_model_path(self.model),
+            input=self._build_input(prompt, images),
+            generation_config={"temperature": 1, "max_output_tokens": 32768, "top_p": 0.95},
+            response_modalities=["image", "text"],
         )
-        if resp.usage_metadata:
-            self.total_tokens += resp.usage_metadata.total_token_count or 0
+        self._record_usage(interaction)
 
-        for part in _response_parts(resp):
-            inline = getattr(part, "inline_data", None)
-            if inline is not None and inline.data:
-                return inline.data
+        for part in _interaction_parts(interaction, "image"):
+            data = getattr(part, "data", None)
+            if data:
+                return base64.b64decode(data)
         # 안전필터 차단·빈 응답은 '예상된 실패'로 본다. 호출자가 스킵 처리.
         raise ValueError("이미지 모델이 이미지를 반환하지 않았다")
-
-
-def _response_parts(resp) -> list:
-    """응답에서 파트 목록을 꺼낸다. 후보·콘텐츠가 비어도 터지지 않게 한다."""
-    candidates = getattr(resp, "candidates", None) or []
-    if not candidates:
-        return []
-    content = getattr(candidates[0], "content", None)
-    return list(getattr(content, "parts", None) or [])
 
 
 class CloudflareImageGenerator:
@@ -399,12 +479,17 @@ def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
 def get_image_generator(provider: str | None = None, **kwargs) -> ImageGenerator:
     """provider 이름으로 이미지 생성 어댑터를 만든다.
 
-    기본값은 openai다. 원본 제품 사진 편집·합성이 필요해서 골랐다(FLUX schnell은
-    text-to-image 전용이라 그게 안 되고, Gemini 이미지 모델은 무료 할당량이 0이다).
-    Cloudflare·Gemini 어댑터는 나중에 다시 쓸 수 있게 남겨둔다.
+    기본값은 gemini(나노 바나나)다. **참조 제품사진의 라벨 보존력 때문에 골랐다.**
+
+    2026-08-20 실측: 같은 참조 사진·같은 지시로 gpt-image-1은 튜브 4개를 1개로 줄이고
+    브랜드명·번호를 전부 날렸는데, 나노 바나나는 4개·브랜드명·번호를 다 지켰다.
+    mini에서 gpt-image-1로 올린 건 헛다리였다(PR #206) — 같은 계열이라 한계가 같았고,
+    계열 자체를 바꿔야 했다.
+
+    OpenAI·Cloudflare 어댑터는 남겨둔다. `IMAGE_PROVIDER=openai`로 즉시 되돌릴 수 있다.
     provider를 안 주면 IMAGE_PROVIDER 환경변수를 본다.
     """
-    provider = provider or os.environ.get("IMAGE_PROVIDER", "openai")
+    provider = provider or os.environ.get("IMAGE_PROVIDER", "gemini")
     if provider == "openai":
         return OpenAIImageGenerator(**kwargs)
     if provider == "cloudflare":

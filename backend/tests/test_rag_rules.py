@@ -552,3 +552,204 @@ def test_penetration_context_alone_is_not_violation():
     """맥락어만 있고 리들이 없으면 이 규칙은 발동하지 않는다("흡수"는 합법 문장에 흔하다)."""
     m = match_rule("피부에 부드럽게 흡수되며")
     assert m is None or m.span != "리들"
+
+
+def test_exaggeration_inflections_are_caught():
+    """절대적 수식어의 활용형도 잡는다(동의어 사전으로 등록).
+
+    5호 키워드가 활용형 그대로("완벽한")라 "완벽하게"를 놓치고 있었다. 실제로
+    "단 3일만에 완벽하게 미백되는 기적의 크림"이 규칙에 안 걸렸다(2026-08-20 실측).
+    """
+    for s in ["완벽하게 미백되는 크림", "완벽히 차단하는 선크림",
+              "탁월하게 개선됩니다", "최적화된 성분 배합"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+
+
+def test_superlative_stem_alone_is_not_caught():
+    """어간만 같고 수식어가 아닌 명사 결합은 안 잡는다.
+
+    어간("완벽"·"최적")으로 넓혔더니 "최적 온도에서 보관하세요"·"완벽 방수 파우치"
+    같은 보관·배송 안내까지 검토필요로 걸렸다(2026-08-20 실측). 그래서 어간이 아니라
+    활용형만 동의어로 등록했다. 이 경계가 무너지면 대상외 문구가 무더기로 잡힌다.
+    """
+    for s in ["완벽 방수 파우치 증정", "최적 온도에서 보관하세요"]:
+        assert match_rule(s) is None, s
+
+
+def test_pack_listed_superlative_is_covered():
+    """팩 §85가 나열한 절대적 표현은 규칙집에 다 있어야 한다.
+
+    `prohibited_expressions.md:85`는 "완벽한·최적의·파워·탁월한·최고·최상"을 나열하는데
+    "탁월한"만 규칙집에 빠져 있었다(2026-08-20 발견). 정답셋에도 "피부 진정에 탁월한
+    7가지 한방 추출물"이 검토필요로 1건 있다.
+    """
+    m = match_rule("탁월한 보습력")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.span == "탁월한"
+
+
+def test_pack_listed_type1_expressions_are_covered():
+    """팩 별표1(T1) 표현이 규칙집에 있는지(커버리지, **양방향의 절반**).
+
+    **반드시 아래 `..._do_not_match_ordinary_copy`와 짝으로 유지할 것.** 처음엔 이 방향만
+    만들었다가 오탐을 놓쳤다(2026-08-20, PM이 실측으로 발견). 정답셋에 없는 표현이라
+    `rule_sweep`이 탐지도 오탐도 못 잡아준다 — 이 두 테스트가 유일한 확인 수단이다.
+    합성 문장이라 실전 성능은 대표하지 않는다.
+
+    확정 위반(violation)으로 두는 것만 여기 넣는다. 팩 비고에 조건이 걸린 표현
+    (기능성 심사 제외·색조 연출 제외 등)은 needs_review라 아래 별도 테스트에 있다.
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for sentence in [
+        "체중감량에 도움되는 바디 크림",
+        "피하지방 분해 효과",
+        "몸매 개선에 좋습니다",
+        "흉터 흔적 제거에 효과적",
+        "홍반 개선 앰플",
+        "근육 이완에 도움을 줍니다",
+        "기저귀 발진에 사용하세요",
+        "유전자 활성화 세럼",
+        "호르몬 분비촉진 크림",
+        "코스메슈티컬 브랜드",
+    ]:
+        m = match_rule(sentence)
+        assert m is not None, sentence
+        assert m.outcome == RuleOutcome.violation, sentence
+
+
+def test_pack_conditional_type1_expressions_are_needs_review():
+    """팩 비고에 **조건**이 걸린 표현은 확정 위반이 아니라 검토필요다.
+
+    별표1에 실려 있다고 전부 violation이 아니다. 비고 열에 조건이 있으면 그 조건이
+    충족될 때 합법이 될 수 있으므로 "애매하면 검토필요"가 맞다. 처음엔 비고를 안 읽고
+    전부 violation에 넣었다가 PM 지적으로 재분류했다(2026-08-20).
+
+    - 임신선·튼살, 발모·육모·양모·탈모방지·모발성장촉진 → 비고 "기능성 심사된 효능효과
+      제외". 튼살완화·탈모완화가 실제 기능성 카테고리라 심사받으면 합법이 가능하다.
+    - 가려움 완화·개선 → 비고 "보습 통한 일시적 가려움 완화는 조건부 제외"(§3의 '진정'
+      항목도 "피부 건조 기인 가려움의 일시적 완화"를 실증대상으로 둔다).
+    - 얼굴 크기 축소·윤곽개선 → 비고 "색조 제품류 '연출한다' 표현 함께 시 제외".
+      쉐이딩으로 연출하는 건 효능 주장이 아니다.
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for sentence in [
+        "튼살 제거에 효과적",
+        "발모 효과가 뛰어난 샴푸",
+        "탈모방지 앰플",
+        "가려움 완화에 좋아요",
+        "얼굴 윤곽개선 효과",
+    ]:
+        m = match_rule(sentence)
+        assert m is not None, sentence
+        assert m.outcome == RuleOutcome.needs_review, sentence
+
+
+def test_pack_added_keywords_do_not_match_ordinary_copy():
+    """추가한 키워드가 **평범한 문구를 확정 위반으로 찍지 않는지**(양방향의 나머지 절반).
+
+    실제로 낸 오탐들이다(2026-08-20, PM 실측 2회).
+    - "드럭"이 **드럭스토어**(매장 유형)에, "메디슨"이 브랜드명에 부분일치
+    - "V라인"이 **V라인 쉐이딩**(화장 기법)에 — 팩 비고가 색조 연출을 명시적으로 제외
+    - "다이어트"가 "다이어트 중에도 부담 없는 제형" 같은 일반 언급에
+    - **"찰과상"이 "찰과상 부위는 피해서 발라주세요"에** — 효능 주장이 아니라 안전 안내다.
+      팩 원문은 "찰과상·화상 **치료·회복**"이고 완전형은 "치료" 키워드가 이미 잡는다.
+      맨 "찰과상"은 파싱이 만든 조각이었다.
+
+    원인: `_keyword_present`는 순수 영단어에만 우측 경계를 본다(한국어는 조사가 붙어
+    경계를 못 봄). "Pin"이 "Pintox"에 걸리던 것과 같은 클래스다.
+    """
+    from barum.reference.rules import match_rule
+
+    for sentence in [
+        "올리브영 드럭스토어에서 만나보세요",
+        "V라인 쉐이딩으로 입체감을 연출하세요",
+        "메디슨 브랜드의 신제품 라인",
+        "다이어트 중에도 부담 없는 가벼운 제형",
+        "찰과상 부위는 피해서 발라주세요",
+        "상처가 있는 부위 등에는 사용을 자제할 것",
+    ]:
+        assert match_rule(sentence) is None, sentence
+
+
+def test_cellulite_is_needs_review_not_violation():
+    """셀룰라이트는 금지가 아니라 조건부다 — §3 실증대상.
+
+    별표1(T1)에 "셀룰라이트"가 있어서 violation에 넣었는데, §3 실증대상에 "**일시적
+    셀룰라이트 감소**"가 따로 있다. 별표1만 보고 별표2를 안 보면 이런 걸 놓친다.
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    m = match_rule("일시적 셀룰라이트 감소에 도움")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+
+
+def test_bare_itching_word_does_not_match_legal_warning_text():
+    """맨 '가려움'은 규칙에 넣지 않는다 — 법정 주의사항 문구에 걸린다.
+
+    정답셋에서 '가려움'이 나오는 6건이 **전부** "화장품 사용 시 ... 붉은 반점,
+    부어오름 또는 가려움증 등의 이상 증상"이라는 **의무 표시 문구**였다(2026-08-20 실측).
+    모든 화장품에 들어가는 문구라 맨 단어로 넣으면 전량 오탐이다. 그래서 팩 표현을
+    그대로가 아니라 복합어("가려움 완화"·"가려움 개선")로만 넣었다.
+    """
+    from barum.reference.rules import match_rule
+
+    warning = (
+        "화장품 사용 시 또는 사용 후 직사광선에 의하여 사용부위가 붉은 반점, "
+        "부어오름 또는 가려움증 등의 이상 증상이나 부작용이 있는 경우"
+    )
+    assert match_rule(warning) is None
+
+
+def test_pack_scope_violations_are_covered():
+    """T5 '화장품 범위 벗어남' 표현(팩 커버리지 감사 잔여분에서 추가 가능했던 3개)."""
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for s in ["명현현상이 나타날 수 있습니다", "지방볼륨생성 효과", "체내 노폐물 제거에 도움"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.violation, s
+
+
+def test_common_cosmetic_terms_are_not_rules():
+    """규칙으로 넣으면 안 되는 일반 용어들 — 넣었다가는 대량 오탐이 난다.
+
+    팩 커버리지 감사에서 후보로 나왔지만 **의도적으로 뺀** 것들이다. 이 테스트는
+    "왜 안 넣었는지"를 코드로 고정한다(다음 사람이 무심코 추가하는 걸 막는다).
+
+    - **리포좀**: 화장품 제형 기술 용어로 매우 흔하다. 팩은 "인체 유래 성분" 맥락에서
+      금지한 것이지 제형 설명을 금지한 게 아니다.
+    - **인증**: 정답셋에서 합법 7건·대상외 19건에 걸린다("CGMP 인증을 받은").
+      팩 표현은 "인증 받은 제품"이고 비고가 "해당 표현 제외"라 조건부다.
+    - **레이저**: 시술 맥락일 때만 T5다. 패키지 각인 같은 용례가 있다.
+    """
+    from barum.reference.rules import match_rule
+
+    for s in ["리포좀 캡슐 기술 적용", "CGMP 인증을 받은 시설", "레이저 각인 패키지"]:
+        assert match_rule(s) is None, s
+
+
+def test_audit_tool_surfaces_pack_conditions():
+    """커버리지 감사 도구가 팩 비고의 **조건**을 뽑아내는지 확인한다.
+
+    이 도구가 처음엔 비고 칸을 "조건 설명이라 표현이 아니다"며 버렸고, 그래서 별표1
+    표현을 전부 violation에 넣었다가 오탐을 냈다(2026-08-20). 조건을 못 뽑으면 같은
+    사고가 재발하므로 테스트로 고정한다.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from pack_coverage_audit import _condition_hint
+
+    # 실제로 놓쳤던 비고들
+    assert "제외" in _condition_hint("색조 제품류 '연출한다' 표현 함께 시 제외")
+    assert _condition_hint("기능성 심사된 효능효과 제외")
+    # 조건이 없는 행은 빈 문자열
+    assert _condition_hint("—") == ""
+    assert _condition_hint("") == ""

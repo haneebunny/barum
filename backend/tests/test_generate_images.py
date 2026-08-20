@@ -122,29 +122,32 @@ def test_프롬프트의_금지문구가_사칭가드를_스스로_트리거하�
 
 
 # ── 제품 종류별 질감 (2026-08-19, 토너인데 크림 이미지 나오던 버그 회귀방지) ──
+# layout_type을 명시한다. 질감 힌트는 사진성 유형에만 들어가는데, LayoutModule의
+# 기본값이 section_statement(어휘집상 "배경색 블록", 질감 안 씀)라 안 적으면
+# 힌트가 없는 게 정상이기 때문이다(2026-08-20).
 
 
 def test_토너_프롬프트에는_크림이_없다():
     """팀장이 지적한 실제 사례: 토너 상품인데 흰 크림 덩어리가 그려짐."""
-    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "토너")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입", layout_type="mood_macro"), _REQ, "토너")
     assert "크림" not in prompt
     assert "액체" in prompt or "물방울" in prompt
 
 
 def test_크림_프롬프트에는_크림_질감이_들어간다():
-    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "크림")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입", layout_type="mood_macro"), _REQ, "크림")
     assert "크림" in prompt
 
 
 def test_세럼_프롬프트에는_액상_질감이_들어간다():
-    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, "세럼")
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입", layout_type="mood_macro"), _REQ, "세럼")
     assert "크림" not in prompt
     assert "액상" in prompt or "광택" in prompt
 
 
 def test_product_type_모르면_제형을_특정하지_않는다():
     """폴백은 원료 클로즈업만 시키고 제형(크림·액상 등)을 못 박지 않는다."""
-    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입"), _REQ, None)
+    prompt = build_image_prompt(LayoutModule(kind="hero_intro", purpose="도입", layout_type="mood_macro"), _REQ, None)
     assert "크림" not in prompt
     assert "제품 제형은 특정하지 마라" in prompt
 
@@ -455,3 +458,112 @@ def _plan_with_layout_types(kind_layout_pairs):
         product_type="세럼",
         source="planner",
     )
+
+
+# ── layout_type별 구도 분화·변주 (2026-08-20, 제형 사진 3장 중복 버그 회귀방지) ──
+
+
+def _prompt(layout_type: str, variation_index: int = 0) -> str:
+    return build_image_prompt(
+        LayoutModule(kind="m", purpose="p", layout_type=layout_type),
+        _REQ,
+        "세럼",
+        variation_index=variation_index,
+    )
+
+
+def test_section_statement는_질감_클로즈업을_안_시킨다():
+    """어휘집상 '이미지 없이(또는 최소), 배경색 블록'인데 제형 클로즈업을 받고 있었다."""
+    prompt = _prompt("section_statement")
+    assert "질감 클로즈업을 그리지 마라" in prompt
+    assert "배경면" in prompt
+
+
+def test_빠져있던_4종이_전부_고유한_구도를_받는다():
+    """전부 _DEFAULT_COMPOSITION(제형 클로즈업)으로 새면 같은 사진이 반복된다."""
+    prompts = {lt: _prompt(lt) for lt in ("section_statement", "card_list_repeat", "step_list", "lineup_strip")}
+    assert len(set(prompts.values())) == 4, "구도 지시가 서로 겹친다"
+    for lt, prompt in prompts.items():
+        assert "이 제품 제형에 맞는 질감·소재의 클로즈업" not in prompt, f"{lt}이 범용 폴백을 탄다"
+
+
+def test_같은_유형이_반복되면_변주_지시가_붙는다():
+    first, second = _prompt("mood_macro", 0), _prompt("mood_macro", 1)
+    assert first != second
+    assert "반드시 다르게 그려라" not in first  # 첫 등장은 기존 동작 유지
+    assert "반드시 다르게 그려라" in second
+
+
+def test_변주_지시는_등장마다_달라진다():
+    prompts = [_prompt("mood_macro", i) for i in range(4)]
+    assert len(set(prompts)) == 4
+
+
+def test_변주_index가_범위를_넘어도_터지지_않는다():
+    # 같은 유형이 5번 이상 나와도 마지막 지시를 재사용하고 예외를 내지 않는다.
+    assert "반드시 다르게 그려라" in _prompt("mood_macro", 99)
+
+
+def test_같은_입력이면_프롬프트가_같다():
+    """실행마다 흔들리면 재현·비교가 안 된다. 변주는 난수가 아니라 index로만 갈린다."""
+    assert _prompt("mood_macro", 2) == _prompt("mood_macro", 2)
+
+
+def _plan_with_types(*pairs):
+    return LayoutPlan(
+        modules=[LayoutModule(kind=k, purpose=f"{k} 목적", layout_type=lt) for k, lt in pairs],
+        product_type="세럼",
+        source="planner",
+    )
+
+
+def test_같은_유형_모듈들은_서로_다른_프롬프트를_받는다():
+    """실제 버그 재현: section_statement 2개 + mood_macro 1개가 거의 같은 사진으로 나왔다."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("value_prop", "section_statement"),
+        ("cause_explain", "section_statement"),
+        ("texture_visual", "mood_macro"),
+    )
+    generate_module_images(plan, _REQ, gen)
+    assert len(gen.prompts) == 3
+    assert len(set(gen.prompts)) == 3, "같은 layout_type 모듈이 동일한 프롬프트를 받았다"
+    # 두 번째 section_statement에만 변주 지시가 붙는다.
+    assert "반드시 다르게 그려라" not in gen.prompts[0]
+    assert "반드시 다르게 그려라" in gen.prompts[1]
+    assert "반드시 다르게 그려라" not in gen.prompts[2]  # mood_macro는 첫 등장
+
+
+def test_스킵된_모듈은_변주_순번을_소모하지_않는다():
+    """화면에 안 나온 이미지는 '앞선 같은 유형 이미지'가 아니다."""
+    gen = FakeGenerator(RuntimeError("생성 실패"), b"PNG")
+    plan = _plan_with_types(
+        ("a", "mood_macro"),  # 실패로 스킵
+        ("b", "mood_macro"),  # 실제로는 첫 이미지라 변주 지시가 붙으면 안 된다
+    )
+    generate_module_images(plan, _REQ, gen)
+    assert "반드시 다르게 그려라" not in gen.prompts[1]
+
+
+def test_임상_모듈이_여러개여도_이미지는_하나만_만든다():
+    """실증자료 섹션은 하나만 나온다. 나머지 임상 이미지는 얹힐 자리가 없어 버려진다."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("clinical_intro", "section_statement"),
+        ("clinical_result", "clinical_bar_compare"),
+        ("clinical_result_2", "clinical_photo_compare"),
+    )
+    results, blobs = generate_module_images(plan, _REQ, gen)
+    made = [r for r in results if r.status == "generated"]
+    assert len(made) == 1, "임상 이미지를 여러 장 만들면 과금만 나가고 버려진다"
+    assert made[0].module_kind == "clinical_intro"
+    skipped = [r for r in results if r.status == "skipped"]
+    assert all("하나만 만듭니다" in r.reason for r in skipped)
+
+
+def test_임상이_아닌_모듈은_상한까지_계속_만든다():
+    """임상 제한이 다른 모듈에 새면 안 된다."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(("a", "mood_macro"), ("b", "mood_macro"), ("c", "mood_macro"))
+    results, _ = generate_module_images(plan, _REQ, gen)
+    assert len([r for r in results if r.status == "generated"]) == 3

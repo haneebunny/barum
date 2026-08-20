@@ -235,8 +235,14 @@ def test_ingredient_match_skipped_for_non_functional_violation():
     assert f.explanation == "재생 효과"  # 안내 안 붙음
 
 
-def test_ingredient_amount_meets_threshold_stays_needs_review_with_registration_note():
-    """이름+함량 다 맞아도 등록 여부는 확인 못 해 검토필요 유지, 안내문에 등록 필요성 명시."""
+def test_ingredient_amount_meets_threshold_is_legal_no_finding():
+    """고시원료 + 기준함량이 다 맞으면 합법 확정 — finding을 아예 안 만든다.
+
+    2026-08-20 정책 변경(팀장 결정). 이전엔 "등록 여부를 모르니 검토필요 유지"였는데,
+    등록 여부는 우리 입력에 없는 정보라 그 기준이면 정상적인 기능성화장품 광고도
+    영원히 검토필요를 못 벗어난다. 실제로 식약처 인정문구까지 플래그가 붙고 있었다.
+    확인 가능한 근거(성분·함량)가 다 맞으면 합법으로 본다.
+    """
     vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 주장"}])
     res = PromptJudge(vlm).judge(
         _sentences(["멜라닌 억제해 미백에 도움"]),
@@ -244,10 +250,56 @@ def test_ingredient_amount_meets_threshold_stays_needs_review_with_registration_
         ingredients=["정제수", "나이아신아마이드"],
         ingredient_amounts=[("나이아신아마이드", "3%")],
     )
-    f = res.findings[0]
-    assert f.flag == JudgmentFlag.needs_review
-    assert "고시 기준" in f.explanation and "충족" in f.explanation
-    assert "등록" in f.explanation and "확인 불가" in f.explanation
+    assert res.findings == []
+
+
+def test_approved_efficacy_statement_with_matching_ingredients_is_legal():
+    """식약처 인정문구 + 성분·함량 충족 → 합법(finding 없음).
+
+    `approved_efficacy_statements.md` §1의 인정문구 원문(고시 제2023-61호 별표4).
+    2026-08-20 실측에서 이 문장이 2호/검토필요로 플래그되던 게 이 라운드의 출발점이다.
+    """
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 표방"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["피부의 미백에 도움을 준다."]),
+        "KR",
+        ingredients=["정제수", "나이아신아마이드"],
+        ingredient_amounts=[("나이아신아마이드", "3%")],
+    )
+    assert res.findings == []
+
+
+def test_exaggeration_blocks_legal_downgrade_even_when_ingredients_match():
+    """성분·함량이 맞아도 문장에 과장 표현이 있으면 합법으로 안 내린다.
+
+    한 문장에 라벨이 하나뿐이라, 2호를 합법으로 내리면 같은 문장의 과장이 통째로
+    빠진다. 2026-08-20 실측에서 "단 3일만에 완벽하게 미백되는 기적의 크림"이
+    성분만 맞으면 미플래그로 나오는 걸 3회 반복으로 확인했다(편차 없음).
+    규칙집 5호 키워드는 "완벽한" 활용형이라 "완벽하게"를 못 잡아 규칙도 못 막았다.
+    `approved_efficacy_statements.md` 4항: 인정문구를 벗어난 과장은 별개로 T5.
+    """
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 표방"}])
+    res = PromptJudge(vlm).judge(
+        _sentences(["단 3일만에 완벽하게 미백되는 기적의 크림"]),
+        "KR",
+        ingredients=["정제수", "나이아신아마이드"],
+        ingredient_amounts=[("나이아신아마이드", "3%")],
+    )
+    assert len(res.findings) == 1, "과장 표현이 있는데 합법으로 빠졌다(누수)"
+    assert res.findings[0].flag == JudgmentFlag.needs_review
+    assert "과장" in res.findings[0].explanation
+
+
+def test_approved_efficacy_statement_without_ingredients_stays_needs_review():
+    """같은 인정문구라도 전성분이 없으면 검토필요 — 확인할 근거가 없기 때문.
+
+    "전성분 여부로 갈라서 처리"(팀장 결정 2026-08-20)의 반대쪽 분기다. 합법 강등이
+    무조건 일어나지는 않는다는 걸 고정한다(강등이 새 미탐 경로가 되면 안 된다).
+    """
+    vlm = FakeVLM([{"n": 0, "label": "2호_기능성오인", "reason": "미백 표방"}])
+    res = PromptJudge(vlm).judge(_sentences(["피부의 미백에 도움을 준다."]), "KR")
+    assert len(res.findings) == 1
+    assert res.findings[0].flag == JudgmentFlag.needs_review
 
 
 def test_ingredient_amount_below_threshold_is_violation():

@@ -6,6 +6,20 @@ import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@pho
 import type { ReportEnvelope, Finding } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { useError } from "@/lib/error/ErrorContext";
+import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+
+const FIXTURE_OPTIONS: TabOption<"unjudged" | "text" | "image">[] = [
+  { value: "image", label: "이미지 예시" },
+  { value: "text", label: "텍스트 예시" },
+  { value: "unjudged", label: "미판정 포함" },
+];
+
+const TIER_OPTIONS: TabOption<"FREE" | "BASIC" | "PRO">[] = [
+  { value: "FREE", label: "Free" },
+  { value: "BASIC", label: "Basic" },
+  { value: "PRO", label: "Pro" },
+];
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -66,8 +80,9 @@ function FindingCard({
   remediationCount,
   onFetchRemediation,
 }: FindingCardProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const { showError } = useError();
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
 
@@ -92,6 +107,7 @@ function FindingCard({
         })
         .catch((err) => {
           console.error("Failed to fetch remediation suggestion", err);
+          showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
           setLoading(false);
         });
     } else {
@@ -114,6 +130,7 @@ function FindingCard({
       })
       .catch((err) => {
         console.error("Failed to fetch remediation suggestion", err);
+        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
         setLoading(false);
       });
   };
@@ -348,8 +365,9 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
+  const { showError } = useError();
   const [activeEnvelope, setActiveEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
-  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
+  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged">(() => {
     if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
     if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
     return "image";
@@ -417,6 +435,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       setActions({});
     } catch (err) {
       console.error(err);
+      showError("리포트 조회 오류", "리포트를 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -472,64 +491,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
           )}
           <span className="text-[var(--ink-3)]">›</span> 리포트
         </span>
-        <div className="ml-auto flex items-center gap-1.75 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
-          <span className="text-[var(--ink-3)] text-[10px]">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="flex border border-[var(--line-2)]" id="fixtureSwitch" role="group" aria-label="fixture 전환">
-            <button
-              onClick={() => handleFixtureChange("image")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "image" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              이미지 예시
-            </button>
-            <button
-              onClick={() => handleFixtureChange("text")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "text" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              텍스트 예시
-            </button>
-            <button
-              onClick={() => handleFixtureChange("unjudged")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "unjudged" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              미판정 포함
-            </button>
-          </div>
-          <span className="text-[var(--ink-3)] text-[10px] ml-1.5">요금제:</span>
-          <div className="flex border border-[var(--line-2)]" id="tierSwitch" role="group" aria-label="요금제 전환">
-            <button
-              onClick={() => setTier("FREE")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "FREE" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              FREE (체험)
-            </button>
-            <button
-              onClick={() => setTier("BASIC")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "BASIC" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              BASIC (수정안 제공)
-            </button>
-            <button
-              onClick={() => setTier("PRO")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "PRO" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              PRO (무제한+제작)
-            </button>
-          </div>
+        <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
+          <TabSwitch
+            label="목업 전용 · 실제 화면엔 없음:"
+            options={FIXTURE_OPTIONS}
+            value={activeFixture}
+            onChange={handleFixtureChange}
+            disabled={loading}
+          />
+          <TabSwitch
+            label="티어 미리보기"
+            options={TIER_OPTIONS}
+            value={tier}
+            onChange={setTier}
+          />
         </div>
       </div>
 

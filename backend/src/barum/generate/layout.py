@@ -89,6 +89,40 @@ def _format_examples(refs: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
+def _uniquify_kinds(modules: list[LayoutModule]) -> list[LayoutModule]:
+    """중복된 kind에 순번을 붙여 유일하게 만든다.
+
+    **kind는 파이프라인 전체에서 모듈의 식별자로 쓰인다.** 생성 이미지를 담는
+    `blobs[module.kind]`(images.py), 저장 후 URL 매핑(`_store_module_images`),
+    프론트의 `moduleImageDataUris[s.kind]`가 전부 kind로 찾는다. 그런데 kind는
+    LLM이 자유롭게 짓는 문자열이라 유일성이 보장되지 않는다.
+
+    실제로 플래너가 `clinical_result`를 두 개 낸 적이 있고(2026-08-20 실측),
+    두 번째 이미지가 첫 번째를 덮어써서 **과금해서 만든 첫 이미지가 버려지고
+    화면엔 같은 사진이 두 번** 나왔다. 여기서 미리 갈라둔다.
+
+    `clinical` 접두사 판정(`filter_risky_modules`)은 startswith라 순번이 붙어도
+    그대로 동작한다.
+    """
+    seen: dict[str, int] = {}
+    out: list[LayoutModule] = []
+    for module in modules:
+        count = seen.get(module.kind, 0)
+        seen[module.kind] = count + 1
+        if count == 0:
+            out.append(module)
+            continue
+        out.append(
+            LayoutModule(
+                kind=f"{module.kind}_{count + 1}",
+                purpose=module.purpose,
+                has_claim_risk=module.has_claim_risk,
+                layout_type=module.layout_type,
+            )
+        )
+    return out
+
+
 def _fallback_plan(product_type: str | None) -> LayoutPlan:
     """LLM 없이 쓰는 고정 플랜. 전부 위반소지 없는 모듈이라 근거가 필요없다."""
     return LayoutPlan(
@@ -130,10 +164,44 @@ def plan_layout(req: GenerateRequest, refs: list[dict], product_type: str | None
             if isinstance(m, dict) and str(m.get("kind", "")).strip()
         ]
         if modules:
-            return LayoutPlan(modules=modules, product_type=product_type, source="planner")
+            return LayoutPlan(
+                modules=_uniquify_kinds(modules), product_type=product_type, source="planner"
+            )
     except Exception as e:
         print(f"    [skip] 레이아웃 계획 실패 → 폴백 플랜: {type(e).__name__}: {e}")
     return _fallback_plan(product_type)
+
+
+# 근거가 없어 빠질 때, 같은 자리를 대신 채울 안전한 모듈. 효능 주장을 뺀 버전이다.
+#
+# 왜 필요한가: 근거 없는 상품은 hero_intro가 통째로 사라져서 도입부 없이 cause_explain부터
+# 시작하는 페이지가 나왔다(2026-08-20 A/B 실측: 근거없음 7모듈 vs 근거있음 11모듈, 히어로
+# 소실). 모듈이 줄어드는 건 원칙대로지만, 도입부가 없는 건 빈약한 게 아니라 구조가 깨진
+# 것이다(팀장·PM 확인).
+#
+# **효능 주장을 대신 만들어주는 게 아니다.** 주장은 그대로 빠지고 skipped_claims에 남는다.
+# 여기서 넣는 건 주장이 없는 자리표시 모듈뿐이다(제품 소개·분위기컷). 그래서
+# has_claim_risk=False다.
+#
+# 히어로만 대상으로 둔다. 나머지(value_prop·bundle_suggestion 등)는 없어도 페이지가
+# 성립하지만, 도입부 없는 상세페이지는 성립하지 않는다.
+_SAFE_REPLACEMENTS: dict[str, tuple[str, str]] = {
+    "hero_intro": ("제품 도입부(효능 주장 없이 제품 소개만)", "hero_fullbleed"),
+}
+
+
+def _safe_replacement(module: LayoutModule) -> LayoutModule | None:
+    """근거 부족으로 빠지는 모듈을 대신할 안전한 모듈을 낸다. 대상이 아니면 None."""
+    entry = _SAFE_REPLACEMENTS.get(module.kind)
+    if entry is None:
+        return None
+    purpose, layout_type = entry
+    return LayoutModule(
+        kind=module.kind,
+        purpose=purpose,
+        has_claim_risk=False,
+        layout_type=module.layout_type or layout_type,
+    )
 
 
 def filter_risky_modules(
@@ -170,13 +238,16 @@ def filter_risky_modules(
             continue
         if has_approved_claim:
             kept.append(module)
-        else:
-            skipped.append(
-                SkippedClaim(
-                    category=module.kind,
-                    reason="기능성 인증서로 뒷받침되는 인정문구가 없어 효능 주장 모듈을 뺐습니다",
-                )
+            continue
+        skipped.append(
+            SkippedClaim(
+                category=module.kind,
+                reason="기능성 인증서로 뒷받침되는 인정문구가 없어 효능 주장 모듈을 뺐습니다",
             )
+        )
+        replacement = _safe_replacement(module)
+        if replacement is not None:
+            kept.append(replacement)
     filtered = LayoutPlan(modules=kept, product_type=plan.product_type, source=plan.source)
     return filtered, skipped
 

@@ -116,6 +116,10 @@ export const SectionSchema = z.object({
   source: z.string(),
   // table_info layout_type 모듈용 구조화 데이터(제형·용량). 베베 배선 전 구버전 응답엔 없을 수 있어 optional
   table_rows: z.array(TableRowSchema).nullable().optional(),
+  // 이 섹션이 채우는 layout_plan 모듈의 kind. kind와 다를 수 있다 — 위반소지 모듈
+  // (hero_intro 등)의 내용은 인정문구·실증자료가 채워서 섹션 kind가 "광고문구"·"실증자료"로
+  // 나온다. 이미지·layout_type은 이 값으로 먼저 찾아야 한다(구버전 응답엔 없어 optional).
+  module_kind: z.string().nullable().optional(),
 });
 export type Section = z.infer<typeof SectionSchema>;
 
@@ -198,6 +202,19 @@ export const ClinicalEvidenceSchema = z.object({
 });
 export type ClinicalEvidence = z.infer<typeof ClinicalEvidenceSchema>;
 
+// create 모드 전용: 사업자 입력 소비자 설문조사. 실증자료가 아니라 임상 모듈을 못 열고,
+// 피부 변화(효능) 주장은 서버에서 거부되어 skipped_claims로 남는다(2026-08-20 팀장 확정).
+// 6개 필드 전부 필수. 선택으로 두면 수치만 있고 출처 없는 문구를 만들어주게 된다.
+export const SurveyEvidenceSchema = z.object({
+  claim: z.string(),
+  value: z.string(),
+  sample_size: z.string(),
+  institution: z.string(),
+  period: z.string(),
+  method: z.string(),
+});
+export type SurveyEvidence = z.infer<typeof SurveyEvidenceSchema>;
+
 export const GenerateRequestSchema = z.object({
   mode: z.enum(["improve", "create"]).default("improve"),
   content: z.string().nullable().optional(),
@@ -207,6 +224,7 @@ export const GenerateRequestSchema = z.object({
   ingredient_amounts: z.array(IngredientAmountSchema).nullable().optional(),
   certifications: z.array(z.string()).default([]),
   clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
+  survey_evidence: z.array(SurveyEvidenceSchema).nullable().optional(),
   notes: z.string().nullable().optional(),
   image_generation: ImageGenRequestSchema.nullable().optional(),
   // create 모드 이미지 생성 프롬프트에 반영되는 색상톤/분위기(둘 다 선택, 자유 텍스트)
