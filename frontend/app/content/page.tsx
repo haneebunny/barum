@@ -520,9 +520,14 @@ function ContentGeneratorContent() {
     // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
     // 없으면(백엔드 미배선 구버전) 무드컷(이미지)+카피(텍스트) 분리 블록으로 폴백.
     const sectionsHtml = genResult.sections.map((s, idx) => {
-      const dataUri = moduleImageDataUris[s.kind];
+      // 이미지·layout_type은 module_kind로 먼저 찾는다. 위반소지 모듈(hero_intro 등)의
+      // 내용은 인정문구·실증자료가 채워서 s.kind가 "광고문구"·"실증자료"로 나오는데,
+      // s.kind로만 찾으면 그 모듈들의 이미지가 통째로 버려진다(2026-08-20 실측:
+      // 6장 생성해서 2장만 쓰였다). module_kind가 없는 구버전 응답은 s.kind로 폴백.
+      const lookupKey = s.module_kind || s.kind;
+      const dataUri = moduleImageDataUris[lookupKey];
       const finePrint = isFinePrintKind(s.kind) ? " dp-fine" : "";
-      const layoutType = layoutModulesByKind[s.kind];
+      const layoutType = layoutModulesByKind[lookupKey];
       const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->`;
 
       if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
@@ -1258,8 +1263,12 @@ function ContentGeneratorContent() {
                   </div>
                   <div id="secList">
                     {genResult.sections.map((s, idx) => {
+                      // 내보내기와 같은 이유로 module_kind를 먼저 본다(구버전은 kind 폴백).
                       const moduleImage = genResult.image_plan.module_images.find(
-                        (mi) => mi.module_kind === s.kind && mi.status === "generated" && mi.image_url
+                        (mi) =>
+                          mi.module_kind === (s.module_kind || s.kind) &&
+                          mi.status === "generated" &&
+                          mi.image_url
                       );
                       if (moduleImage?.image_url) {
                         return (

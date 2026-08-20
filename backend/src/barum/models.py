@@ -255,6 +255,12 @@ class Section(BaseModel):
     table_rows: list[TableRow] | None = Field(
         None, description="table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
     )
+    module_kind: str | None = Field(
+        None,
+        description="이 섹션이 채우는 layout_plan 모듈의 kind. 프론트가 모듈 이미지를 "
+        "찾을 때 쓴다. kind와 다를 수 있다 — 위반소지 모듈(hero_intro 등)의 내용은 "
+        "LLM이 아니라 인정문구·실증자료가 채우므로 kind가 '광고문구'·'실증자료'로 나온다.",
+    )
 
 
 class Replacement(BaseModel):

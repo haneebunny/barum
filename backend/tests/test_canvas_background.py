@@ -111,3 +111,99 @@ def test_placements는_지금_항상_비어있다():
     gen = FakeGenerator()
     plan = build_image_plan(_req(canvas=True), _plan(), gen)
     assert plan.canvas.placements == []
+
+
+# ── 섹션-모듈 연결 (2026-08-20, 이미지 6장 중 4장이 버려지던 문제) ──
+
+
+def test_pii_제거가_섹션_필드를_떨구지_않는다():
+    """필드를 나열해 재조립하던 탓에 module_kind가 조용히 유실됐다."""
+    from barum.generate.content import _strip_pii
+    from barum.models import Section, TableRow
+
+    original = Section(
+        kind="광고문구",
+        text="문구",
+        source="approved_claim",
+        module_kind="hero_intro",
+        table_rows=[TableRow(label="제형", value="크림")],
+    )
+    cleaned, _ = _strip_pii([original])
+    assert cleaned[0].module_kind == "hero_intro"
+    assert cleaned[0].table_rows == original.table_rows
+
+
+def test_인정문구_섹션이_위반소지_모듈에_연결된다():
+    """hero_intro의 내용은 인정문구가 채워서 kind가 '광고문구'로 나온다.
+    연결이 없으면 프론트가 hero_intro 이미지를 못 찾아 버린다."""
+    from barum.generate.content import _link_risky_module_sections
+    from barum.models import Section
+
+    plan = LayoutPlan(
+        modules=[
+            LayoutModule(kind="hero_intro", purpose="도입", has_claim_risk=True),
+            LayoutModule(kind="value_prop", purpose="가치", has_claim_risk=True),
+            LayoutModule(kind="clinical_result", purpose="수치", has_claim_risk=True),
+        ],
+        product_type="세럼",
+        source="planner",
+    )
+    sections = [
+        Section(kind="광고문구", text="a", source="approved_claim"),
+        Section(kind="광고문구", text="b", source="approved_claim"),
+        Section(kind="실증자료", text="c", source="clinical_evidence"),
+    ]
+    _link_risky_module_sections(sections, plan)
+    assert [s.module_kind for s in sections] == ["hero_intro", "value_prop", "clinical_result"]
+
+
+def test_안전한_모듈_섹션은_건드리지_않는다():
+    from barum.generate.content import _link_risky_module_sections
+    from barum.models import Section
+
+    plan = LayoutPlan(modules=[], product_type="세럼", source="planner")
+    sections = [Section(kind="how_to_use", text="x", source="llm", module_kind="how_to_use")]
+    _link_risky_module_sections(sections, plan)
+    assert sections[0].module_kind == "how_to_use"
+
+
+def test_인정문구보다_위반소지_모듈이_많으면_남는_모듈을_뺀다():
+    """게이트가 불리언이라 문구 2개에 모듈 3개여도 셋 다 통과한다.
+    셋째는 채울 내용이 없는 빈 모듈인데 이미지 생성 대상엔 들어가 과금만 나갔다."""
+    from barum.generate.content import _drop_unfilled_risky_modules, _link_risky_module_sections
+    from barum.models import Section
+
+    plan = LayoutPlan(
+        modules=[
+            LayoutModule(kind="hero_intro", purpose="도입", has_claim_risk=True),
+            LayoutModule(kind="value_prop", purpose="가치", has_claim_risk=True),
+            LayoutModule(kind="persistence_claim", purpose="지속", has_claim_risk=True),
+            LayoutModule(kind="how_to_use", purpose="사용법", has_claim_risk=False),
+        ],
+        product_type="세럼",
+        source="planner",
+    )
+    sections = [
+        Section(kind="광고문구", text="a", source="approved_claim"),
+        Section(kind="광고문구", text="b", source="approved_claim"),
+    ]
+    _link_risky_module_sections(sections, plan)
+    pruned, skipped = _drop_unfilled_risky_modules(plan, sections)
+
+    assert [m.kind for m in pruned.modules] == ["hero_intro", "value_prop", "how_to_use"]
+    assert [s.category for s in skipped] == ["persistence_claim"]
+    assert "부족해" in skipped[0].reason
+
+
+def test_안전한_모듈은_섹션이_없어도_안_뺀다():
+    """안전 모듈의 내용은 나중에 generate_module_sections가 채운다. 여기서 빼면 안 된다."""
+    from barum.generate.content import _drop_unfilled_risky_modules
+
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="how_to_use", purpose="사용법", has_claim_risk=False)],
+        product_type="세럼",
+        source="planner",
+    )
+    pruned, skipped = _drop_unfilled_risky_modules(plan, [])
+    assert len(pruned.modules) == 1
+    assert skipped == []

@@ -137,7 +137,7 @@ def generate_module_sections(
             if isinstance(s, dict)
         }
         sections = [
-            Section(kind=m.kind, text=by_kind[m.kind], source="llm")
+            Section(kind=m.kind, text=by_kind[m.kind], source="llm", module_kind=m.kind)
             for m in modules
             if by_kind.get(m.kind)
         ]
@@ -239,7 +239,10 @@ def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
     for s in sections:
         text, kinds = remove_pii(s.text)
         pii_kinds.update(kinds)
-        cleaned.append(Section(kind=s.kind, text=text, source=s.source, table_rows=s.table_rows))
+        # 필드를 하나씩 나열해 재조립하면 새 필드가 추가될 때마다 여기서 조용히
+        # 유실된다. 실제로 module_kind가 그렇게 떨어져 나갔다(2026-08-20). 텍스트만
+        # 갈아끼우는 방식으로 바꿔 앞으로 필드가 늘어도 자동으로 따라가게 한다.
+        cleaned.append(s.model_copy(update={"text": text}))
     return cleaned, pii_kinds
 
 
@@ -261,6 +264,69 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
 
 
 _CLAIM_CATEGORIES = ("미백", "주름개선", "자외선차단")
+
+
+def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> None:
+    """위반소지 모듈이 채워진 섹션에 원래 모듈 kind를 달아준다(제자리 수정).
+
+    **왜 필요한가**: 위반소지 모듈(hero_intro·value_prop·clinical_*)은 근거가 있어
+    계획에 남아도, 그 내용을 LLM이 쓰지 않는다. 인정문구가 채우면 섹션 kind가
+    "광고문구", 실증자료가 채우면 "실증자료"로 나온다. 그런데 프론트는 모듈 이미지를
+    `moduleImageDataUris[section.kind]`로 찾는다. kind가 안 맞으니 **그 모듈들의
+    이미지가 통째로 버려졌다.**
+
+    2026-08-20 실측: 6장을 과금해서 만들었는데 실제로 상세페이지에 들어간 건 2장이고
+    hero_intro·value_prop·clinical_intro·clinical_result 4장이 버려졌다. 히어로
+    이미지가 있는데도 페이지가 텍스트로 시작했다.
+
+    PR #215(중복 kind가 이미지를 덮어쓰던 문제)와 같은 계열이다. kind를 모듈 식별자로
+    쓰는 구조의 구멍이라, 섹션이 자기가 어느 모듈 자리인지 알게 해서 막는다.
+
+    계획 순서대로 짝짓는다. 임상 계열은 실증자료 섹션 하나가 대표하므로 첫 임상
+    모듈에만 붙인다(실증자료 섹션은 하나만 나온다).
+    """
+    claim_slots = [m for m in plan.modules if m.has_claim_risk and not m.kind.startswith("clinical")]
+    clinical_slots = [m for m in plan.modules if m.has_claim_risk and m.kind.startswith("clinical")]
+    claim_iter = iter(claim_slots)
+    for section in sections:
+        if section.module_kind is not None:
+            continue
+        if section.source == "approved_claim":
+            module = next(claim_iter, None)
+            if module is not None:
+                section.module_kind = module.kind
+        elif section.source == "clinical_evidence" and clinical_slots:
+            section.module_kind = clinical_slots[0].kind
+
+
+def _drop_unfilled_risky_modules(
+    plan: LayoutPlan, sections: list[Section]
+) -> tuple[LayoutPlan, list[SkippedClaim]]:
+    """내용이 안 채워진 위반소지 모듈을 계획에서 뺀다.
+
+    `filter_risky_modules`의 게이트는 "인정문구가 하나라도 있나"라는 **불리언**이라,
+    인정문구가 2개인데 위반소지 모듈이 3개면 셋 다 통과한다. 그런데 실제로 채울
+    문구는 2개뿐이라 세 번째는 **내용이 아예 없는 빈 모듈**이 된다.
+
+    빈 모듈은 화면에 안 나오는데 이미지 생성 대상에는 들어가서, 과금해놓고 버려진다
+    (2026-08-20 실측: persistence_claim이 그렇게 남았다). 여기서 미리 뺀다.
+
+    반드시 `_link_risky_module_sections` 뒤, `build_image_plan` 앞에 불러야 한다.
+    """
+    filled = {s.module_kind for s in sections if s.module_kind}
+    kept: list[LayoutModule] = []
+    skipped: list[SkippedClaim] = []
+    for module in plan.modules:
+        if module.has_claim_risk and module.kind not in filled:
+            skipped.append(
+                SkippedClaim(
+                    category=module.kind,
+                    reason="이 모듈을 채울 인정문구·실증자료가 부족해 계획에서 뺐습니다",
+                )
+            )
+            continue
+        kept.append(module)
+    return LayoutPlan(modules=kept, product_type=plan.product_type, source=plan.source), skipped
 
 
 def _usable_surveys(req: GenerateRequest) -> tuple[list, list[SkippedClaim]]:
@@ -406,6 +472,9 @@ def _generate_create_content(
                 source="survey_evidence",
             )
         )
+    _link_risky_module_sections(sections, plan)
+    plan, unfilled_skipped = _drop_unfilled_risky_modules(plan, sections)
+    skipped += unfilled_skipped
     sections += generate_module_sections(req, safe_modules, vlm)
     if product_spec_planned:
         sections.append(build_product_spec_section(req))

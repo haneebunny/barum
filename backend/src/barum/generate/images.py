@@ -207,6 +207,16 @@ def _composition_lines(layout_type: str, product_type: str | None, variation_ind
 # 있었다(2026-08-19, 팀장 확인 후 스킵 승인).
 _NO_IMAGE_LAYOUT_TYPES = frozenset({"icon_grid", "table_info", "banner_strip"})
 
+# **section_statement는 일부러 넣지 않았다.** 프론트가 이 유형을 텍스트 블록으로만
+# 렌더해서 이미지가 버려지는 건 맞다(2026-08-20 실측: 6장 중 2장). 그런데 이 값은
+# LayoutModule.layout_type의 **기본값이자 카탈로그 밖 값의 폴백**이라(models.py,
+# layout.py `_DEFAULT_LAYOUT_TYPE`), 스킵 목록에 넣으면 플래너가 layout_type을
+# 빠뜨리기만 해도 이미지가 통째로 안 만들어진다. 낭비를 줄이려다 기능을 죽인다.
+# step_list도 프론트에 이미지 분기가 없어 같은 상태다.
+# 두 유형은 "프론트 렌더를 고칠지 / 백엔드에서 안 만들지"를 디자이너·프론트와
+# 정해야 한다(PM 전달함).
+
+
 # layout_type별 손·팔 허용 여부. "손으로 제품 바르는 장면"이 모든 모듈에 예시로
 # 똑같이 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한
 # 페이지 6장이 전부 손 장면으로 나옴). kind는 LLM이 자유롭게 짓는 문자열이라
@@ -393,7 +403,23 @@ def generate_module_images(
     # (실제로 이미지를 만든 것만 센다 — 스킵된 모듈은 화면에 안 나오므로 "앞선
     # 같은 유형 이미지"에 해당하지 않는다).
     seen_layout_types: dict[str, int] = {}
+    # 임상 계열은 모듈이 여러 개여도 실증자료 섹션이 하나만 나온다(같은 자료 반복
+    # 방지, content.py). 그래서 두 번째 임상 모듈부터는 얹힐 섹션이 없어 이미지를
+    # 만들어도 버려진다(2026-08-20 실측: clinical_result 1장이 그렇게 남았다).
+    # 첫 임상 모듈만 만든다.
+    clinical_image_done = False
     for module in plan.modules:
+        if module.kind.startswith("clinical"):
+            if clinical_image_done:
+                results.append(
+                    ModuleImage(
+                        module_kind=module.kind,
+                        status="skipped",
+                        reason="실증자료 섹션은 하나만 나오므로 임상 모듈 이미지도 하나만 만듭니다",
+                    )
+                )
+                continue
+            clinical_image_done = True
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
             # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
             # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.
