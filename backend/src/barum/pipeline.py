@@ -86,9 +86,21 @@ def _attach_bands(
 
             box_2d = s.get("box_2d")
             valid_box = False
-            if isinstance(box_2d, (list, tuple)) and len(box_2d) == 4:
+            
+            # 중첩 배열([[ymin, xmin, ymax, xmax]] 등)에서도 숫자 4개를 안전하게 추출
+            nums: list[float] = []
+            def _collect_nums(item):
+                if isinstance(item, (int, float)):
+                    nums.append(float(item))
+                elif isinstance(item, (list, tuple)):
+                    for sub in item:
+                        _collect_nums(sub)
+
+            _collect_nums(box_2d)
+
+            if len(nums) >= 4:
                 try:
-                    ymin, xmin, ymax, xmax = [float(v) for v in box_2d]
+                    ymin, xmin, ymax, xmax = nums[:4]
                     # 0~1000 scale 또는 0.0~1.0 scale 정규화
                     if any(v > 1.0 for v in (ymin, xmin, ymax, xmax)):
                         ymin, xmin, ymax, xmax = ymin / 1000.0, xmin / 1000.0, ymax / 1000.0, xmax / 1000.0
@@ -110,6 +122,8 @@ def _attach_bands(
                 s["x_end"] = source_w
                 s["y_start"] = top
                 s["y_end"] = bot
+
+            print(f"    [문장 좌표 변환 (order={s.get('order')})]: '{s.get('text', '')[:20]}' -> x=({s.get('x_start')}, {s.get('x_end')}), y=({s.get('y_start')}, {s.get('y_end')}) (valid_bbox={valid_box})")
 
         s["source_w"] = source_w
         s["source_h"] = source_h

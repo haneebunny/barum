@@ -90,7 +90,7 @@ function FindingCard({
     setSuggestions([]);
     setLoading(false);
     setHasFetched(false);
-    
+
     if (tier !== "FREE") {
       setShowSuggestionsArea(true);
       setLoading(true);
@@ -144,14 +144,12 @@ function FindingCard({
   const isExcluded = act === "exclude";
 
   // 호버 translate 제거 및 피그마 디자인 규격 적용 (rounded, overflow, flex-col)
-  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${
-    cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
-  } ${isExcluded ? "opacity-50" : ""}`;
+  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
+    } ${isExcluded ? "opacity-50" : ""}`;
 
   // 텍스트 글자색은 유지하고 테두리와 배경으로만 하이라이트
-  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${
-    cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
-  }`;
+  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
+    }`;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -174,16 +172,15 @@ function FindingCard({
       >
         <div className="flex gap-2.5">
           {/* 사각형 번호 배지 */}
-          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${
-            cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
-          }`}>{num}</span>
+          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
+            }`}>{num}</span>
 
           {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
           <div className="flex-1 min-w-0">
             {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
             <div className="flex items-center justify-between gap-2">
               <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>{finding.span}</span>
-              
+
               <div className="flex items-center gap-1.5 ml-auto">
                 {tier === "FREE" ? (
                   <span className="text-[10px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
@@ -192,22 +189,20 @@ function FindingCard({
                 ) : (
                   <>
                     <button
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                        act === "accept"
-                          ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
-                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                      }`}
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
+                        ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                        }`}
                       onClick={() => onAction(index, orderIndex, "accept")}
                     >
                       <Check size={11} weight="bold" />
                       수용
                     </button>
                     <button
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                        act === "exclude"
-                          ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
-                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                      }`}
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "exclude"
+                        ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                        }`}
                       onClick={() => onAction(index, orderIndex, "exclude")}
                     >
                       <X size={11} weight="bold" />
@@ -217,9 +212,8 @@ function FindingCard({
                 )}
                 {/* 토글 chevron */}
                 <span
-                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${
-                    open ? "rotate-180" : ""
-                  }`}
+                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${open ? "rotate-180" : ""
+                    }`}
                 >
                   <CaretDown size={14} weight="bold" />
                 </span>
@@ -238,7 +232,7 @@ function FindingCard({
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
           <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex flex-col gap-3.5">
-            
+
             {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
             {(tier !== "FREE" || num === 1) ? (
               !showSuggestionsArea && (
@@ -345,7 +339,7 @@ function markSentence(
     if (out.indexOf(needle) === -1) return;
     const isExcluded = actions[it.idx] === "exclude";
     const isViolation = it.cls === "violation";
-    
+
     let spanCls = "relative px-1 rounded-sm cursor-default border inline ";
     if (isExcluded) {
       spanCls += "opacity-50 line-through ";
@@ -355,7 +349,7 @@ function markSentence(
     } else {
       spanCls += "border-[var(--line-2)] bg-[var(--surface-sub)]";
     }
-    
+
     out = out.replace(
       needle,
       `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
@@ -412,7 +406,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         next[idx] = null;
       } else {
         next[idx] = act;
-        
+
         const nextOrderIndex = orderIndex + 1;
         if (nextOrderIndex < findByOrder.length) {
           setOpenOrderIndex(nextOrderIndex);
@@ -466,13 +460,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const hasInteracted = Object.keys(actions).length > 0;
   const acceptedIndices = hasInteracted
     ? Object.entries(actions)
-        .filter(([_, act]) => act === "accept")
-        .map(([i]) => i)
-        .join(",")
+      .filter(([_, act]) => act === "accept")
+      .map(([i]) => i)
+      .join(",")
     : d.findings
-        .map((f, i) => (f.flag === "위반" ? i : -1))
-        .filter((idx) => idx !== -1)
-        .join(",");
+      .map((f, i) => (f.flag === "위반" ? i : -1))
+      .filter((idx) => idx !== -1)
+      .join(",");
 
   return (
     <>
@@ -630,128 +624,151 @@ export function ReportClient({ envelope }: ReportClientProps) {
                           }}
                         />
 
-                            {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
-                            <div className="absolute inset-0 z-10 pointer-events-none">
-                              {findByOrder.map((o) => {
-                                const loc = o.f.location;
-                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-                                const isExcluded = actions[o.idx] === "exclude";
-                                if (isExcluded) return null;
+                        {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
+                        <div className="absolute inset-0 z-10 pointer-events-none">
+                          {(() => {
+                            // 같은 위치(문장 order 또는 y_start)를 공유하는 항목들의 서브 인덱스 계산 (배지 겹침 방지)
+                            const locCounts: Record<string, number> = {};
+                            const itemSubIndices: Record<number, number> = {};
 
-                                const topPct = (loc.y_start / srcH) * 100;
-                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                                const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
-                                const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
-                                const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+                            findByOrder.forEach((o) => {
+                              const key = `${o.f.location.tile}_${o.f.location.order}_${o.f.location.y_start}_${o.f.location.x_start ?? 0}`;
+                              itemSubIndices[o.idx] = locCounts[key] || 0;
+                              locCounts[key] = (locCounts[key] || 0) + 1;
+                            });
 
-                                const isViolation = o.f.flag === "위반";
-                                const isHovered = hoveredIndex === o.idx;
+                            return findByOrder.map((o) => {
+                              const loc = o.f.location;
+                              if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+                              const isExcluded = actions[o.idx] === "exclude";
+                              if (isExcluded) return null;
 
-                                return (
-                                  <div
-                                    id={`highlight-box-${o.idx}`}
-                                    key={`find-${o.idx}`}
+                              const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+
+                              // 시각적 여백(패딩): 좌우 6px, 상하 4px 확장
+                              const padXPct = hasX ? (10 / srcW) * 100 : 0;
+                              const padYPct = (10 / srcH) * 100;
+
+                              const rawTopPct = (loc.y_start / srcH) * 100;
+                              const rawHeightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                              const rawLeftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                              const rawWidthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+
+                              const leftPct = Math.max(0, rawLeftPct - padXPct);
+                              const widthPct = hasX ? Math.min(100 - leftPct, rawWidthPct + padXPct * 2) : 100;
+                              const topPct = Math.max(0, rawTopPct - padYPct);
+                              const heightPct = Math.min(100 - topPct, rawHeightPct + padYPct * 2);
+
+                              const isViolation = o.f.flag === "위반";
+                              const isHovered = hoveredIndex === o.idx;
+                              const badgeOffset = (itemSubIndices[o.idx] || 0) * 22; // 4, 5번 등 같은 문장 항목 나란히 배치
+
+                              return (
+                                <div
+                                  id={`highlight-box-${o.idx}`}
+                                  key={`find-${o.idx}`}
+                                  style={{
+                                    position: "absolute",
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                    top: `${topPct}%`,
+                                    height: `${heightPct}%`,
+                                    border: isViolation
+                                      ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.85)"}`
+                                      : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.6)"}`,
+                                    backgroundColor: isViolation
+                                      ? (isHovered ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.08)")
+                                      : (isHovered ? "rgba(100, 116, 139, 0.15)" : "rgba(100, 116, 139, 0.04)"),
+                                    borderRadius: "4px",
+                                    pointerEvents: "auto",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease-in-out",
+                                    boxShadow: isHovered ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : "none",
+                                  }}
+                                  onMouseEnter={() => setHoveredIndex(o.idx)}
+                                  onMouseLeave={() => setHoveredIndex(null)}
+                                >
+                                  <span
                                     style={{
                                       position: "absolute",
-                                      left: `${leftPct}%`,
-                                      width: `${widthPct}%`,
-                                      top: `${topPct}%`,
-                                      height: `${heightPct}%`,
-                                      border: isViolation
-                                        ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.75)"}`
-                                        : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.5)"}`,
-                                      backgroundColor: isViolation
-                                        ? (isHovered ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.08)")
-                                        : (isHovered ? "rgba(100, 116, 139, 0.15)" : "rgba(100, 116, 139, 0.04)"),
-                                      borderRadius: "3px",
-                                      pointerEvents: "auto",
-                                      cursor: "pointer",
-                                      transition: "all 0.15s ease-in-out",
-                                      boxShadow: isHovered ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : "none",
-                                    }}
-                                    onMouseEnter={() => setHoveredIndex(o.idx)}
-                                    onMouseLeave={() => setHoveredIndex(null)}
-                                  >
-                                    <span
-                                      style={{
-                                        position: "absolute",
-                                        left: "-8px",
-                                        top: "-8px",
-                                        width: "18px",
-                                        height: "18px",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        fontFamily: "monospace",
-                                        fontSize: "10px",
-                                        fontWeight: "bold",
-                                        borderRadius: "50%",
-                                        border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
-                                        color: isViolation ? "var(--crit)" : "var(--ink-3)",
-                                        backgroundColor: "var(--surface)",
-                                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                                        zIndex: 2,
-                                      }}
-                                    >
-                                      {o.num}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-
-                              {ujByOrder.map((u, i) => {
-                                const loc = u.location;
-                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-
-                                const topPct = (loc.y_start / srcH) * 100;
-                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                                const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
-                                const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
-                                const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
-                                const letter = String.fromCharCode(65 + i);
-
-                                return (
-                                  <div
-                                    id={`highlight-box-uj-${i}`}
-                                    key={`uj-${i}`}
-                                    style={{
-                                      position: "absolute",
-                                      left: `${leftPct}%`,
-                                      width: `${widthPct}%`,
-                                      top: `${topPct}%`,
-                                      height: `${heightPct}%`,
-                                      border: "2px dashed rgba(100, 116, 139, 0.4)",
-                                      backgroundColor: "rgba(100, 116, 139, 0.04)",
-                                      borderRadius: "3px",
+                                      left: `${-8 + badgeOffset}px`,
+                                      top: "-10px",
+                                      width: "19px",
+                                      height: "19px",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontFamily: "monospace",
+                                      fontSize: "10.5px",
+                                      fontWeight: "bold",
+                                      borderRadius: "50%",
+                                      border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
+                                      color: isViolation ? "var(--crit)" : "var(--ink-3)",
+                                      backgroundColor: "var(--surface)",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                                      zIndex: 10 + (itemSubIndices[o.idx] || 0),
                                     }}
                                   >
-                                    <span
-                                      style={{
-                                        position: "absolute",
-                                        right: "-8px",
-                                        top: "-8px",
-                                        width: "18px",
-                                        height: "18px",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        fontFamily: "monospace",
-                                        fontSize: "10px",
-                                        fontWeight: "bold",
-                                        borderRadius: "50%",
-                                        border: "1px dashed var(--ink-3)",
-                                        color: "var(--ink-3)",
-                                        backgroundColor: "var(--surface)",
-                                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                                        zIndex: 2,
-                                      }}
-                                    >
-                                      {letter}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                    {o.num}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+
+                          {ujByOrder.map((u, i) => {
+                            const loc = u.location;
+                            if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+
+                            const topPct = (loc.y_start / srcH) * 100;
+                            const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                            const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+                            const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                            const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+                            const letter = String.fromCharCode(65 + i);
+
+                            return (
+                              <div
+                                id={`highlight-box-uj-${i}`}
+                                key={`uj-${i}`}
+                                style={{
+                                  position: "absolute",
+                                  left: `${leftPct}%`,
+                                  width: `${widthPct}%`,
+                                  top: `${topPct}%`,
+                                  height: `${heightPct}%`,
+                                  border: "2px dashed rgba(100, 116, 139, 0.4)",
+                                  backgroundColor: "rgba(100, 116, 139, 0.04)",
+                                  borderRadius: "3px",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    right: "-8px",
+                                    top: "-8px",
+                                    width: "18px",
+                                    height: "18px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontFamily: "monospace",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    borderRadius: "50%",
+                                    border: "1px dashed var(--ink-3)",
+                                    color: "var(--ink-3)",
+                                    backgroundColor: "var(--surface)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                    zIndex: 2,
+                                  }}
+                                >
+                                  {letter}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
@@ -774,27 +791,24 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                 const isRowHovered = hoveredIndex === r.idx;
                                 return (
                                   <div
-                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
-                                      isExcluded
-                                        ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                                        : cls === "violation"
-                                          ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
-                                          : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
-                                    }`}
+                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${isExcluded
+                                      ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                                      : cls === "violation"
+                                        ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
+                                        : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
+                                      }`}
                                     onMouseEnter={() => setHoveredIndex(r.idx)}
                                     onMouseLeave={() => setHoveredIndex(null)}
                                     key={ri}
                                   >
-                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${
-                                      isExcluded
-                                        ? "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                        : cls === "violation"
-                                          ? "text-[var(--crit)] border-[var(--crit)]"
-                                          : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                    }`}>{r.num}</span>
-                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                      cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
-                                    }`}>{r.item.span}</span>
+                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
+                                      ? "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                      : cls === "violation"
+                                        ? "text-[var(--crit)] border-[var(--crit)]"
+                                        : "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                      }`}>{r.num}</span>
+                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
+                                      }`}>{r.item.span}</span>
                                   </div>
                                 );
                               } else {

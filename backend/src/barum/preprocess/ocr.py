@@ -14,7 +14,7 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
-- 각 문장마다 이미지 내에서의 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 좌표)을 `box_2d`로 함께 반환한다.
+- 반드시 각 문장마다 해당 문구가 위치한 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 정수 좌표)을 `box_2d` 필드에 반드시 포함하라.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -22,15 +22,15 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 - 한국어가 전혀 없는 이미지는 빈 배열로 둔다.
 - **이미지를 건너뛰지 마라.** 첨부 순서대로 {n}개 항목을 모두 반환한다.
 
-JSON으로만 답하라:
-{{"images": [{{"i": 0, "sentences": [{{"text": "문장1", "box_2d": [ymin, xmin, ymax, xmax]}}]}}, {{"i": 1, "sentences": []}}]}}"""
+JSON 응답 형식 예시:
+{{"images": [{{"i": 0, "sentences": [{{"text": "유어베리 세럼", "box_2d": [120, 200, 180, 800]}}]}}, {{"i": 1, "sentences": []}}]}}"""
 
 OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 일부다.
 이미지에 보이는 모든 한국어 텍스트를 위에서 아래 순서로 읽어라.
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
-- 각 문장마다 이미지 내에서의 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 좌표)을 `box_2d`로 함께 반환한다.
+- 반드시 각 문장마다 해당 문구가 위치한 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 정수 좌표)을 `box_2d` 필드에 반드시 포함하라.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -38,7 +38,8 @@ OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 �
 - 읽을 수 없는 글자는 그 문장을 통째로 빼지 말고 읽을 수 있는 부분만 담는다.
 - 한국어가 전혀 없으면 빈 배열을 반환한다.
 
-JSON으로만 답하라: {"sentences": [{"text": "문장1", "box_2d": [ymin, xmin, ymax, xmax]}, {"text": "문장2", "box_2d": [ymin, xmin, ymax, xmax]}]}"""
+JSON 응답 형식 예시:
+{"sentences": [{"text": "피부 깊숙이, 세포재생의 시작", "box_2d": [750, 150, 850, 850]}, {"text": "차세대 안티에이징 세럼", "box_2d": [870, 200, 920, 800]}]}"""
 
 
 def _normalize(s: str) -> str:
@@ -54,11 +55,13 @@ def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[dict | str]]:
     """
     if len(tiles) == 1:
         result = vlm.generate_json(OCR_PROMPT, [tiles[0].read_bytes()])
+        print(f"    [VLM OCR RAW 응답 (tile={tiles[0].name})]: {result}")
         return [result.get("sentences") or []]
 
     result = vlm.generate_json(
         BATCH_PROMPT.format(n=len(tiles)), [t.read_bytes() for t in tiles]
     )
+    print(f"    [VLM BATCH OCR RAW 응답 ({len(tiles)}장)]: {result}")
     out: list[list[dict | str]] = [[] for _ in tiles]
     for item in result.get("images", []):
         try:
@@ -71,7 +74,7 @@ def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[dict | str]]:
 
 
 def extract_product_sentences(
-    product_dir: Path, vlm: VLM, verbose: bool = True, batch_size: int = 1
+    product_dir: Path, vlm: VLM, verbose: bool = True, batch_size: int = 3
 ) -> dict:
     """상품 하나의 타일 전체를 OCR 해 문장 리스트를 만든다.
 

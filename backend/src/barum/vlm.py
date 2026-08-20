@@ -82,7 +82,7 @@ class GeminiVLM:
         self,
         model: str | None = None,
         api_key: str | None = None,
-        rpm: int = 15,
+        rpm: int = 60,
     ):
         from google import genai
         from langsmith import wrappers

@@ -131,7 +131,15 @@ def get_check_by_sha256(client, image_sha256: str) -> dict | None:
 def get_cached_check(client, cache_key: str, image_sha256: str | None = None) -> object | None:
     """캐시된 검사 리포트를 가져온다. 1차 메모리 캐시, 2차 Supabase 조회."""
     if cache_key in _IMAGE_CACHE:
-        return _IMAGE_CACHE[cache_key]
+        cached = _IMAGE_CACHE[cache_key]
+        if hasattr(cached, "findings"):
+            # 메모리 캐시도 bbox 없으면 무효화
+            if any(getattr(f.location, "tile", None) and getattr(f.location, "x_start", None) in (None, 0) and getattr(f.location, "x_end", None) == getattr(f.location, "source_w", None) for f in cached.findings):
+                del _IMAGE_CACHE[cache_key]
+            else:
+                return cached
+        else:
+            return cached
 
     # 2차: Supabase DB에 동일 image_sha256으로 저장된 레코드가 있는지 확인
     if client is not None and image_sha256:
@@ -150,6 +158,24 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
                 ):
                     report = USPreflightReport(**report_dict)
                 else:
+                    # 구버전/전체 밴드 캐시 검사: 이미지 입력인데 정밀 bbox가 없으면 캐시 무효화
+                    findings_data = report_dict.get("findings", [])
+                    has_invalid_bbox = any(
+                        isinstance(f.get("location"), dict)
+                        and f["location"].get("tile") is not None
+                        and (
+                            f["location"].get("x_start") is None
+                            or (
+                                f["location"].get("x_start") == 0
+                                and f["location"].get("x_end") == f["location"].get("source_w")
+                            )
+                        )
+                        for f in findings_data
+                    )
+                    if has_invalid_bbox:
+                        print("    [info] 정밀 bbox 없는 캐시 감지 -> 신규 VLM 검사 수행")
+                        return None
+
                     report = CheckReport(**report_dict)
                     if result_id:
                         report.result_id = result_id

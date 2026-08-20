@@ -11,6 +11,8 @@
       "location": {
         "tile": "detail_002_t00.png",
         "order": 0,
+        "x_start": null,
+        "x_end": null,
         "y_start": 0,
         "y_end": 1520,
         "source_h": 8000,
@@ -25,6 +27,8 @@
       "location": {
         "tile": "detail_002_t00.png",
         "order": 1,
+        "x_start": null,
+        "x_end": null,
         "y_start": 0,
         "y_end": 1520,
         "source_h": 8000,
@@ -37,6 +41,8 @@
       "location": {
         "tile": "detail_002_t01.png",
         "order": 2,
+        "x_start": null,
+        "x_end": null,
         "y_start": 1440,
         "y_end": 2960,
         "source_h": 8000,
@@ -54,7 +60,9 @@
     "n_unjudged": 2,
     "counts_by_type": {
       "5호_거짓과장기만": 1
-    }
+    },
+    "product_out_of_scope": false,
+    "out_of_scope_reason": null
   },
   "result_id": null,
   "basis": null
