@@ -13,7 +13,11 @@
 다른 위반 요소('상처', '연고')는 그대로 남는다. 분모가 작으니 퍼센트로 쓰지 말 것.
 """
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, "src")  # backend/에서 바로 실행할 수 있게(remediation_audit.py와 같은 방식)
+
 from barum.generate.replace import apply_replacements, build_replacements
 from barum.models import Finding, JudgmentFlag, Location, ViolationType
 from barum.reference.rules import RuleOutcome, match_rule
