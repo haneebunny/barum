@@ -953,6 +953,16 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+              onClick={(e) => {
+                if (!hasInteracted) {
+                  const proceed = window.confirm(
+                    "수정 권고안에 대해 '수용' 또는 '제외'를 선택하지 않으셨습니다. 모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?\n\n'취소'를 누르시면 리포트에서 직접 선택하실 수 있습니다."
+                  );
+                  if (!proceed) {
+                    e.preventDefault();
+                  }
+                }
+              }}
               className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
             >
               이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
