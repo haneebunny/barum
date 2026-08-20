@@ -208,7 +208,7 @@ export type ClinicalEvidence = z.infer<typeof ClinicalEvidenceSchema>;
 
 // create 모드 전용: 사업자 입력 소비자 설문조사. 실증자료가 아니라 임상 모듈을 못 열고,
 // 피부 변화(효능) 주장은 서버에서 거부되어 skipped_claims로 남는다(2026-08-20 팀장 확정).
-// 6개 필드 전부 필수 — 선택으로 두면 수치만 있고 출처 없는 문구를 만들어주게 된다.
+// 6개 필드 전부 필수. 선택으로 두면 수치만 있고 출처 없는 문구를 만들어주게 된다.
 export const SurveyEvidenceSchema = z.object({
   claim: z.string(),
   value: z.string(),
