@@ -533,13 +533,19 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
-        <p className="m-[0_0_12px] text-[16px] font-bold text-[var(--ink)] tracking-[-0.2px]">
-          <span className="text-[var(--crit)]">위반 <span className="font-mono">{nViol}</span>건</span>
-          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
-          검토필요 <span className="font-mono">{nReview}</span>건
-          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
-          미판정 <span className="font-mono">{d.unjudged.length}</span>건
-        </p>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]">
+            <Warning size={14} weight="bold" />
+            위반 <span className="font-mono">{nViol}</span> 건
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]">
+            <MagnifyingGlass size={14} weight="bold" />
+            검토필요 <span className="font-mono">{nReview}</span> 건
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
+            미판정 <span className="font-mono">{d.unjudged.length}</span> 건
+          </span>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(typeCounts).map(([type, count]) => {
             if (count === 0) return null;
