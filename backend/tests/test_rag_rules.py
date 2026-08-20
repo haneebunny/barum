@@ -552,3 +552,40 @@ def test_penetration_context_alone_is_not_violation():
     """맥락어만 있고 리들이 없으면 이 규칙은 발동하지 않는다("흡수"는 합법 문장에 흔하다)."""
     m = match_rule("피부에 부드럽게 흡수되며")
     assert m is None or m.span != "리들"
+
+
+def test_exaggeration_inflections_are_caught():
+    """절대적 수식어의 활용형도 잡는다(동의어 사전으로 등록).
+
+    5호 키워드가 활용형 그대로("완벽한")라 "완벽하게"를 놓치고 있었다. 실제로
+    "단 3일만에 완벽하게 미백되는 기적의 크림"이 규칙에 안 걸렸다(2026-08-20 실측).
+    """
+    for s in ["완벽하게 미백되는 크림", "완벽히 차단하는 선크림",
+              "탁월하게 개선됩니다", "최적화된 성분 배합"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.needs_review, s
+
+
+def test_superlative_stem_alone_is_not_caught():
+    """어간만 같고 수식어가 아닌 명사 결합은 안 잡는다.
+
+    어간("완벽"·"최적")으로 넓혔더니 "최적 온도에서 보관하세요"·"완벽 방수 파우치"
+    같은 보관·배송 안내까지 검토필요로 걸렸다(2026-08-20 실측). 그래서 어간이 아니라
+    활용형만 동의어로 등록했다. 이 경계가 무너지면 대상외 문구가 무더기로 잡힌다.
+    """
+    for s in ["완벽 방수 파우치 증정", "최적 온도에서 보관하세요"]:
+        assert match_rule(s) is None, s
+
+
+def test_pack_listed_superlative_is_covered():
+    """팩 §85가 나열한 절대적 표현은 규칙집에 다 있어야 한다.
+
+    `prohibited_expressions.md:85`는 "완벽한·최적의·파워·탁월한·최고·최상"을 나열하는데
+    "탁월한"만 규칙집에 빠져 있었다(2026-08-20 발견). 정답셋에도 "피부 진정에 탁월한
+    7가지 한방 추출물"이 검토필요로 1건 있다.
+    """
+    m = match_rule("탁월한 보습력")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
+    assert m.span == "탁월한"
