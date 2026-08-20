@@ -364,6 +364,38 @@ class ClinicalEvidence(BaseModel):
     note: str | None = Field(None, description="피험자 수·조건 등 부연")
 
 
+class SurveyEvidence(BaseModel):
+    """create 모드 전용: 사업자가 입력한 **소비자 설문조사** 결과.
+
+    **`ClinicalEvidence`와 절대 섞지 않는다.** 관리지침 [별표2]가 인정하는 실증
+    수단은 인체적용시험·인체외시험·시험분석·기능성심사 자료뿐이고 **설문조사는
+    목록에 없다.** 그래서 이 값이 아무리 많아도 임상 계열 모듈(clinical_*)은
+    열리지 않는다(2026-08-20 팀장 확정).
+
+    쓸 수 있는 건 효능이 아닌 항목뿐이다(향·발림성·용기·재구매의향 등). 피부
+    변화를 말하는 순간 효능 주장이라 설문으로는 못 받친다. 판별은
+    `reference.survey.is_efficacy_survey`가 한다.
+
+    메타데이터를 전부 필수로 받는 이유: 판정기가 "사용자 96% 만족"을 5호(거짓·과장)
+    검토필요로 잡으면서 사유를 이렇게 냈다 — "설문방법·표본·시기·출처 등 근거
+    제시가 없어 객관적 확인 필요"(2026-08-20 실측). 수치만 있고 출처가 없으면
+    그 자체로 위반 소지라, 선택 필드로 두면 위반 소지 문구를 우리가 만들어주게 된다.
+
+    **다만 메타데이터를 다 넣어도 5호 검토필요는 해소되지 않는다**(2026-08-20 실측으로
+    확인, 처음엔 해소될 거라 봤으나 틀렸다). 판정기는 조사기관·시기·표본이 있어도
+    원자료(조사방법·무작위성·질문 문항)를 봐야 한다고 본다. 그래서 이 필드들은
+    "합법으로 만들어주는 장치"가 아니라 **검토 범위를 좁히고 사용자에게 무엇을
+    준비해야 하는지 알려주는 장치**다. 그 사실은 `risk_confirmations`로 고지한다.
+    """
+
+    claim: str = Field(..., description='무엇에 대한 응답인지, 예: "향에 만족"')
+    value: str = Field(..., description='결과 수치 원문 표기, 예: "96%"')
+    sample_size: str = Field(..., description='표본 수, 예: "200명"')
+    institution: str = Field(..., description="조사기관명")
+    period: str = Field(..., description='조사 시기, 예: "2026년 3월"')
+    method: str = Field(..., description='조사 방법, 예: "온라인 자기기입식 설문"')
+
+
 class LayoutModule(BaseModel):
     """상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."""
 
@@ -403,6 +435,11 @@ class GenerateRequest(BaseModel):
     clinical_evidence: list[ClinicalEvidence] | None = Field(
         None,
         description="사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다.",
+    )
+    survey_evidence: list[SurveyEvidence] | None = Field(
+        None,
+        description="사업자 입력 소비자 설문조사 결과(create 모드 전용). "
+        "**실증자료가 아니다** — 임상 모듈을 열지 못하고, 피부 변화(효능) 주장은 거부된다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
     color_tone: str | None = Field(
