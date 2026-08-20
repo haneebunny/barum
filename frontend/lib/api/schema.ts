@@ -84,15 +84,7 @@ export const CheckReportSchema = z.object({
 });
 export type CheckReport = z.infer<typeof CheckReportSchema>;
 
-// GET /reports/{result_id} 응답 (다시 보기)
-export const ReportEnvelopeSchema = z.object({
-  result_id: z.string(),
-  created_at: z.string(),
-  region: RegionSchema,
-  image_available: z.boolean(),
-  report: CheckReportSchema,
-});
-export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;
+
 
 // POST /remediate 요청/응답
 export const RemediationRequestSchema = z.object({
@@ -314,3 +306,13 @@ export const USPreflightReportSchema = z.object({
   disclaimer: z.string(),
 });
 export type USPreflightReport = z.infer<typeof USPreflightReportSchema>;
+
+// GET /reports/{result_id} 응답 (다시 보기)
+export const ReportEnvelopeSchema = z.object({
+  result_id: z.string(),
+  created_at: z.string(),
+  region: RegionSchema,
+  image_available: z.boolean(),
+  report: z.union([CheckReportSchema, USPreflightReportSchema]),
+});
+export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;

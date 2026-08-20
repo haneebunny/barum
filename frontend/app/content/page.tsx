@@ -316,7 +316,7 @@ function ContentGeneratorContent() {
     if (!id) return;
     getReport(id)
       .then((envelope) => {
-        setReport(envelope.report);
+        setReport(envelope.report as CheckReport);
       })
       .catch((err) => {
         console.error("Failed to fetch report context, falling back to mock", err);

@@ -2,6 +2,32 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell/AppShell";
 import { ErrorProvider } from "@/lib/error/ErrorContext";
+import { JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+const d2coding = localFont({
+  src: [
+    {
+      path: "../public/fonts/D2Coding.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../public/fonts/D2Coding.woff",
+      weight: "400",
+      style: "normal",
+    }
+  ],
+  variable: "--font-d2coding",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "바름 | 화장품 광고 심의 사전검수 서비스",
@@ -22,25 +48,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   // suppressHydrationWarning: 위 스크립트가 하이드레이션 전에 data-theme를 바꿔서
   // 서버 마크업과 클라이언트 초기값이 다를 수 있다. html 한 곳만 억제한다.
   return (
-    <html lang="ko" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning className={`${jetbrainsMono.variable} ${d2coding.variable}`}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font -- app router라 _document 없음, 목업과 동일한 CDN 폰트 */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
         <link
           rel="stylesheet"
           as="style"
           crossOrigin="anonymous"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"
-        />
-        {/* --mono에 섞이는 한글용 고정폭 폴백. JetBrains Mono엔 한글 글리프가 없음 */}
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@kfonts/d2coding@0.2.0/index.min.css"
         />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
