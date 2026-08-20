@@ -51,11 +51,33 @@ def test_elasticity_with_wrinkle_claim_falls_through_to_vlm():
 
 
 def test_sensitive_alone_is_still_legal_allow():
-    """2호 클레임이 없으면 '민감'은 여전히 합법 확정(회귀 없음 확인)."""
-    m = match_rule("민감 피부도 안심하고 사용하는 저자극 솔루션")
+    """2호·5호 클레임이 전혀 없으면 '민감'은 여전히 합법 확정(회귀 없음 확인)."""
+    m = match_rule("민감 피부도 안심하고 사용하는 순한 크림")
     assert m is not None
     assert m.outcome == RuleOutcome.legal_allow
     assert m.span == "민감"
+
+
+def test_sensitive_with_low_irritation_claim_is_not_legal_allow():
+    """'저자극'이 같이 있으면 예외를 취소해 VLM 경로로 넘긴다.
+
+    정답셋 40·48·49번 실사례("민감 피부도 안심하고 사용하는 비건 저자극 솔루션"
+    등)가 5호(시험검사표현) 검토필요인데 '민감'의 legal_allow에 먼저 걸려
+    VLM에도 못 가고 증발했다(2026-08-19 정답셋 크로스탭 재확인, 스윕으로 확인).
+    2호 마커(미백 등)와 같은 취급 — '저자극' 자체를 위반 키워드로 쓰는 게
+    아니라, 민감/탄력/예민이 이미 매치된 문장에서만 예외를 취소한다(그래서
+    '저자극 딥클렌징'처럼 민감/탄력/예민이 없는 무관한 합법 문장은 안 건드린다).
+    """
+    assert match_rule("민감 피부도 안심하고 사용하는 비건 저자극 솔루션") is None
+
+
+def test_sensitive_with_completed_test_claim_is_not_legal_allow():
+    """'완료'가 같이 있으면(테스트/시험 완료류) 마찬가지로 예외를 취소한다.
+
+    정답셋 53번 실사례. '완료'는 이미 별도 needs_review 규칙의 판별자라(시험·
+    테스트 완료류), 민감/탄력/예민의 legal_allow가 그 판정 기회를 가로채면 안 된다.
+    """
+    assert match_rule("피부 자극 테스트를 완료한 세럼으로 민감한 피부에도 걱정없이 사용 가능합니다") is None
 
 
 def test_legal_allow_markers_cover_pack_synonyms():
@@ -82,7 +104,7 @@ def test_legal_allow_marker_covers_pigmentation():
 def test_uv_abbreviation_is_not_a_marker():
     """'UV'는 마커에 안 넣는다. 정답셋에서 인증기관 표기(Bureau Veritas ... 대상외)에
     부분일치했다 — 마커는 `_keyword_present`를 안 거쳐 영단어 경계 보호조차 없다."""
-    m = match_rule("탄력 케어 UV 인증 완료 제품")
+    m = match_rule("탄력 케어 UV 인증 제품")
     assert m is not None
     assert m.outcome == RuleOutcome.legal_allow
 
