@@ -37,6 +37,7 @@ from barum.reference.impersonation import check_impersonation
 from barum.reference.ingredients import match_ingredient_strict
 from barum.reference.layout_references import infer_product_type, select_references
 from barum.reference.pii import remove_pii
+from barum.reference.survey import is_efficacy_survey, survey_sentence
 
 _DISCLAIMER = (
     "생성된 콘텐츠는 참고용이며, 최종 표시·광고 책임은 사업자에게 있습니다. "
@@ -237,6 +238,29 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
 _CLAIM_CATEGORIES = ("미백", "주름개선", "자외선차단")
 
 
+def _usable_surveys(req: GenerateRequest) -> tuple[list, list[SkippedClaim]]:
+    """설문조사 입력 중 실제로 쓸 수 있는 것만 고른다.
+
+    피부 변화(효능)를 주장하는 설문은 뺀다. [별표2]가 효능·효과 주장의 실증 수단으로
+    인체적용시험·인체외시험만 인정하고 설문은 인정하지 않기 때문이다. 뺀 건 조용히
+    사라지지 않게 `skipped_claims`에 사유를 남긴다(인정문구·임상 모듈과 같은 원칙).
+    """
+    usable = []
+    skipped: list[SkippedClaim] = []
+    for survey in req.survey_evidence or []:
+        if is_efficacy_survey(survey.claim):
+            skipped.append(
+                SkippedClaim(
+                    category="설문조사",
+                    reason=f'"{survey.claim}"은 피부 변화(효능) 주장이라 설문조사로는 쓸 수 없습니다. '
+                    "효능·효과는 인체적용시험 등 실증자료라야 합니다(관리지침 [별표2] 2.).",
+                )
+            )
+            continue
+        usable.append(survey)
+    return usable, skipped
+
+
 def build_approved_claim_sections(req: GenerateRequest) -> tuple[list[Section], list[SkippedClaim]]:
     """인증서-인정문구 매칭으로 광고문구 섹션을 조립한다(create 모드).
 
@@ -321,6 +345,8 @@ def _generate_create_content(
     # 1. 광고문구: 인증서-인정문구 매칭(자유창작 없음)
     claim_sections, skipped = build_approved_claim_sections(req)
     evidence = req.clinical_evidence or []
+    surveys, survey_skipped = _usable_surveys(req)
+    skipped += survey_skipped
 
     # 2. 모듈 구성 계획 + 근거 없는 위험 모듈 제거
     product_type = infer_product_type(req.product_name)
@@ -347,6 +373,14 @@ def _generate_create_content(
         sections.append(
             Section(kind="실증자료", text=clinical_sections_text(evidence), source="clinical_evidence")
         )
+    if surveys:
+        sections.append(
+            Section(
+                kind="설문조사",
+                text=" / ".join(survey_sentence(s) for s in surveys),
+                source="survey_evidence",
+            )
+        )
     sections += generate_module_sections(req, safe_modules, vlm)
     if product_spec_planned:
         sections.append(build_product_spec_section(req))
@@ -357,8 +391,19 @@ def _generate_create_content(
     image_plan = build_image_plan(req, plan, image_generator, image_sink, photo_resolver)
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
-    # 7. 실증자료는 미검증이라 사용자 확인 항목으로 남긴다
+    # 7. 실증자료·설문조사는 미검증이라 사용자 확인 항목으로 남긴다
     disclaimer = _DISCLAIMER
+    for survey in surveys:
+        risks.append(
+            RiskConfirmation(
+                id=f"rc_survey_{surveys.index(survey)}",
+                text=survey_sentence(survey),
+                reason="사업자가 입력한 설문조사 결과입니다. barum은 진위를 검증하지 않습니다. "
+                "설문 결과는 실증자료가 아니므로 효능·효과의 근거로는 쓸 수 없습니다. "
+                "또한 조사기관·시기·표본을 밝혀도 수치형 설문 표현은 5호(거짓·과장) 검토필요로 "
+                "남습니다. 게시 전 원자료(조사방법·무작위성·질문 문항)를 준비하세요.",
+            )
+        )
     if evidence:
         risks.append(
             RiskConfirmation(
