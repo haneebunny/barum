@@ -523,7 +523,10 @@ function ContentGeneratorContent() {
   // 파인프린트(작은 글씨)로 다룰 섹션 종류. 라벨은 안 보여주되 타이포로는 구분한다.
   const isFinePrintKind = (kind: string) => kind.includes("caution") || kind.includes("주의");
 
-  const escapeAttr = (s: string) => s.replace(/'/g, "&#39;");
+  // data-swap="${escapeAttr(s.kind)}"는 큰따옴표 속성인데 '만 막고 있었다. s.kind는 고정
+  // 리터럴이 아니라 레이아웃 플래너 LLM 출력(layout.py plan_layout)에서 온 값도 있어서
+  // "가 안 걸러진 채로 올 수 있다(2026-08-20 PM8 지적, 조사로 확인). &·<·>·"·' 전부 이스케이프.
+  const escapeAttr = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
   const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
 
   // 문장 하나짜리 text를 헤드라인(첫 문장)+서브카피(나머지)로 휴리스틱 분리.
