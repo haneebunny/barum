@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getReport, generateContent, resolveImageUrl, uploadProductPhoto } from "@/lib/api/client";
-import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section } from "@/lib/api/schema";
+import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section, SurveyEvidence } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
@@ -97,6 +97,12 @@ function nextClinicalEvidenceId() {
   return `ce-${clinicalEvidenceSeq}`;
 }
 
+let surveyEvidenceSeq = 0;
+function nextSurveyEvidenceId() {
+  surveyEvidenceSeq += 1;
+  return `se-${surveyEvidenceSeq}`;
+}
+
 let ingredientAmountSeq = 0;
 function nextIngredientAmountId() {
   ingredientAmountSeq += 1;
@@ -170,6 +176,9 @@ function ContentGeneratorContent() {
   const [createCertifications, setCreateCertifications] = useState<Set<string>>(new Set());
   const [createClinicalEvidence, setCreateClinicalEvidence] = useState<
     Array<ClinicalEvidence & { id: string }>
+  >([]);
+  const [createSurveyEvidence, setCreateSurveyEvidence] = useState<
+    Array<SurveyEvidence & { id: string }>
   >([]);
   const [createNotes, setCreateNotes] = useState("");
   const [createColorTone, setCreateColorTone] = useState("");
@@ -258,6 +267,27 @@ function ContentGeneratorContent() {
   const removeClinicalEvidence = (id: string) => {
     setCreateClinicalEvidence((prev) => prev.filter((row) => row.id !== id));
   };
+
+  const addSurveyEvidence = () => {
+    setCreateSurveyEvidence((prev) => [
+      ...prev,
+      { id: nextSurveyEvidenceId(), claim: "", value: "", sample_size: "", institution: "", period: "", method: "" }
+    ]);
+  };
+  const updateSurveyEvidence = (
+    id: string,
+    field: "claim" | "value" | "sample_size" | "institution" | "period" | "method",
+    value: string
+  ) => {
+    setCreateSurveyEvidence((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+  const removeSurveyEvidence = (id: string) => {
+    setCreateSurveyEvidence((prev) => prev.filter((row) => row.id !== id));
+  };
+  const isSurveyEvidenceComplete = (row: SurveyEvidence) =>
+    !!(row.claim.trim() && row.value.trim() && row.sample_size.trim() && row.institution.trim() && row.period.trim() && row.method.trim());
 
   const buildOriginalContent = (reportData: CheckReport) => {
     const items: Array<{ sentence: string; order: number }> = [];
@@ -408,6 +438,18 @@ function ContentGeneratorContent() {
                   institution: institution || undefined,
                   period: period || undefined,
                   note: note || undefined,
+                }))
+            : undefined,
+          survey_evidence: createSurveyEvidence.some(isSurveyEvidenceComplete)
+            ? createSurveyEvidence
+                .filter(isSurveyEvidenceComplete)
+                .map(({ claim, value, sample_size, institution, period, method }) => ({
+                  claim,
+                  value,
+                  sample_size,
+                  institution,
+                  period,
+                  method,
                 }))
             : undefined,
           notes: createNotes || undefined,
@@ -1031,6 +1073,85 @@ function ContentGeneratorContent() {
                   <Plus size={12} weight="bold" /> 실증자료 추가
                 </button>
               </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (선택, 향·발림성·재구매의향 등 비효능 항목만 — 실증자료 아님)</p>
+              <div className="flex flex-col gap-2.5">
+                {createSurveyEvidence.map((row) => (
+                  <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={row.claim}
+                        onChange={(e) => updateSurveyEvidence(row.id, "claim", e.target.value)}
+                        placeholder="무엇에 대한 응답인지 · 필수 (예: 향에 만족)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={row.value}
+                        onChange={(e) => updateSurveyEvidence(row.id, "value", e.target.value)}
+                        placeholder="결과 수치 · 필수 (예: 96%)"
+                        className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSurveyEvidence(row.id)}
+                        aria-label="설문조사 삭제"
+                        className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                      >
+                        <Trash size={14} weight="bold" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={row.sample_size}
+                        onChange={(e) => updateSurveyEvidence(row.id, "sample_size", e.target.value)}
+                        placeholder="표본 수 · 필수 (예: 200명)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={row.institution}
+                        onChange={(e) => updateSurveyEvidence(row.id, "institution", e.target.value)}
+                        placeholder="조사기관명 · 필수"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={row.period}
+                        onChange={(e) => updateSurveyEvidence(row.id, "period", e.target.value)}
+                        placeholder="조사 시기 · 필수 (예: 2026년 3월)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={row.method}
+                        onChange={(e) => updateSurveyEvidence(row.id, "method", e.target.value)}
+                        placeholder="조사 방법 · 필수 (예: 온라인 자기기입식 설문)"
+                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                    </div>
+                    {!isSurveyEvidenceComplete(row) && (
+                      <p className="m-0 text-[11px] text-[var(--ink-3)]">6개 항목을 모두 채워야 사용돼요. 비어있으면 이 설문은 생성에서 빠져요.</p>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addSurveyEvidence}
+                  className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
+                >
+                  <Plus size={12} weight="bold" /> 설문조사 추가
+                </button>
+              </div>
+              <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">
+                피부 변화(효능) 주장은 설문으로 못 받쳐서 생성에서 빠지고 사유가 남아요. 6개 항목을 다 채워도 판정에서 자동으로 안전해지는 건 아니에요 — 검토 범위만 좁혀줘요.
+              </p>
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
