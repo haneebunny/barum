@@ -532,7 +532,18 @@ function ContentGeneratorContent() {
 
   // 문장 하나짜리 text를 헤드라인(첫 문장)+서브카피(나머지)로 휴리스틱 분리.
   // 백엔드가 headline/subcopy를 따로 안 줘서 쓰는 임시 방편(디디 B안 대기, 팀장·PM 확인).
+  //
+  // **줄바꿈을 마침표보다 먼저 본다.** 백엔드 프롬프트에 "첫 문장은 20자 이내"를 넣은 뒤
+  // LLM이 실제로 "칙칙함의 원인\n피부 표면의 각질 축적과..." 처럼 줄바꿈으로 헤드라인을
+  // 분리해서 준다. 그런데 마침표만 경계로 보면 줄바꿈을 무시하고 첫 마침표까지 통째로
+  // 잘라서 65자짜리 "헤드라인"이 나온다(2026-08-20 실측). LLM은 이미 우리가 원하는
+  // 구조를 만들어주는데 이쪽이 못 받던 것이다.
   const splitHeadline = (text: string): { headline: string; subcopy: string } => {
+    const newline = text.match(/^([^\n]+)\n([\s\S]*)$/);
+    if (newline) {
+      const [, headline, subcopy] = newline;
+      return { headline: headline.trim(), subcopy: subcopy.trim() };
+    }
     const match = text.match(/^([\s\S]+?[.!?])\s*([\s\S]*)$/);
     if (!match) return { headline: text, subcopy: "" };
     const [, headline, subcopy] = match;

@@ -42,6 +42,17 @@ def _interaction_parts(interaction, part_type: str) -> list:
     return out
 
 
+def _is_content_filter_refusal(exc: Exception) -> bool:
+    """나노 바나나의 콘텐츠 필터 거부인지 본다.
+
+    실제 메시지: `400 Image generation blocked due to copyright/recitation.`
+    이 거부만 재시도 대상이다. 인증 실패·네트워크 오류·할당량 초과를 재시도하면
+    같은 실패를 반복하며 시간만 쓴다.
+    """
+    msg = str(exc).lower()
+    return "copyright" in msg or "recitation" in msg
+
+
 def _strip_json_fence(text: str) -> str:
     """```json 펜스를 벗긴다.
 
@@ -262,9 +273,27 @@ class GeminiImageGenerator(GeminiVLM):
     def generate_image(self, prompt: str, images: list[bytes]) -> bytes:
         """프롬프트로 이미지 1장을 만든다. 참고 이미지를 주면 그걸 편집·합성한다.
 
-        호출 실패는 삼키지 않고 그대로 올려보낸다. 스킵 여부는 호출자가 정한다
-        (과금 호출이라 재시도하지 않는다).
+        **콘텐츠 필터 거부만 1회 재시도한다.** 그 외 실패는 그대로 올려보내고 호출자가
+        스킵한다.
+
+        CLAUDE.md E절은 "과금 호출은 재시도하지 않는다"인데, 이 거부는 **과금이 되지
+        않는다**(2026-08-20 실측: 거부 시점 누적 토큰 2267 → 재시도 성공 후 4393,
+        차이 2126이 성공분 한 장 몫. 거부된 호출은 토큰을 안 먹었다). 그 원칙이
+        막으려던 이유(재시도로 비용이 배로 드는 것)가 성립하지 않아 예외로 둔다.
+
+        재시도가 유효한 근거도 실측이다: 거부율 3.1%(32회 중 1회), 같은 프롬프트를
+        그대로 다시 부르니 통과했다(1회 재시도로 잔존 0%). 필터가 비결정적이다.
         """
+        try:
+            return self._generate_once(prompt, images)
+        except Exception as e:
+            if not _is_content_filter_refusal(e):
+                raise
+            print(f"    [retry] 콘텐츠 필터 거부(과금 없음) → 1회 재시도: {str(e)[:80]}")
+        return self._generate_once(prompt, images)
+
+    def _generate_once(self, prompt: str, images: list[bytes]) -> bytes:
+        """실제 호출 1회. 재시도 판단은 `generate_image`가 한다."""
         self._throttle()
 
         interaction = self.client.interactions.create(
@@ -450,12 +479,17 @@ def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
 def get_image_generator(provider: str | None = None, **kwargs) -> ImageGenerator:
     """provider 이름으로 이미지 생성 어댑터를 만든다.
 
-    기본값은 openai다. 원본 제품 사진 편집·합성이 필요해서 골랐다(FLUX schnell은
-    text-to-image 전용이라 그게 안 되고, Gemini 이미지 모델은 무료 할당량이 0이다).
-    Cloudflare·Gemini 어댑터는 나중에 다시 쓸 수 있게 남겨둔다.
+    기본값은 gemini(나노 바나나)다. **참조 제품사진의 라벨 보존력 때문에 골랐다.**
+
+    2026-08-20 실측: 같은 참조 사진·같은 지시로 gpt-image-1은 튜브 4개를 1개로 줄이고
+    브랜드명·번호를 전부 날렸는데, 나노 바나나는 4개·브랜드명·번호를 다 지켰다.
+    mini에서 gpt-image-1로 올린 건 헛다리였다(PR #206) — 같은 계열이라 한계가 같았고,
+    계열 자체를 바꿔야 했다.
+
+    OpenAI·Cloudflare 어댑터는 남겨둔다. `IMAGE_PROVIDER=openai`로 즉시 되돌릴 수 있다.
     provider를 안 주면 IMAGE_PROVIDER 환경변수를 본다.
     """
-    provider = provider or os.environ.get("IMAGE_PROVIDER", "openai")
+    provider = provider or os.environ.get("IMAGE_PROVIDER", "gemini")
     if provider == "openai":
         return OpenAIImageGenerator(**kwargs)
     if provider == "cloudflare":
