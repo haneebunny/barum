@@ -1012,7 +1012,7 @@ function ContentGeneratorContent() {
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (선택, 임상 수치 모듈에만 필요 — barum은 진위를 검증하지 않습니다)</p>
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (선택, 임상 수치 모듈에만 필요. barum은 진위를 검증하지 않습니다)</p>
               <div className="flex flex-col gap-2.5">
                 {createClinicalEvidence.map((row) => (
                   <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
@@ -1357,7 +1357,7 @@ function ContentGeneratorContent() {
                     <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
                       <X size={13} weight="bold" className="shrink-0 mt-0.5" />
                       <span>
-                        <b className="text-[var(--ink-2)] font-semibold">{s.category}</b> — {s.reason}
+                        <b className="text-[var(--ink-2)] font-semibold">{s.category}</b>: {s.reason}
                       </span>
                     </li>
                   ))}
