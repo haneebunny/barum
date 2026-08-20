@@ -29,7 +29,12 @@ from barum.reference.ingredients import (
     match_ingredient,
 )
 from barum.reference.mapping import legal_basis_for, legal_basis_text_for
-from barum.reference.rules import RuleOutcome, has_functional_claim, match_rule
+from barum.reference.rules import (
+    RuleOutcome,
+    has_exaggeration,
+    has_functional_claim,
+    match_rule,
+)
 from barum.vlm import VLM
 
 
@@ -206,22 +211,31 @@ def _functional_evidence(
     sentence: str,
     ingredients: list[str] | None,
     ingredient_amounts: list[tuple[str, str]] | None = None,
-) -> tuple[str | None, JudgmentFlag]:
+) -> tuple[str | None, JudgmentFlag | None]:
     """2호(기능성오인) finding의 근거를 성분표로 확인해 (안내문, 플래그)를 낸다.
 
     VLM은 '미백/주름/자외선차단을 표방했다'까지만 판정하고, 실제 전성분에 그
     기능의 고시원료가 있는지, 함량이 기준을 채우는지는 모른다. 이건 정확 조회
     문제라 여기서 결정론적으로 확인한다(functional_ingredients.md "판정에 쓰는
-    법"의 코드화). 이름·함량이 다 맞아도 "합법"까지는 못 간다 — 그 제품이 실제
-    기능성 심사·보고 등록을 받았는지는 우리 입력에 없어서 여전히 모른다. 이름+함량은
-    "위반이 아닐 가능성"의 근거일 뿐, "합법"을 확정하는 근거가 아니다.
+    법"의 코드화).
+
+    **플래그가 None이면 "합법 확정, finding을 만들지 마라"는 뜻이다**(호출부가 건너뛴다).
 
     - 전성분 미입력/카테고리 불명 → 대조 근거 자체가 없다 → 검토필요.
     - 고시원료 없음 → 표방한 기능의 근거가 없다는 확증 → 위반.
-    - 고시원료 있음 + 함량 미입력 → 이름만으론 등록 여부까지 단정 못 함 → 검토필요.
+    - 고시원료 있음 + 함량 미입력 → 이름만으론 기준충족을 못 봄 → 검토필요.
     - 고시원료 있음 + 함량 기준 미달 → 정식 심사 대상인데 안 밟았다는 근거 → 위반.
-    - 고시원료 있음 + 함량 기준 충족 → 등록 여부는 여전히 불명 → 검토필요(안내문에
-      "등록 확인되면 합법 전환 가능" 명시).
+    - 고시원료 있음 + 함량 기준 충족 → **합법(None)**.
+
+    마지막 분기는 2026-08-20에 검토필요에서 합법으로 바꿨다(팀장 결정). 그 전 논리는
+    "이름+함량이 맞아도 실제 심사·보고 등록 여부를 모르니 합법까진 못 간다"였는데,
+    그 기준이면 **완전히 정상적인 기능성화장품 광고도 영원히 검토필요를 벗어날 수 없다**.
+    등록 여부는 우리 입력에 애초에 없는 정보라 아무리 갖춰도 해소가 안 되기 때문이다.
+    실제로 식약처 인정문구("피부의 미백에 도움을 준다.", 고시 제2023-61호 별표4)까지
+    플래그가 붙고 있었다(2026-08-20 실측, 3회 반복 편차 없음).
+    전성분·함량이라는 확인 가능한 근거가 다 맞으면 합법으로 보고, 확인이 안 되면
+    검토필요로 남긴다 — 판단 기준을 "우리가 볼 수 있는 것"에 맞춘 것이다.
+    (상세: docs/result/2026-08-20_판정로직_고도화_로그.md ⑦·⑧)
     """
     if not ingredients:
         return "(전성분 미입력, 성분 정합 확인 못 함)", JudgmentFlag.needs_review
@@ -241,8 +255,19 @@ def _functional_evidence(
     if not check_amount_threshold(category, row, given_amount):
         note = f"(전성분 대조: {row['성분명']} 확인됐으나 함량 {given_amount}이 고시 기준({기준}) 미달, 정식 심사 대상인데 안 밟은 것으로 보여 위반 소지 큼)"
         return note, JudgmentFlag.violation
-    note = f"(전성분 대조: {row['성분명']} {given_amount} 확인됨, 고시 기준({기준}) 충족. 다만 실제 기능성 심사·보고 등록 여부는 확인 불가라 검토필요로 유지, 등록 확인되면 합법 전환 가능)"
-    return note, JudgmentFlag.needs_review
+    # 확인 가능한 근거(고시원료 + 기준함량)가 다 맞았다 → 합법. 단, 같은 문장에 과장
+    # 표현이 섞여 있으면 강등하지 않는다. 한 문장에 라벨이 하나뿐이라 여기서 합법으로
+    # 내리면 그 과장이 통째로 빠지기 때문이다 — "단 3일만에 완벽하게 미백되는 기적의
+    # 크림"이 성분만 맞으면 미플래그로 나오던 것을 실측으로 확인했다(3회 반복, 편차
+    # 없음). `approved_efficacy_statements.md` 4항도 "인정문구를 벗어난 과장 표현이
+    # 붙으면 별개로 T5 판정 가능"이라 성분 정합과 과장은 따로 봐야 한다.
+    if has_exaggeration(sentence):
+        note = (
+            f"(전성분 대조: {row['성분명']} {given_amount} 확인됨, 고시 기준({기준}) 충족. "
+            f"다만 같은 문장에 절대적·과장 표현이 있어 그 부분은 별도 확인 필요)"
+        )
+        return note, JudgmentFlag.needs_review
+    return None, None
 
 
 class PromptJudge:
@@ -339,6 +364,9 @@ class PromptJudge:
                     # 2호는 성분 정합이라는 실제 근거 대조 수단이 있다. 모델의 자기
                     # 판단보다 대조 결과를 우선한다.
                     note, flag = _functional_evidence(s["text"], ingredients, ingredient_amounts)
+                    if flag is None:
+                        # 고시원료·기준함량이 다 맞음 = 합법 확정. finding을 안 만든다.
+                        continue
                     if note:
                         explanation = f"{explanation} {note}"
                 result.findings.append(

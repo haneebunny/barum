@@ -21,12 +21,19 @@ _BACKEND = Path(__file__).resolve().parents[3]
 _REF_DIR = _BACKEND.parent / "reference" / "cosmetic_kr"
 
 # 규정·판정기준 문서(정본 md). 순서 = 프롬프트에 붙는 순서. 실사례(cases.md)는 별도.
+# `approved_efficacy_statements.md`는 2026-08-20에 추가했다. 그 전까지 이 목록은 전부
+# "무엇이 위반인가" 문서였고 **"무엇이 합법인가"를 알려주는 문서가 하나도 없었다.**
+# 그 결과 식약처 인정문구("피부의 미백에 도움을 준다." 등 고시 제2023-61호 별표4)를
+# 3개 다 2호 위반으로 찍었다(3회 반복 실측, 편차 없음). 법이 "이렇게 쓰라"고 정해준
+# 문구를 의심스럽다고 판정하던 셈이다. 근거가 금지 쪽으로만 쏠려 있으면 모델 판단도
+# 계통적으로 플래그 쪽으로 쏠린다(docs/result/2026-08-20_판정로직_고도화_로그.md ⑦).
 _REGULATION_FILES: tuple[str, ...] = (
     "prohibited_expressions.md",
     "violation_types/type_1_drug_misperception.md",
     "violation_types/type_2_functional_misperception.md",
     "violation_types/type_5_deception.md",
     "functional_ingredients.md",
+    "approved_efficacy_statements.md",
 )
 # 실사례. Phase1은 통째로, Phase3은 pgvector 검색 top-K로 대체한다.
 _CASES_FILE = "cases.md"
