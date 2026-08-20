@@ -1152,6 +1152,11 @@ function ContentGeneratorContent() {
             {mode === "create" && !createProductName.trim() && (
               <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
             )}
+            {mode === "create" && createCertifications.size === 0 && createClinicalEvidence.length === 0 && (
+              <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[52ch]">
+                인증서·실증자료가 없으면 효능을 주장하는 문단은 만들지 않아요. 도입부를 포함해 일부 구성이 빠질 수 있어요.
+              </p>
+            )}
             {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
               <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
             )}
