@@ -505,7 +505,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] ${
+              nViol > 0
+                ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+                : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
+            }`}
+          >
             <Warning size={14} weight="bold" />
             위반 <span className="font-mono">{nViol}</span> 건
           </span>
