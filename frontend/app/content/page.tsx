@@ -595,7 +595,7 @@ function ContentGeneratorContent() {
         const { headline, subcopy } = splitHeadline(s.text);
         return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${productName}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
     </div>
     ${aiImageCaption}`;
       }
@@ -683,13 +683,6 @@ function ContentGeneratorContent() {
       : "";
 
     const styleTag = `<style>
-    @font-face {
-      font-family: "Cafe24Ssurround";
-      src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2105_2@1.0/Cafe24Ssurround.woff") format("woff");
-      font-weight: normal;
-      font-style: normal;
-      font-display: swap;
-    }
     :root {
       --dp-surface: #FAF9F6;
       --dp-surface-sub: #F1EFEA;
@@ -709,7 +702,7 @@ function ContentGeneratorContent() {
        (순백 이미지)에서도 흰 글자 대비 5.74:1로 WCAG AA 본문 기준(4.5:1)을 넘는다(DESIGN.md §3.1). */
     .dp-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.34) 34%, rgba(0,0,0,0) 68%); pointer-events: none; }
     .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
-    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; color: #ffffff; margin: 0 0 7px; }
+    .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.4; color: #ffffff; margin: 0 0 7px; }
     .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
@@ -720,11 +713,11 @@ function ContentGeneratorContent() {
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
     .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
-    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
-    .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-size: 13px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
     .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
     .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
-    .dp-statement .dp-headline { font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; }
+    .dp-statement .dp-headline { font-size: 20px; }
     .dp-split { display: flex; align-items: stretch; gap: 0; }
     .dp-split-right { flex-direction: row-reverse; }
     .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
@@ -762,7 +755,7 @@ function ContentGeneratorContent() {
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>${displayProductName} 상세페이지 초안</title>
+  <title>${escapeHtml(displayProductName)} 상세페이지 초안</title>
   <!--
     barum이 만든 상세페이지 초안입니다.
     - 이미지를 판매자 본인 사진으로 바꾸려면: 아래 "이미지 교체" 주석이 붙은 <div data-swap="..."> 블록을 찾아
