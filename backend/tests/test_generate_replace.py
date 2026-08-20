@@ -268,3 +268,38 @@ def test_prompt_tells_llm_to_keep_numbers():
     build_replacements(findings, rewriter=rewriter)
     prompt = rewriter.prompts[0]
     assert "수치" in prompt and "지우지" in prompt
+
+
+def test_llm_rewrite_applied_to_content_does_not_corrupt_the_sentence():
+    """다시 쓴 문장을 실제로 적용했을 때 원문이 깨지지 않는다.
+
+    2026-08-20 도도3 리뷰에서 잡힌 버그. LLM은 문장 전체를 다시 쓰는데
+    `Replacement.original`이 span(단어 하나)으로 남아 있어서, 치환하면 단어 자리에
+    문장이 통째로 박혔다.
+
+        전: 피부 깊숙이, 세포재생의 시작
+        후: 피부 깊숙이, 세포피부에 생기를 더해 ... 줍니다의 시작
+
+    **고치려던 문제를 더 심하게 만든 상태였다.** build_replacements 출력만 보는
+    테스트로는 안 잡힌다. apply_replacements까지 태워야 드러난다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부에 생기를 더해 건강해 보이는 피부로 가꿔 줍니다"}]}
+    )
+    content = "피부 깊숙이, 세포재생의 시작"
+    findings = [_finding("재생", content, ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    out = apply_replacements(content, reps)
+
+    assert out == "피부에 생기를 더해 건강해 보이는 피부로 가꿔 줍니다", f"문장이 깨졌다: {out!r}"
+    assert "세포피부에" not in out
+
+
+def test_condition_table_path_still_replaces_only_the_span():
+    """조건표 경로는 기존대로 span만 갈아끼운다(하위호환)."""
+    content = "아토피 완화에 좋은 순한 크림"
+    findings = [_finding("아토피", content, ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings)  # rewriter 없음
+    assert reps[0].original == "아토피"
+    out = apply_replacements(content, reps)
+    assert out.endswith("완화에 좋은 순한 크림")

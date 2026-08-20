@@ -167,7 +167,13 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
             continue
         reps.append(
             Replacement(
-                original=e["span"],
+                # **치환 단위는 경로마다 다르다.** LLM은 문장 전체를 다시 쓰므로
+                # 갈아끼울 대상도 문장이어야 한다. span(단어 하나)으로 두면
+                # 그 자리에 문장이 통째로 박혀 원문이 깨진다(2026-08-20 도도3 리뷰).
+                #   '피부 깊숙이, 세포재생의 시작'
+                #     -> '피부 깊숙이, 세포<문장 전체>의 시작'
+                # 조건표 경로는 단어 대 단어라 span 그대로 둔다.
+                original=e["sentence"] if e["index"] in rewritten else e["span"],
                 replaced=text,
                 violation_type=e["finding"].violation_type,
                 basis=_BASIS_LLM if e["index"] in rewritten else _BASIS,
