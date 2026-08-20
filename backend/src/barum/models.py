@@ -113,6 +113,11 @@ class Summary(BaseModel):
     n_violation: int = 0  # flag=위반 건수
     n_needs_review: int = 0  # flag=검토필요 건수
     n_unjudged: int = 0  # 판정 실패로 미판정된 문장 수(검토필요와 다른 개념)
+    # OCR이 못 읽은 타일 수. 0이 아니면 **이 리포트는 이미지 일부를 못 본 상태**다.
+    # 이게 없으면 "읽었는데 문제없음"과 "아무것도 못 읽음"이 응답에서 구분되지 않아,
+    # 실패가 깨끗한 결과처럼 보인다(2026-08-20 시연 점검에서 실제로 관측: OCR이 깨진
+    # JSON을 뱉어 문장 0개·finding 0개가 나왔는데 응답에는 아무 흔적이 없었다).
+    n_ocr_failed_tiles: int = 0
     counts_by_type: dict[str, int] = Field(default_factory=dict)  # 위반유형별 건수
     product_out_of_scope: bool = False  # True면 화장품법 적용 대상 아님(도구·부자재 등), 문장 판정 자체를 안 함
     out_of_scope_reason: str | None = None  # 대상외로 걸린 키워드. 화면에 사유 표시용

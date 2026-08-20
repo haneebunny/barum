@@ -330,3 +330,29 @@ def test_attach_bands_converts_bbox_to_source_coords():
     assert res[1]["y_start"] == 500
     assert res[1]["y_end"] == 1500
 
+
+
+def test_ocr_실패_타일_수가_리포트에_실린다(monkeypatch):
+    """실패가 응답에 안 실리면 "아무것도 못 읽음"이 "문제없음"과 구분되지 않는다.
+
+    2026-08-20 시연 점검에서 실제로 관측했다. OCR이 깨진 JSON을 뱉어 문장 0개·
+    finding 0건이 나왔는데 응답에는 아무 흔적이 없어, 위반이 있는 광고가 깨끗하게
+    통과한 것처럼 보였다.
+    """
+    from barum import pipeline as pl
+
+    monkeypatch.setattr(pl, "_ocr_image", lambda *a, **k: ([], 2))
+    monkeypatch.setattr(pl, "check_product_scope", lambda _s: (True, None))
+
+    report = pl.run_check("KR", None, b"fake-image", "x.png", vlm=None, judge=StubJudge())
+
+    assert report.summary.n_ocr_failed_tiles == 2
+    assert report.summary.n_sentences == 0
+
+
+def test_글만_검사하면_ocr_실패는_0이다():
+    """이미지가 없으면 OCR을 아예 안 한다. 카운터가 안 잡히면 여기서 NameError가 난다."""
+    from barum import pipeline as pl
+
+    report = pl.run_check("KR", "수분 공급에 도움을 줍니다", None, None, vlm=None, judge=StubJudge())
+    assert report.summary.n_ocr_failed_tiles == 0
