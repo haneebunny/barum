@@ -16,6 +16,8 @@
 안 된다.** 조건표에서 배운 그대로다. LLM이 낸 문구도 규칙집을 다시 통과시킨다.
 """
 
+import re
+
 from barum.models import Finding, Replacement, ViolationType
 from barum.reference.remediation import get_remediation
 from barum.reference.rules import RuleOutcome, match_rule
@@ -26,6 +28,13 @@ _BASIS_LLM = "합법 표기 틀(조건표) + 문장 다듬기"
 # 대체표현이 실증대상 표현일 때 붙인다. 팩 §3에 실린 표현은 자료가 있으면 쓸 수 있고
 # 없으면 못 쓴다. 그 구분을 안 알려주면 사용자는 위반을 벗어난 줄 안다.
 _EVIDENCE_NOTE = "이 표현은 실증자료가 있어야 쓸 수 있습니다. 자료가 없으면 검토필요로 남습니다."
+# 수치가 들어간 제안은 그 수치의 근거를 요구한다. 수치를 지우는 대신 자료를 받는 쪽이
+# 사업자에게 유리하다(2026-08-20 팀장 지시).
+_EVIDENCE_NOTE_WITH_NUMBER = (
+    "제안에 포함된 수치는 실증자료가 있어야 쓸 수 있습니다. "
+    "인체적용시험 결과나 시험성적서를 함께 등록해 주세요."
+)
+_NUMBER_PATTERN = re.compile(r"\d")
 
 
 def _first_safe(suggestions: list[str]) -> str | None:
@@ -49,8 +58,15 @@ def _first_safe(suggestions: list[str]) -> str | None:
     return fallback
 
 
-def _note_for(text: str) -> str | None:
-    """대체표현이 실증대상이면 고지 문구를, 아니면 None을 낸다."""
+def _note_for(text: str, original: str = "") -> str | None:
+    """대체표현에 붙일 고지 문구. 없으면 None.
+
+    수치가 살아 있으면 그 수치의 근거를 요구한다. **수치를 지우는 대신 자료를 받는다.**
+    사업자가 실제로 측정한 값일 수 있고, 실증자료가 있으면 쓸 수 있는 표현이라
+    임의로 빼면 사업자가 가진 근거를 우리가 없애는 셈이 된다.
+    """
+    if _NUMBER_PATTERN.search(original) and _NUMBER_PATTERN.search(text):
+        return _EVIDENCE_NOTE_WITH_NUMBER
     m = match_rule(text)
     if m is not None and m.outcome is RuleOutcome.needs_review:
         return _EVIDENCE_NOTE
@@ -82,6 +98,11 @@ _REWRITE_PROMPT = """너는 화장품 광고 문구를 화장품법에 맞게 �
 - 참고 표현(reference)이 있으면 방향으로 삼되 그대로 넣을 필요는 없다
 - 의학적 효능(치료·재생·항염 등), 기능성 심사 대상 표현(미백·주름개선·자외선차단),
   절대적 표현(완벽·최고·100%)을 새로 넣지 마라
+- **원문에 있는 수치는 지우지 마라.** "38% 증가", "4주 사용", "1000ppm" 같은 값은
+  사업자가 실제로 측정한 것일 수 있고, 실증자료가 있으면 쓸 수 있다. 임의로 빼면
+  사업자가 가진 근거를 우리가 없애는 셈이다. 수치는 그대로 두고 표현만 다듬어라
+  (예: "임상 시험 결과 4주 사용 시 콜라겐 밀도 38% 증가" →
+        "4주 사용 시 콜라겐 밀도 38% 증가 (인체적용시험 결과)")
 
 항목:
 {items}
@@ -150,7 +171,7 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
                 replaced=text,
                 violation_type=e["finding"].violation_type,
                 basis=_BASIS_LLM if e["index"] in rewritten else _BASIS,
-                note=_note_for(text),
+                note=_note_for(text, e["span"]),
             )
         )
     return reps

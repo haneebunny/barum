@@ -235,3 +235,36 @@ def test_replacement_carries_evidence_note_for_needs_review_suggestion():
     assert len(reps) == 1
     assert reps[0].note, "실증자료 고지가 비어 있다"
     assert "실증" in reps[0].note
+
+
+def test_evidence_number_is_kept_and_user_is_asked_for_substantiation():
+    """실증 수치는 빼지 않고, 실증자료를 넣으라고 권한다.
+
+    2026-08-20 팀장 지시: "그런건 사용자에게 실증자료를 넣으라고 권하자."
+    LLM이 '콜라겐 밀도 38% 증가'에서 38%를 통째로 빼버렸다. 안전하긴 한데
+    광고주에게는 그 숫자가 핵심이고, 실증자료가 있으면 쓸 수 있는 값이다.
+    지우는 게 아니라 자료를 붙이라고 안내하는 게 맞다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "4주 사용 시 콜라겐 밀도 38% 증가 (인체적용시험 결과)"}]}
+    )
+    findings = [
+        _finding(
+            "콜라겐 밀도 38% 증가 (4주 사용시)",
+            "임상 시험 결과 4주 사용 시 콜라겐 밀도 38% 증가.",
+            ViolationType.type_1_drug_misperception,
+        )
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert "38%" in reps[0].replaced, "실증 수치가 사라졌다"
+    assert reps[0].note and "실증자료" in reps[0].note
+
+
+def test_prompt_tells_llm_to_keep_numbers():
+    """프롬프트가 LLM에게 수치를 지우지 말라고 지시하는지."""
+    rewriter = _FakeRewriter({"items": []})
+    findings = [_finding("38% 증가", "콜라겐 밀도 38% 증가", ViolationType.type_1_drug_misperception)]
+    build_replacements(findings, rewriter=rewriter)
+    prompt = rewriter.prompts[0]
+    assert "수치" in prompt and "지우지" in prompt
