@@ -108,7 +108,7 @@ VARIANTS = {"A": VARIANT_A, "B": VARIANT_B, "C": VARIANT_C, "D": VARIANT_D}
 
 # 채택안(C)이 운영 코드와 같은지 확인한다. 프롬프트를 손보면서 여기 값이 어긋나면
 # "측정한 것과 배포된 것이 다른" 상태가 되는데, 그건 실행해 봐도 안 보인다.
-ADOPTED = "C"
+ADOPTED = "D"
 
 PROBE = ROOT / "tests" / "fixtures" / "prescreen_probe.json"
 HOLDOUT = ROOT / "data" / "prompt_holdout.jsonl"
