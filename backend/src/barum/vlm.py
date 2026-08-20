@@ -315,8 +315,12 @@ class OpenAIImageGenerator:
     참고 이미지가 없으면 images.generate, 있으면 images.edit로 자동 분기한다.
 
     **비용이 실제로 청구된다.** Gemini는 결제가 꺼져 있어 탐침이 무료였지만 이쪽은
-    아니다. 그래서 기본값을 최저가 조합(mini/low/1024x1024, 장당 $0.005)으로 둔다.
-    시연용 최소 사용이 전제다(하니·PM 확정).
+    아니다. 시연용 최소 사용이 전제다(하니·PM 확정).
+
+    기본 모델은 `gpt-image-1`(low, 1024x1024, 장당 $0.011). mini(장당 $0.005)에서
+    올라온 이유는 가격이 아니라 품질: mini는 `images.edit` 합성에서 참조 이미지의
+    라벨·형태를 못 지켜서(barum-photo-composite-fidelity-issue) 상위 모델로
+    재검증하기로 함(2026-08-20, 팀장·PM 확정).
     """
 
     # 문서 기준 1024x1024 장당 단가(2026-08-18 확인). 비용 로그·상한 계산에 쓴다.
@@ -338,7 +342,7 @@ class OpenAIImageGenerator:
         from openai import OpenAI
 
         load_dotenv()
-        self.model = model or os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1-mini")
+        self.model = model or os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1")
         self.quality = quality or os.environ.get("OPENAI_IMAGE_QUALITY", "low")
         self.size = size or os.environ.get("OPENAI_IMAGE_SIZE", "1024x1024")
         key = api_key or os.environ.get("OPENAI_API_KEY")
