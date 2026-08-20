@@ -16,7 +16,7 @@
 제품을 유지하며 그 주위만 합성하므로 가짜 라벨 문제가 없다.
 """
 
-from barum.models import GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
+from barum.models import CanvasBackground, GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
 from barum.reference.impersonation import check_impersonation
 
 # 한 요청에 만들 이미지 수 상한. 과금 호출이라 모듈이 12개여도 다 만들지 않는다.
@@ -280,6 +280,82 @@ def _user_controlled_text(module: LayoutModule, req: GenerateRequest) -> str:
     컬러톤·분위기도 인터뷰 자유서술이라 검사 대상에 넣었다(2026-08-19 추가).
     """
     return f"{req.product_name or ''} {module.purpose or ''} {req.color_tone or ''} {req.mood or ''}"
+
+
+_CANVAS_PROMPT = """화장품 상세페이지 **전체 배경**으로 쓸 세로로 아주 긴 이미지를 만들어라.
+
+# 최우선 규칙: 이 이미지에는 글자가 단 하나도 없어야 한다
+읽을 수 있는 문자를 어떤 형태로도 그리지 마라. 한글·영문·숫자·로고·워터마크 전부
+포함이다. 아래에 제품명이 적혀 있지만 그건 **무엇을 그릴지 알려주는 정보일 뿐,
+화면에 쓰라는 뜻이 아니다.** 완성된 이미지는 글자가 없는 순수한 사진이어야 한다.
+
+제품 종류: {product_name}{product_type_line}
+
+**전체 컬러톤·분위기: {tone}**
+
+구성:
+- **세로로 아주 긴 비율**(폭보다 세로가 3배 이상)로 그려라.
+- 위에서 아래로 장면이 자연스럽게 이어지되, 구간마다 다른 소재가 보이게 하라.
+  위쪽은 넓은 공간감, 가운데는 제형 질감({hint}), 아래쪽은 차분한 정물 연출.
+- 전체가 하나의 톤으로 이어져야 한다. 구간마다 색감이 튀면 안 된다.
+- **선명하고 또렷하게 그려라.** 뿌옇거나 과도한 소프트포커스는 쓰지 마라.
+
+절대 넣지 말 것:
+- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다.
+- 글자·문구·숫자·로고·라벨을 넣지 마라(위 최우선 규칙 재확인).
+- **사람 얼굴은 어떤 형태로도 넣지 마라**(원거리·실루엣도 금지).
+- 의사·약사·전문가를 연상시키는 인물이나 소품을 넣지 마라.
+- 시험 결과 그래프나 차트를 만들지 마라.
+
+이 배경 위에 문구·표·모듈 이미지가 얹힌다. **곳곳에 비교적 비어 있는 구간을
+남겨라.** 그 빈 자리는 끝까지 비어 있어야 하고, 거기에 무언가를 채워 넣지 마라."""
+
+
+def build_canvas_prompt(req: GenerateRequest, product_type: str | None) -> str:
+    """긴 배경 이미지 하나의 프롬프트를 만든다.
+
+    모듈 이미지와 같은 톤 문구(_resolve_tone)를 쓴다. 배경과 그 위에 얹히는
+    이미지들이 같은 아트 디렉션을 받아야 한 페이지로 읽힌다.
+    """
+    return _CANVAS_PROMPT.format(
+        product_name=req.product_name or "화장품",
+        product_type_line=f" ({product_type})" if product_type else "",
+        tone=_resolve_tone(req, product_type),
+        hint=_texture_hint(product_type),
+    )
+
+
+def generate_canvas_background(
+    req: GenerateRequest, product_type: str | None, generator
+) -> tuple[CanvasBackground | None, bytes | None]:
+    """긴 배경 이미지 1장을 만든다(레이어 구조 1단계).
+
+    **모듈 이미지를 대신하지 않는다.** 배경 1장 위에 모듈 이미지·표·문구가 얹히는
+    구조라 둘 다 필요하다(팀장 확정, 2026-08-20). 그래서 이미지가 한 장 늘고 과금도
+    는다 — 조용히 비용을 올리지 않게 `req.image_generation.canvas_requested`로
+    옵트인을 받는다.
+
+    실제 배치(어느 모듈이 배경의 몇 % 지점에 앉는지)는 **2단계**에서 정한다. 프론트
+    렌더 구조가 바뀌는 일이라 디자이너·프론트와 같이 잡아야 한다. 여기서는 배경만
+    만들어 두고, 배치 정보를 실을 자리는 `CanvasBackground.placements`로 비워 둔다.
+
+    과금 호출이라 실패해도 재시도하지 않고 사유만 남긴다(나머지 생성은 계속되게).
+    """
+    if generator is None:
+        return None, None
+    prompt = build_canvas_prompt(req, product_type)
+    allowed, deny_reason = check_impersonation(
+        f"{req.product_name or ''} {req.color_tone or ''} {req.mood or ''}"
+    )
+    if not allowed:
+        return CanvasBackground(status="skipped", reason=deny_reason), None
+    try:
+        blob = generator.generate_image(prompt, [])
+    except Exception as e:
+        reason = f"긴 배경 이미지 생성 실패: {type(e).__name__}"
+        print(f"    [skip] {reason}: {e}")
+        return CanvasBackground(status="skipped", reason=reason), None
+    return CanvasBackground(status="generated"), blob
 
 
 def generate_module_images(

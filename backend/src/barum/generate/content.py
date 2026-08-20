@@ -7,7 +7,7 @@ create: 원본 없이 인증서-인정문구 매칭으로 광고문구 조립(�
 judge·vlm을 주입받아 유닛테스트는 오프라인.
 """
 
-from barum.generate.images import generate_module_images
+from barum.generate.images import generate_canvas_background, generate_module_images
 from barum.generate.layout import (
     PRODUCT_SPEC_KIND,
     clinical_sections_text,
@@ -20,6 +20,7 @@ from barum.models import (
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
+    CanvasBackground,
     ImagePlan,
     LayoutModule,
     LayoutPlan,
@@ -178,12 +179,36 @@ def build_image_plan(
         gen = ImageGenResult(requested=True, allowed=allowed, reason=reason, ai_labeled=False)
 
     module_images: list[ModuleImage] = []
+    canvas: CanvasBackground | None = None
     if plan is not None and image_generator is not None:
         module_images, blobs = generate_module_images(
             plan, req, image_generator, photo_resolver=photo_resolver
         )
         _store_module_images(module_images, blobs, image_sink)
-    return ImagePlan(placed=placed, generation=gen, module_images=module_images)
+        # 긴 배경은 옵트인이다. 모듈 이미지를 대신하지 않고 더해지므로 과금이 는다.
+        if ig and ig.canvas_requested:
+            canvas, canvas_blob = generate_canvas_background(req, plan.product_type, image_generator)
+            _store_canvas(canvas, canvas_blob, image_sink)
+    return ImagePlan(placed=placed, generation=gen, module_images=module_images, canvas=canvas)
+
+
+def _store_canvas(canvas: CanvasBackground | None, blob: bytes | None, image_sink) -> None:
+    """긴 배경 이미지를 싱크에 넘기고 URL을 채운다.
+
+    `_store_module_images`와 같은 원칙: 과금해서 만든 걸 조용히 버리지 않고, 못
+    보관했으면 그 사실을 reason에 남긴다.
+    """
+    if canvas is None or blob is None or canvas.status != "generated":
+        return
+    if image_sink is None:
+        canvas.reason = "저장소가 없어 생성된 배경 이미지를 보관하지 못했습니다"
+        return
+    try:
+        canvas.image_url = image_sink("_canvas", blob)
+    except Exception as e:
+        print(f"    [skip] 배경 이미지 저장 실패: {type(e).__name__}: {e}")
+    if not canvas.image_url:
+        canvas.reason = "배경 이미지 저장에 실패해 보관되지 않았습니다"
 
 
 def _store_module_images(module_images: list[ModuleImage], blobs: dict, image_sink) -> None:
