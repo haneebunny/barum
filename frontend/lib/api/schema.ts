@@ -20,6 +20,8 @@ export type Flag = z.infer<typeof FlagSchema>;
 export const LocationSchema = z.object({
   tile: z.string().nullable(),
   order: z.number(),
+  x_start: z.number().nullable().optional(),
+  x_end: z.number().nullable().optional(),
   y_start: z.number().nullable().optional(),
   y_end: z.number().nullable().optional(),
   source_h: z.number().nullable().optional(),

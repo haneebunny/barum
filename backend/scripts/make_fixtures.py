@@ -66,7 +66,8 @@ def image_case() -> CheckReport:
             explanation="미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
             location=Location(
                 tile="detail_000_t00.png", order=0,
-                y_start=0, y_end=1480, source_h=9000, source_w=1000,
+                x_start=120, x_end=780,
+                y_start=450, y_end=580, source_h=9000, source_w=1000,
             ),
         ),
         Finding(
@@ -79,7 +80,8 @@ def image_case() -> CheckReport:
             explanation="질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
             location=Location(
                 tile="detail_000_t01.png", order=2,
-                y_start=1400, y_end=2900, source_h=9000, source_w=1000,
+                x_start=80, x_end=920,
+                y_start=1850, y_end=2020, source_h=9000, source_w=1000,
             ),
         ),
         Finding(
@@ -92,7 +94,8 @@ def image_case() -> CheckReport:
             explanation="객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
             location=Location(
                 tile="detail_000_t01.png", order=3,
-                y_start=1400, y_end=2900, source_h=9000, source_w=1000,
+                x_start=220, x_end=780,
+                y_start=2450, y_end=2600, source_h=9000, source_w=1000,
             ),
         ),
     ]

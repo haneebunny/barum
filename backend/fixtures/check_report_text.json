@@ -11,6 +11,8 @@
       "location": {
         "tile": null,
         "order": 0,
+        "x_start": null,
+        "x_end": null,
         "y_start": null,
         "y_end": null,
         "source_h": null,
@@ -29,6 +31,8 @@
       "location": {
         "tile": null,
         "order": 1,
+        "x_start": null,
+        "x_end": null,
         "y_start": null,
         "y_end": null,
         "source_h": null,
@@ -48,7 +52,9 @@
     "counts_by_type": {
       "2호_기능성오인": 1,
       "1호_의약품오인": 1
-    }
+    },
+    "product_out_of_scope": false,
+    "out_of_scope_reason": null
   },
   "result_id": null,
   "basis": null

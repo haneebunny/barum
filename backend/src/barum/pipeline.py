@@ -73,16 +73,58 @@ def _attach_bands(
     source_w: int,
     source_h: int,
 ) -> list[dict]:
-    """OCR 문장 dict에 타일 밴드 좌표(y_start,y_end)와 원본 크기를 붙인다.
+    """OCR 문장 dict에 바운딩 박스 좌표(x_start, x_end, y_start, y_end)와 원본 크기를 붙인다.
 
-    타일 이름으로 밴드를 찾는다. 같은 문구가 여러 타일에 겹쳐 잡혀도 dedup으로 첫
-    타일 하나만 남으므로 그 타일 밴드를 쓴다(밴드 하이라이트엔 충분). 밴드 맵에 없는
-    타일이면 좌표를 안 넣는다, 잘못된 밴드를 다는 것보다 없는 게 안전하다.
+    타일의 box_2d([ymin, xmin, ymax, xmax] 0~1000)를 원본 이미지 절대 픽셀 좌표로 환산한다.
+    box_2d가 없거나 유효하지 않으면 타일 밴드 전체(x: 0~source_w, y: top~bot)로 fallback한다.
     """
     for s in sentences:
         band = band_by_tile.get(s.get("tile"))
         if band is not None:
-            s["y_start"], s["y_end"] = band
+            top, bot = band
+            tile_h = max(1, bot - top)
+
+            box_2d = s.get("box_2d")
+            valid_box = False
+            
+            # 중첩 배열([[ymin, xmin, ymax, xmax]] 등)에서도 숫자 4개를 안전하게 추출
+            nums: list[float] = []
+            def _collect_nums(item):
+                if isinstance(item, (int, float)):
+                    nums.append(float(item))
+                elif isinstance(item, (list, tuple)):
+                    for sub in item:
+                        _collect_nums(sub)
+
+            _collect_nums(box_2d)
+
+            if len(nums) >= 4:
+                try:
+                    ymin, xmin, ymax, xmax = nums[:4]
+                    # 0~1000 scale 또는 0.0~1.0 scale 정규화
+                    if any(v > 1.0 for v in (ymin, xmin, ymax, xmax)):
+                        ymin, xmin, ymax, xmax = ymin / 1000.0, xmin / 1000.0, ymax / 1000.0, xmax / 1000.0
+
+                    ymin, ymax = max(0.0, min(1.0, ymin)), max(0.0, min(1.0, ymax))
+                    xmin, xmax = max(0.0, min(1.0, xmin)), max(0.0, min(1.0, xmax))
+
+                    if ymax > ymin and xmax > xmin:
+                        s["x_start"] = max(0, min(source_w, int(xmin * source_w)))
+                        s["x_end"] = max(0, min(source_w, int(xmax * source_w)))
+                        s["y_start"] = max(0, min(source_h, int(top + ymin * tile_h)))
+                        s["y_end"] = max(0, min(source_h, int(top + ymax * tile_h)))
+                        valid_box = True
+                except (ValueError, TypeError):
+                    valid_box = False
+
+            if not valid_box:
+                s["x_start"] = 0
+                s["x_end"] = source_w
+                s["y_start"] = top
+                s["y_end"] = bot
+
+            print(f"    [문장 좌표 변환 (order={s.get('order')})]: '{s.get('text', '')[:20]}' -> x=({s.get('x_start')}, {s.get('x_end')}), y=({s.get('y_start')}, {s.get('y_end')}) (valid_bbox={valid_box})")
+
         s["source_w"] = source_w
         s["source_h"] = source_h
     return sentences
