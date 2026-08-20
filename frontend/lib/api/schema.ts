@@ -210,6 +210,19 @@ export const ClinicalEvidenceSchema = z.object({
 });
 export type ClinicalEvidence = z.infer<typeof ClinicalEvidenceSchema>;
 
+// create 모드 전용: 사업자 입력 소비자 설문조사. 실증자료가 아니라 임상 모듈을 못 열고,
+// 피부 변화(효능) 주장은 서버에서 거부되어 skipped_claims로 남는다(2026-08-20 팀장 확정).
+// 6개 필드 전부 필수. 선택으로 두면 수치만 있고 출처 없는 문구를 만들어주게 된다.
+export const SurveyEvidenceSchema = z.object({
+  claim: z.string(),
+  value: z.string(),
+  sample_size: z.string(),
+  institution: z.string(),
+  period: z.string(),
+  method: z.string(),
+});
+export type SurveyEvidence = z.infer<typeof SurveyEvidenceSchema>;
+
 export const GenerateRequestSchema = z.object({
   mode: z.enum(["improve", "create"]).default("improve"),
   content: z.string().nullable().optional(),
@@ -219,6 +232,7 @@ export const GenerateRequestSchema = z.object({
   ingredient_amounts: z.array(IngredientAmountSchema).nullable().optional(),
   certifications: z.array(z.string()).default([]),
   clinical_evidence: z.array(ClinicalEvidenceSchema).nullable().optional(),
+  survey_evidence: z.array(SurveyEvidenceSchema).nullable().optional(),
   notes: z.string().nullable().optional(),
   image_generation: ImageGenRequestSchema.nullable().optional(),
   // create 모드 이미지 생성 프롬프트에 반영되는 색상톤/분위기(둘 다 선택, 자유 텍스트)

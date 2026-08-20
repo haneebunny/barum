@@ -21,12 +21,28 @@ VLM을 안 부른다(비용 0, 몇 초).
 
 ## 읽는 법
 
+**⚠ 비고(조건)를 반드시 볼 것.** 각 후보 아래에 팩 비고에서 뽑은 조건을 같이 찍는다.
+조건이 붙은 표현은 **확정 위반(violation)이 아니라 검토필요**다 — 조건이 충족되면
+합법이 되기 때문이다. 처음엔 이 도구가 비고 칸을 "조건 설명이라 표현이 아니다"며 버렸고,
+그래서 별표1 표현을 전부 violation에 넣었다가 오탐을 냈다(2026-08-20, PM 실측 2회).
+예: "V라인"은 비고가 "색조 제품류 '연출한다' 표현 함께 시 제외"라 V라인 쉐이딩은 위반이 아니다.
+
+**§3(별표2 실증대상)도 따로 확인할 것.** 이 도구는 §1 표만 본다. 별표1에 있어도 별표2
+실증대상에 같이 있으면 조건부다(셀룰라이트: 별표1에 있지만 §3에 "일시적 셀룰라이트 감소"가 있다).
+
 "미등재"로 나온다고 전부 규칙집에 넣어야 하는 건 아니다. 판단이 필요하다:
 - 규칙집은 **키워드 매칭**이라 문맥이 필요한 표현은 애초에 VLM 영역이다
   (예: "기능성 심사된 효능효과 제외" 같은 조건부 표현).
 - 일반 단어와 겹치는 표현은 오탐을 낸다(예: 맨 "모공"은 해부학적 서술에 걸린다).
-- 그래서 이 목록은 **후보**지 할 일 목록이 아니다. 각 건은 여전히 rule_sweep으로
-  오탐을 확인하고 채택/기각한다.
+- **팩 표현을 파싱 조각 그대로 넣지 말 것.** 원문의 완전한 형태를 확인한다.
+  "가려움"은 정답셋 6건이 전부 법정 주의사항 문구였고("붉은 반점, 부어오름 또는
+  가려움증 등의 이상 증상"), "찰과상"은 팩 원문이 "찰과상·화상 **치료·회복**"이라
+  완전형은 기존 "치료" 키워드가 이미 잡는다.
+- **짧은 한국어 키워드는 더 긴 합성어에 걸린다.** `_keyword_present`가 순수 영단어에만
+  우측 경계를 보기 때문이다("드럭"→"드럭스토어", "Pin"→"Pintox").
+- 그래서 이 목록은 **후보**지 할 일 목록이 아니다. 각 건은 rule_sweep으로 오탐을 확인하고,
+  **양방향 스모크 테스트**(걸려야 할 문장 + 걸리면 안 되는 문장)까지 만든 뒤 채택/기각한다.
+  rule_sweep은 정답셋에 없는 표현의 오탐을 못 잡아준다 — 탐지만이 아니라 오탐도 못 잡는다.
 
 ## 규칙 후보의 출처를 표시할 것 (PM 요청, 2026-08-20)
 
@@ -94,14 +110,34 @@ def _pack_expressions() -> list[tuple[str, str, str]]:
         if len(cells) < 3 or cells[0] in ("위반유형", "---"):
             continue
         vtype, kind, exprs = cells[0], cells[1], cells[2]
+        # **비고(예외) 칸을 반드시 같이 들고 온다.** 여기에 조건이 있다 — 처음엔
+        # "조건 설명이라 표현이 아니다"며 버렸다가 오탐을 냈다(2026-08-20).
+        note = cells[4] if len(cells) > 4 else ""
         if not vtype.startswith("T"):
             continue
         for raw in _SPLIT.split(_PAREN.sub("", exprs)):
             expr = raw.strip().strip("*").strip()
             # 너무 짧거나(조사 파편) 문장형(서술)인 건 키워드 후보가 아니다.
             if 2 <= len(expr) <= 20 and not expr.endswith("다"):
-                out.append((vtype, kind, expr))
+                out.append((vtype, kind, expr, note))
     return out
+
+
+# 비고에 이런 말이 있으면 **확정 위반(violation)으로 쓰면 안 된다** — 조건이 충족되면
+# 합법이 되므로 needs_review가 맞다. 전부 실제로 오탐을 낸 뒤에 추린 것이다.
+_CONDITION_MARKERS: tuple[str, ...] = (
+    "제외", "조건부", "함께 시", "한함", "아님",
+)
+
+
+def _condition_hint(note: str) -> str:
+    """비고에서 '조건부'를 가리키는 대목만 짧게 뽑는다(전체를 찍으면 안 읽는다)."""
+    if not note or note == "—":
+        return ""
+    for clause in re.split(r"[.。]\s*", note):
+        if any(m in clause for m in _CONDITION_MARKERS):
+            return clause.strip()[:70]
+    return ""
 
 
 # 표에서 뽑히긴 하지만 **키워드 규칙 후보가 아닌** 것들. 표를 파싱해 얻은 조각이라
@@ -133,8 +169,8 @@ def _is_keyword_candidate(expr: str) -> bool:
 def main() -> None:
     known = _rule_terms()
     exprs = _pack_expressions()
-    missing_all = [(v, k, e) for v, k, e in exprs
-                   if not any(_normalize(e) in t or t in _normalize(e) for t in known)]
+    missing_all = [x for x in exprs
+                   if not any(_normalize(x[2]) in t or t in _normalize(x[2]) for t in known)]
     missing = [x for x in missing_all if _is_keyword_candidate(x[2])]
     filtered = [x for x in missing_all if not _is_keyword_candidate(x[2])]
 
@@ -144,13 +180,23 @@ def main() -> None:
     print(f"  ├ 정제 제외(패턴형·조각·유형명): {len(filtered)}건")
     print(f"  └ **키워드 후보: {len(missing)}건** (할 일 목록이 아니다 — 아래 주의 참고)\n")
 
-    by_type: dict[str, list[tuple[str, str]]] = {}
-    for v, k, e in missing:
-        by_type.setdefault(v, []).append((k, e))
+    by_type: dict[str, list[tuple[str, str, str]]] = {}
+    for v, k, e, note in missing:
+        by_type.setdefault(v, []).append((k, e, _condition_hint(note)))
+    n_conditional = 0
     for vtype in sorted(by_type):
         print(f"[{vtype}] {len(by_type[vtype])}건")
-        for kind, expr in by_type[vtype]:
+        for kind, expr, cond in by_type[vtype]:
             print(f"    {expr}   ({kind})")
+            if cond:
+                n_conditional += 1
+                print(f"        ⚠ 비고: {cond}")
+                print(f"        → 조건부다. violation이 아니라 needs_review로 검토할 것.")
+        print()
+    if n_conditional:
+        print(f"※ 위 {n_conditional}건은 비고에 조건이 걸려 있다. **별표1에 있다고 전부")
+        print("   violation이 아니다** — 조건이 충족되면 합법이 되므로 검토필요가 맞다.")
+        print("   그리고 §3(별표2 실증대상) 목록도 따로 확인할 것(셀룰라이트 사례).")
         print()
 
     print("주의: 문맥이 필요한 표현은 규칙집이 아니라 VLM 영역이다. 일반 단어와 겹치면")
