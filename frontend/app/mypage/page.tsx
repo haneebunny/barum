@@ -311,7 +311,7 @@ export default function MyPage() {
           <Link href="/report/demo-id-1" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
             <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">글로우 세럼 · 미국 상세페이지</span>
             <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--crit)] border-[var(--crit-bd)] bg-[var(--crit-bg)] font-semibold">
+            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] font-semibold">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -397,7 +397,7 @@ export default function MyPage() {
           <Link href="/report/demo-id-5" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
             <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">클렌징폼 성분 개편</span>
             <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--crit)] border-[var(--crit-bd)] bg-[var(--crit-bg)] font-semibold">
+            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] font-semibold">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
