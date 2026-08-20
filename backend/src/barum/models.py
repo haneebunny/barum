@@ -255,6 +255,12 @@ class Section(BaseModel):
     table_rows: list[TableRow] | None = Field(
         None, description="table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
     )
+    module_kind: str | None = Field(
+        None,
+        description="이 섹션이 채우는 layout_plan 모듈의 kind. 프론트가 모듈 이미지를 "
+        "찾을 때 쓴다. kind와 다를 수 있다 — 위반소지 모듈(hero_intro 등)의 내용은 "
+        "LLM이 아니라 인정문구·실증자료가 채우므로 kind가 '광고문구'·'실증자료'로 나온다.",
+    )
 
 
 class Replacement(BaseModel):
@@ -299,6 +305,27 @@ class ModuleImage(BaseModel):
     image_url: str | None = None
 
 
+class CanvasBackground(BaseModel):
+    """상세페이지 전체에 깔리는 긴 배경 이미지 1장 (레이어 구조 1단계).
+
+    구조: 이 배경 위에 모듈 이미지·표·설문 결과·문구가 얹힌다(팀장 확정, 2026-08-20).
+    모듈 이미지를 **대신하지 않는다** — 둘 다 쓰인다.
+
+    `placements`는 **2단계 자리다.** 어느 모듈이 배경의 몇 % 지점에 앉는지를 담게
+    되는데, 그 규칙은 프론트 렌더 구조가 바뀌는 일이라 디자이너·프론트와 같이
+    정한다. 지금은 항상 비어 있고, 프론트는 이 값이 비면 기존 방식(모듈마다 자기
+    이미지를 쓰는 렌더)으로 폴백하면 된다.
+    """
+
+    status: str  # generated(생성됨) | skipped(실패·거부·미요청)
+    reason: str | None = None
+    image_url: str | None = None
+    placements: list[dict] = Field(
+        default_factory=list,
+        description="2단계 예약 필드. 모듈별 배치 좌표(배경 대비 %). 지금은 항상 빈 목록.",
+    )
+
+
 class ImagePlan(BaseModel):
     """이미지 배치 + 생성 가드레일 결과(FR-13)."""
 
@@ -306,6 +333,10 @@ class ImagePlan(BaseModel):
     generation: ImageGenResult = Field(default_factory=ImageGenResult)
     module_images: list[ModuleImage] = Field(
         default_factory=list, description="create 모드 모듈별 이미지 생성 결과"
+    )
+    canvas: CanvasBackground | None = Field(
+        None,
+        description="긴 배경 이미지 1장(옵트인). None이면 요청 안 했거나 생성기가 없다는 뜻.",
     )
 
 
@@ -332,6 +363,12 @@ class ImageGenRequest(BaseModel):
 
     requested: bool = False
     prompt: str | None = None
+    canvas_requested: bool = Field(
+        False,
+        description="긴 배경 이미지 1장을 추가로 만들지(레이어 구조 1단계). "
+        "모듈 이미지를 대신하지 않고 더해지므로 이미지가 한 장 늘고 과금도 는다. "
+        "그래서 기본은 꺼져 있다.",
+    )
 
 
 class IngredientAmount(BaseModel):

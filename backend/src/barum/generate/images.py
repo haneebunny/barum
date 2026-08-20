@@ -16,7 +16,7 @@
 제품을 유지하며 그 주위만 합성하므로 가짜 라벨 문제가 없다.
 """
 
-from barum.models import GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
+from barum.models import CanvasBackground, GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
 from barum.reference.impersonation import check_impersonation
 
 # 한 요청에 만들 이미지 수 상한. 과금 호출이라 모듈이 12개여도 다 만들지 않는다.
@@ -207,6 +207,16 @@ def _composition_lines(layout_type: str, product_type: str | None, variation_ind
 # 있었다(2026-08-19, 팀장 확인 후 스킵 승인).
 _NO_IMAGE_LAYOUT_TYPES = frozenset({"icon_grid", "table_info", "banner_strip"})
 
+# **section_statement는 일부러 넣지 않았다.** 프론트가 이 유형을 텍스트 블록으로만
+# 렌더해서 이미지가 버려지는 건 맞다(2026-08-20 실측: 6장 중 2장). 그런데 이 값은
+# LayoutModule.layout_type의 **기본값이자 카탈로그 밖 값의 폴백**이라(models.py,
+# layout.py `_DEFAULT_LAYOUT_TYPE`), 스킵 목록에 넣으면 플래너가 layout_type을
+# 빠뜨리기만 해도 이미지가 통째로 안 만들어진다. 낭비를 줄이려다 기능을 죽인다.
+# step_list도 프론트에 이미지 분기가 없어 같은 상태다.
+# 두 유형은 "프론트 렌더를 고칠지 / 백엔드에서 안 만들지"를 디자이너·프론트와
+# 정해야 한다(PM 전달함).
+
+
 # layout_type별 손·팔 허용 여부. "손으로 제품 바르는 장면"이 모든 모듈에 예시로
 # 똑같이 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한
 # 페이지 6장이 전부 손 장면으로 나옴). kind는 LLM이 자유롭게 짓는 문자열이라
@@ -282,6 +292,82 @@ def _user_controlled_text(module: LayoutModule, req: GenerateRequest) -> str:
     return f"{req.product_name or ''} {module.purpose or ''} {req.color_tone or ''} {req.mood or ''}"
 
 
+_CANVAS_PROMPT = """화장품 상세페이지 **전체 배경**으로 쓸 세로로 아주 긴 이미지를 만들어라.
+
+# 최우선 규칙: 이 이미지에는 글자가 단 하나도 없어야 한다
+읽을 수 있는 문자를 어떤 형태로도 그리지 마라. 한글·영문·숫자·로고·워터마크 전부
+포함이다. 아래에 제품명이 적혀 있지만 그건 **무엇을 그릴지 알려주는 정보일 뿐,
+화면에 쓰라는 뜻이 아니다.** 완성된 이미지는 글자가 없는 순수한 사진이어야 한다.
+
+제품 종류: {product_name}{product_type_line}
+
+**전체 컬러톤·분위기: {tone}**
+
+구성:
+- **세로로 아주 긴 비율**(폭보다 세로가 3배 이상)로 그려라.
+- 위에서 아래로 장면이 자연스럽게 이어지되, 구간마다 다른 소재가 보이게 하라.
+  위쪽은 넓은 공간감, 가운데는 제형 질감({hint}), 아래쪽은 차분한 정물 연출.
+- 전체가 하나의 톤으로 이어져야 한다. 구간마다 색감이 튀면 안 된다.
+- **선명하고 또렷하게 그려라.** 뿌옇거나 과도한 소프트포커스는 쓰지 마라.
+
+절대 넣지 말 것:
+- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다.
+- 글자·문구·숫자·로고·라벨을 넣지 마라(위 최우선 규칙 재확인).
+- **사람 얼굴은 어떤 형태로도 넣지 마라**(원거리·실루엣도 금지).
+- 의사·약사·전문가를 연상시키는 인물이나 소품을 넣지 마라.
+- 시험 결과 그래프나 차트를 만들지 마라.
+
+이 배경 위에 문구·표·모듈 이미지가 얹힌다. **곳곳에 비교적 비어 있는 구간을
+남겨라.** 그 빈 자리는 끝까지 비어 있어야 하고, 거기에 무언가를 채워 넣지 마라."""
+
+
+def build_canvas_prompt(req: GenerateRequest, product_type: str | None) -> str:
+    """긴 배경 이미지 하나의 프롬프트를 만든다.
+
+    모듈 이미지와 같은 톤 문구(_resolve_tone)를 쓴다. 배경과 그 위에 얹히는
+    이미지들이 같은 아트 디렉션을 받아야 한 페이지로 읽힌다.
+    """
+    return _CANVAS_PROMPT.format(
+        product_name=req.product_name or "화장품",
+        product_type_line=f" ({product_type})" if product_type else "",
+        tone=_resolve_tone(req, product_type),
+        hint=_texture_hint(product_type),
+    )
+
+
+def generate_canvas_background(
+    req: GenerateRequest, product_type: str | None, generator
+) -> tuple[CanvasBackground | None, bytes | None]:
+    """긴 배경 이미지 1장을 만든다(레이어 구조 1단계).
+
+    **모듈 이미지를 대신하지 않는다.** 배경 1장 위에 모듈 이미지·표·문구가 얹히는
+    구조라 둘 다 필요하다(팀장 확정, 2026-08-20). 그래서 이미지가 한 장 늘고 과금도
+    는다 — 조용히 비용을 올리지 않게 `req.image_generation.canvas_requested`로
+    옵트인을 받는다.
+
+    실제 배치(어느 모듈이 배경의 몇 % 지점에 앉는지)는 **2단계**에서 정한다. 프론트
+    렌더 구조가 바뀌는 일이라 디자이너·프론트와 같이 잡아야 한다. 여기서는 배경만
+    만들어 두고, 배치 정보를 실을 자리는 `CanvasBackground.placements`로 비워 둔다.
+
+    과금 호출이라 실패해도 재시도하지 않고 사유만 남긴다(나머지 생성은 계속되게).
+    """
+    if generator is None:
+        return None, None
+    prompt = build_canvas_prompt(req, product_type)
+    allowed, deny_reason = check_impersonation(
+        f"{req.product_name or ''} {req.color_tone or ''} {req.mood or ''}"
+    )
+    if not allowed:
+        return CanvasBackground(status="skipped", reason=deny_reason), None
+    try:
+        blob = generator.generate_image(prompt, [])
+    except Exception as e:
+        reason = f"긴 배경 이미지 생성 실패: {type(e).__name__}"
+        print(f"    [skip] {reason}: {e}")
+        return CanvasBackground(status="skipped", reason=reason), None
+    return CanvasBackground(status="generated"), blob
+
+
 def generate_module_images(
     plan: LayoutPlan,
     req: GenerateRequest,
@@ -317,7 +403,23 @@ def generate_module_images(
     # (실제로 이미지를 만든 것만 센다 — 스킵된 모듈은 화면에 안 나오므로 "앞선
     # 같은 유형 이미지"에 해당하지 않는다).
     seen_layout_types: dict[str, int] = {}
+    # 임상 계열은 모듈이 여러 개여도 실증자료 섹션이 하나만 나온다(같은 자료 반복
+    # 방지, content.py). 그래서 두 번째 임상 모듈부터는 얹힐 섹션이 없어 이미지를
+    # 만들어도 버려진다(2026-08-20 실측: clinical_result 1장이 그렇게 남았다).
+    # 첫 임상 모듈만 만든다.
+    clinical_image_done = False
     for module in plan.modules:
+        if module.kind.startswith("clinical"):
+            if clinical_image_done:
+                results.append(
+                    ModuleImage(
+                        module_kind=module.kind,
+                        status="skipped",
+                        reason="실증자료 섹션은 하나만 나오므로 임상 모듈 이미지도 하나만 만듭니다",
+                    )
+                )
+                continue
+            clinical_image_done = True
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
             # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
             # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.
