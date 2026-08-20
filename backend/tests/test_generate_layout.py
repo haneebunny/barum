@@ -236,3 +236,49 @@ def test_이미_있으면_중복으로_안_넣는다():
     req = _req(formulation_type="크림")
     result = ensure_product_spec_module(plan, req)
     assert len([m for m in result.modules if m.kind == "product_spec"]) == 1
+
+
+# ── kind 유일성 (2026-08-20, 같은 이미지가 두 번 나오던 버그 회귀방지) ──
+
+
+class _DupVLM:
+    """같은 kind를 두 번 내는 플래너 응답(실제로 관측된 상황)."""
+
+    def generate_json(self, prompt, images):
+        return {
+            "modules": [
+                {"kind": "clinical_result", "purpose": "사진 비교", "layout_type": "clinical_photo_compare"},
+                {"kind": "clinical_result", "purpose": "수치 비교", "layout_type": "clinical_bar_compare"},
+                {"kind": "hero_intro", "purpose": "도입", "layout_type": "hero_fullbleed"},
+            ]
+        }
+
+
+def test_중복된_kind에_순번을_붙인다():
+    """kind는 blobs·이미지URL·프론트 매핑의 키다. 겹치면 이미지가 서로 덮어쓴다."""
+    plan = plan_layout(GenerateRequest(mode="create"), [{"modules": []}], "세럼", _DupVLM())
+    kinds = [m.kind for m in plan.modules]
+    assert len(kinds) == len(set(kinds)), f"kind가 중복된다: {kinds}"
+    assert kinds == ["clinical_result", "clinical_result_2", "hero_intro"]
+
+
+def test_순번이_붙어도_clinical_판정이_유지된다():
+    """filter_risky_modules는 startswith('clinical')로 가른다. 순번 때문에 새면 안 된다."""
+    plan = plan_layout(GenerateRequest(mode="create"), [{"modules": []}], "세럼", _DupVLM())
+    filtered, skipped = filter_risky_modules(
+        LayoutPlan(
+            modules=[
+                LayoutModule(kind=m.kind, purpose=m.purpose, has_claim_risk=True, layout_type=m.layout_type)
+                for m in plan.modules
+                if m.kind.startswith("clinical")
+            ],
+            product_type="세럼",
+            source="planner",
+        ),
+        has_approved_claim=True,
+        has_clinical_evidence=False,
+    )
+    # 실증자료가 없으므로 둘 다 임상 사유로 빠져야 한다(인정문구로 통과되면 안 된다).
+    assert filtered.modules == []
+    assert len(skipped) == 2
+    assert all("실증자료" in s.reason for s in skipped)

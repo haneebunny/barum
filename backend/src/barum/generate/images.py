@@ -118,6 +118,29 @@ _COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES: dict[str, str] = {
     ),
     "clinical_bar_compare": "- 짙은 톤의 단색 또는 은은한 그라데이션 배경만 그려라(수치·막대는 프론트가 얹는다)",
     "clinical_photo_compare": "- 차분한 단색 또는 은은한 그라데이션 배경만 그려라(비교 사진은 판매자가 올린다)",
+    # 아래 4종은 PR #198에서 빠져 있어서 전부 _DEFAULT_COMPOSITION("제형 클로즈업")을
+    # 탔다. 그 결과 mood_macro와 사실상 같은 지시를 받아 한 페이지에 제형 사진이 3장씩
+    # 중복됐다(2026-08-20 팀장 지적, 실측 확인). 어휘집(_vocabulary.json) 정의에 맞춰
+    # 서로 겹치지 않게 채운다.
+    "section_statement": (
+        "- **질감 클로즈업을 그리지 마라.** 이 유형은 어휘집상 '이미지 없이(또는 최소),\n"
+        "  배경색 블록 하나로 존재감'이다. 문구를 얹을 넓고 차분한 단색 배경면을 그려라.\n"
+        "  아주 은은한 재질감(종이·패브릭·석고 표면 정도)까지만 허용하고, 주제가 되는\n"
+        "  피사체는 넣지 마라"
+    ),
+    "card_list_repeat": (
+        "- 카드가 세로로 반복해서 얹힐 자리다. 어느 위치를 잘라 써도 어색하지 않게\n"
+        "  **균일한 배경면**을 그려라: 은은한 재질감이 고르게 퍼진 표면. 한쪽에만\n"
+        "  시선이 쏠리는 강한 피사체는 넣지 마라"
+    ),
+    "step_list": (
+        "- 사용 순서를 설명하는 자리다. 제품을 쓰는 상황이 연상되는 **정돈된 공간**을\n"
+        "  그려라(세면대 옆 선반, 정리된 테이블 등). 제형 질감 클로즈업은 쓰지 마라"
+    ),
+    "lineup_strip": (
+        "- 제품 여러 개가 가로로 늘어서 얹힐 자리다. **가로로 긴 구도의 평평한 받침면**\n"
+        "  (선반·단상·테이블 상판)을 그리고 그 위는 비워 둬라. 제품은 판매자가 올린다"
+    ),
 }
 
 _DEFAULT_COMPOSITION = (
@@ -125,13 +148,50 @@ _DEFAULT_COMPOSITION = (
     "- 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)"
 )
 
+# 같은 layout_type이 한 페이지에 여러 번 나오면 프롬프트가 사실상 같아진다
+# (구도 지시·질감 힌트·톤 문구가 전부 layout_type/product_type만의 함수라서).
+# 2026-08-20 실측: section_statement 2개 + mood_macro 1개가 거의 같은 제형 방울
+# 사진으로 나왔다. 등장 순서로 결정적으로 갈라준다(같은 입력 -> 같은 결과 유지).
+_VARIATION_DIRECTIVES: tuple[str, ...] = (
+    "",  # 첫 등장은 변주 지시 없음(기존 동작 유지)
+    (
+        "- **이 페이지의 앞선 같은 유형 이미지와 반드시 다르게 그려라.**"
+        " 다른 소재·다른 각도로 바꾸고, 더 멀리서 넓게 잡아라"
+    ),
+    (
+        "- **이 페이지의 앞선 같은 유형 이미지들과 반드시 다르게 그려라.**"
+        " 또 다른 소재를 쓰고, 위에서 내려다보는 각도로 바꿔라"
+    ),
+    (
+        "- **이 페이지의 앞선 같은 유형 이미지들과 반드시 다르게 그려라.**"
+        " 아직 안 쓴 소재를 골라 비스듬한 각도로, 화면을 더 비워서 그려라"
+    ),
+)
 
-def _composition_lines(layout_type: str, product_type: str | None) -> str:
+
+def _variation_line(variation_index: int) -> str:
+    """같은 layout_type의 몇 번째 등장인지에 따라 변주 지시를 낸다.
+
+    목록을 넘어가면 마지막 지시를 재사용한다(4번 이상 반복되는 경우는 드물고,
+    그때도 "앞선 것들과 다르게"라는 방향은 유효하다).
+    """
+    if variation_index <= 0:
+        return ""
+    return _VARIATION_DIRECTIVES[min(variation_index, len(_VARIATION_DIRECTIVES) - 1)]
+
+
+def _composition_lines(layout_type: str, product_type: str | None, variation_index: int = 0) -> str:
     """layout_type별 "무엇을 그릴지" 지시를 낸다. 카탈로그에 없는 유형은 기존
-    범용 문구(질감 또는 추상 배경)로 폴백한다."""
+    범용 문구(질감 또는 추상 배경)로 폴백한다.
+
+    variation_index는 같은 layout_type이 이 페이지에서 몇 번째로 등장하는지다.
+    0이면 지시가 안 붙어 기존 동작 그대로다.
+    """
     hint = _texture_hint(product_type)
     template = _COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES.get(layout_type, _DEFAULT_COMPOSITION)
-    return template.format(hint=hint)
+    lines = template.format(hint=hint)
+    variation = _variation_line(variation_index)
+    return f"{lines}\n{variation}" if variation else lines
 
 
 # 사진성 배경이 필요없는 layout_type. 어휘집 정의상 아이콘·표·배너 텍스트라 사진
@@ -169,6 +229,7 @@ def build_image_prompt(
     req: GenerateRequest,
     product_type: str | None = None,
     has_product_photo: bool = False,
+    variation_index: int = 0,
 ) -> str:
     """모듈 하나의 이미지 프롬프트를 만든다.
 
@@ -185,13 +246,18 @@ def build_image_prompt(
     module.layout_type으로 구도(_composition_lines)와 손·팔 허용 여부(_body_part_line)를
     가른다. 안 가르면 모든 모듈이 비슷한 추상 그라데이션이나 "손으로 제품 바르는
     장면"으로 수렴한다(2026-08-19 실측·팀장 지적).
+
+    variation_index: 같은 layout_type이 이 페이지에서 몇 번째로 등장하는지(0부터).
+    layout_type이 같으면 나머지 입력이 전부 같아 프롬프트가 거의 동일해지므로, 이
+    값으로 소재·앵글·거리를 갈라준다(2026-08-20 실측: 같은 유형 3개가 거의 같은
+    제형 사진으로 나왔다). 0이면 지시가 안 붙어 기존 동작 그대로다.
     """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
         product_type_line=f" ({product_type})" if product_type else "",
         purpose=module.purpose or module.kind,
         tone=_resolve_tone(req, product_type),
-        composition_lines=_composition_lines(module.layout_type, product_type),
+        composition_lines=_composition_lines(module.layout_type, product_type, variation_index),
         body_part_line=_body_part_line(module.layout_type),
         product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
     )
@@ -239,6 +305,10 @@ def generate_module_images(
             print(f"    [skip] 제품사진 조회 실패(참조 없이 진행): {type(e).__name__}: {e}")
 
     made = 0
+    # layout_type별 등장 횟수. 같은 유형이 반복될 때 프롬프트를 갈라주는 데 쓴다
+    # (실제로 이미지를 만든 것만 센다 — 스킵된 모듈은 화면에 안 나오므로 "앞선
+    # 같은 유형 이미지"에 해당하지 않는다).
+    seen_layout_types: dict[str, int] = {}
     for module in plan.modules:
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
             # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
@@ -263,8 +333,13 @@ def generate_module_images(
             )
             continue
 
+        variation_index = seen_layout_types.get(module.layout_type, 0)
         prompt = build_image_prompt(
-            module, req, plan.product_type, has_product_photo=bool(reference_images)
+            module,
+            req,
+            plan.product_type,
+            has_product_photo=bool(reference_images),
+            variation_index=variation_index,
         )
         allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
         if not allowed:
@@ -283,6 +358,7 @@ def generate_module_images(
             continue
 
         results.append(ModuleImage(module_kind=module.kind, status="generated"))
+        seen_layout_types[module.layout_type] = variation_index + 1
         made += 1
 
     return results, blobs
