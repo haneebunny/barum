@@ -123,7 +123,9 @@ def test_키가_없으면_바로_알린다(monkeypatch):
         OpenAIImageGenerator()
 
 
-def test_기본_provider는_openai다(monkeypatch):
+def test_openai는_명시했을_때만_쓴다(monkeypatch):
+    """기본 provider는 2026-08-20에 gemini(나노 바나나)로 바뀌었다(라벨 보존력).
+    OpenAI 어댑터는 남아 있고 IMAGE_PROVIDER=openai로 되돌릴 수 있어야 한다."""
     monkeypatch.setenv("OPENAI_API_KEY", "k")
-    monkeypatch.delenv("IMAGE_PROVIDER", raising=False)
+    monkeypatch.setenv("IMAGE_PROVIDER", "openai")
     assert isinstance(get_image_generator(), OpenAIImageGenerator)
