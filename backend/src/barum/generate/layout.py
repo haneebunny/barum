@@ -89,6 +89,40 @@ def _format_examples(refs: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
+def _uniquify_kinds(modules: list[LayoutModule]) -> list[LayoutModule]:
+    """중복된 kind에 순번을 붙여 유일하게 만든다.
+
+    **kind는 파이프라인 전체에서 모듈의 식별자로 쓰인다.** 생성 이미지를 담는
+    `blobs[module.kind]`(images.py), 저장 후 URL 매핑(`_store_module_images`),
+    프론트의 `moduleImageDataUris[s.kind]`가 전부 kind로 찾는다. 그런데 kind는
+    LLM이 자유롭게 짓는 문자열이라 유일성이 보장되지 않는다.
+
+    실제로 플래너가 `clinical_result`를 두 개 낸 적이 있고(2026-08-20 실측),
+    두 번째 이미지가 첫 번째를 덮어써서 **과금해서 만든 첫 이미지가 버려지고
+    화면엔 같은 사진이 두 번** 나왔다. 여기서 미리 갈라둔다.
+
+    `clinical` 접두사 판정(`filter_risky_modules`)은 startswith라 순번이 붙어도
+    그대로 동작한다.
+    """
+    seen: dict[str, int] = {}
+    out: list[LayoutModule] = []
+    for module in modules:
+        count = seen.get(module.kind, 0)
+        seen[module.kind] = count + 1
+        if count == 0:
+            out.append(module)
+            continue
+        out.append(
+            LayoutModule(
+                kind=f"{module.kind}_{count + 1}",
+                purpose=module.purpose,
+                has_claim_risk=module.has_claim_risk,
+                layout_type=module.layout_type,
+            )
+        )
+    return out
+
+
 def _fallback_plan(product_type: str | None) -> LayoutPlan:
     """LLM 없이 쓰는 고정 플랜. 전부 위반소지 없는 모듈이라 근거가 필요없다."""
     return LayoutPlan(
@@ -130,7 +164,9 @@ def plan_layout(req: GenerateRequest, refs: list[dict], product_type: str | None
             if isinstance(m, dict) and str(m.get("kind", "")).strip()
         ]
         if modules:
-            return LayoutPlan(modules=modules, product_type=product_type, source="planner")
+            return LayoutPlan(
+                modules=_uniquify_kinds(modules), product_type=product_type, source="planner"
+            )
     except Exception as e:
         print(f"    [skip] 레이아웃 계획 실패 → 폴백 플랜: {type(e).__name__}: {e}")
     return _fallback_plan(product_type)
