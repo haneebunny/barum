@@ -9,6 +9,7 @@ import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
+import { useError } from "@/lib/error/ErrorContext";
 
 interface ProductPhotoItem {
   id: string;
@@ -150,6 +151,7 @@ function UpgradeCard({ title, desc, children }: { title: string; desc: string; c
 function ContentGeneratorContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { showError } = useError();
   const id = searchParams.get("id") || "";
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
@@ -486,7 +488,7 @@ function ContentGeneratorContent() {
       setIsGenerated(true);
     } catch (err) {
       console.error(err);
-      alert("콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
+      showError("콘텐츠 생성 오류", "콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
