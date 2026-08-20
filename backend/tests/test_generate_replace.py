@@ -303,3 +303,31 @@ def test_condition_table_path_still_replaces_only_the_span():
     assert reps[0].original == "아토피"
     out = apply_replacements(content, reps)
     assert out.endswith("완화에 좋은 순한 크림")
+
+
+def test_needs_review_note_uses_original_finding_flag_not_rematch():
+    """실증 고지는 원본 finding의 flag를 기준으로 붙인다. 재매칭 결과가 아니다.
+
+    2026-08-20 도도3 리뷰: '콜라겐 밀도 38% 증가' 규칙 키워드는 붙여쓰기
+    '콜라겐증가'라서, 다시 쓴 문장을 규칙에 재매칭하면 미매칭으로 걸려 고지가
+    안 붙었다. 그 문장이 검토필요였던 건 규칙이 아니라 VLM이 잡은 것이었다.
+    규칙 표현과 안 맞는 원본은 전부 이 구멍에 걸린다. 원본 finding.flag를
+    신뢰하는 게 맞다. 판정기가 이미 검토필요라고 봤으면 그 판정을 따른다.
+    """
+    # 숫자가 없는 문장으로 잡는다. 숫자 검사(_NUMBER_PATTERN)가 우연히 커버해
+    # 버그를 가리는 걸 피하려는 것이다. flag 자체를 봐야 잡히는 경우만 남긴다.
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부 결 정돈에 도움을 주는 성분이 함유된 세럼"}]}
+    )
+    f = Finding(
+        span="세럼",
+        sentence="피부 결 정돈 효과가 있는 세럼",
+        violation_type=ViolationType.type_1_drug_misperception,
+        legal_basis="화장품법 제13조",
+        flag=JudgmentFlag.needs_review,  # VLM이 검토필요로 판정 (규칙 매칭 아님)
+        explanation="테스트",
+        location=Location(order=0),
+    )
+    reps = build_replacements([f], rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].note, "원본이 검토필요인데 고지가 안 붙었다"

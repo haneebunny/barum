@@ -18,7 +18,7 @@
 
 import re
 
-from barum.models import Finding, Replacement, ViolationType
+from barum.models import Finding, JudgmentFlag, Replacement, ViolationType
 from barum.reference.remediation import get_remediation
 from barum.reference.rules import RuleOutcome, match_rule
 
@@ -58,14 +58,27 @@ def _first_safe(suggestions: list[str]) -> str | None:
     return fallback
 
 
-def _note_for(text: str, original: str = "") -> str | None:
+def _note_for(text: str, original: str, *, source_flag) -> str | None:
     """대체표현에 붙일 고지 문구. 없으면 None.
 
-    수치가 살아 있으면 그 수치의 근거를 요구한다. **수치를 지우는 대신 자료를 받는다.**
-    사업자가 실제로 측정한 값일 수 있고, 실증자료가 있으면 쓸 수 있는 표현이라
-    임의로 빼면 사업자가 가진 근거를 우리가 없애는 셈이 된다.
+    **판단 기준은 다시 쓴 결과의 재매칭이 아니라 원본 finding의 flag다**
+    (2026-08-20 도도3 리뷰). 처음엔 "다시 쓴 문장을 규칙에 재매칭해서 needs_review면
+    고지"로 했는데, 규칙 키워드가 붙여쓰기('콜라겐증가')라 띄어 쓴 원문('콜라겐 밀도
+    38% 증가')을 규칙이 못 잡는 경우가 있었다. 그 문장이 검토필요였던 건 규칙이
+    아니라 VLM이 잡은 것이었다. 규칙 표현과 안 맞는 원본은 전부 이 구멍에 걸린다.
+
+    판정기가 이미 원본을 검토필요로 봤다면 그 판정을 신뢰한다. 다시 쓴 문장이
+    같은 의미를 옮긴 것이라면 그 실증 필요성도 그대로 옮겨간다.
+
+    수치가 살아 있으면(원문에도 제안에도 숫자가 있으면) 그 수치의 근거를 요구한다.
+    **수치를 지우는 대신 자료를 받는다.** 사업자가 실제로 측정한 값일 수 있고,
+    실증자료가 있으면 쓸 수 있는 표현이라 임의로 빼면 사업자가 가진 근거를
+    우리가 없애는 셈이 된다.
     """
-    if _NUMBER_PATTERN.search(original) and _NUMBER_PATTERN.search(text):
+    has_number = _NUMBER_PATTERN.search(original) and _NUMBER_PATTERN.search(text)
+    if source_flag is JudgmentFlag.needs_review:
+        return _EVIDENCE_NOTE_WITH_NUMBER if has_number else _EVIDENCE_NOTE
+    if has_number:
         return _EVIDENCE_NOTE_WITH_NUMBER
     m = match_rule(text)
     if m is not None and m.outcome is RuleOutcome.needs_review:
@@ -177,7 +190,7 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
                 replaced=text,
                 violation_type=e["finding"].violation_type,
                 basis=_BASIS_LLM if e["index"] in rewritten else _BASIS,
-                note=_note_for(text, e["span"]),
+                note=_note_for(text, e["span"], source_flag=e["finding"].flag),
             )
         )
     return reps
