@@ -306,8 +306,10 @@ function FindingCard({
   );
 }
 
+import type { CheckReport } from "@/lib/api/schema";
+
 interface ReportClientProps {
-  envelope: ReportEnvelope;
+  envelope: Omit<ReportEnvelope, "report"> & { report: CheckReport };
 }
 
 function escapeHtml(s: string) {
@@ -346,7 +348,7 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
-  const [activeEnvelope, setActiveEnvelope] = useState<ReportEnvelope>(envelope);
+  const [activeEnvelope, setActiveEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
   const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
     if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
     if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
@@ -410,7 +412,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
     setLoading(true);
     try {
       const data = await getReport(key);
-      setActiveEnvelope(data);
+      setActiveEnvelope(data as any);
       setActiveFixture(key);
       setActions({});
     } catch (err) {

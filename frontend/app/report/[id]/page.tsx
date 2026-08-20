@@ -16,5 +16,5 @@ export default async function ReportPage({ params }: PageProps<"/report/[id]">) 
     );
   }
 
-  return <ReportClient envelope={envelope} />;
+  return <ReportClient envelope={envelope as any} />;
 }

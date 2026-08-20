@@ -10,7 +10,7 @@ FastAPI Form/File로 받는다(→ api/app.py).
 """
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -215,7 +215,7 @@ class StoredCheck(BaseModel):
     region: Region
     image_available: bool
     product_name: str | None = None
-    report: CheckReport
+    report: Union[CheckReport, USPreflightReport]
 
 
 class RemediationRequest(BaseModel):

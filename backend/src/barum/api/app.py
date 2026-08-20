@@ -173,13 +173,20 @@ def get_report(result_id: str) -> StoredCheck:
     row = get_check(_checks_client(), result_id)
     if row is None:
         raise HTTPException(status_code=404, detail="해당 검사 이력을 찾을 수 없습니다.")
+    
+    region = Region(row["region"])
+    if region == Region.US:
+        report = USPreflightReport(**row["report"])
+    else:
+        report = CheckReport(**row["report"])
+
     return StoredCheck(
         result_id=row["id"],
         created_at=str(row["created_at"]),
-        region=Region(row["region"]),
+        region=region,
         image_available=bool(row.get("image_path")),
         product_name=row.get("product_name"),
-        report=CheckReport(**row["report"]),
+        report=report,
     )
 
 
@@ -281,7 +288,7 @@ async def check_us_sunscreen(
 
     ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
 
-    return run_us_sunscreen_check(
+    report = run_us_sunscreen_check(
         ad_text=ad_text,
         image_bytes=image_bytes,
         image_filename=image.filename if image is not None else None,
@@ -290,6 +297,14 @@ async def check_us_sunscreen(
         ingredients=ingredients,
         product_name=product_name,
     )
+    report.result_id = _persist_check(
+        report,
+        region="US",
+        image_bytes=image_bytes,
+        content_type=image.content_type if image is not None else None,
+        product_name=product_name,
+    )
+    return report
 
 
 @app.post("/remediate", response_model=RemediationResponse)
