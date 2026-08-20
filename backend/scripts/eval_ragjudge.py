@@ -12,6 +12,12 @@ score_eval.py는 base PromptJudge(제로샷)를 재지만, 실제 /check는 RagJ
 잘못 보고한 적이 있는데, 기준선으로 쓴 값이 하필 범위 상단이었다. 두 조건의 **범위가
 겹치면 효과 없음**으로 본다.
 
+**상품 단위로 나눠 판정한다(2026-08-20 기본값 변경).** 운영 파이프라인(`pipeline.run_check`)은
+상품 하나의 문장만 모아 `judge()`를 부르는데, 이 평가기는 7개 상품 42문장을 **한 배치에 섞어**
+넣고 있었다. 운영에 없는 구성을 재고 있었던 것이다. 실측(각 3회): 한 묶음 31~32건 vs 상품 단위
+33~35건, **범위가 안 겹친다.** 이건 성능 개선이 아니라 **측정을 운영과 맞춘 것**이다. ver1 골드셋을
+ver2로 바꿨을 때와 같은 성격이라 지표 개선으로 인용하면 안 된다. 옛 방식은 `--single-batch`로 재현.
+
 채점 규칙(RagJudge는 문장당 라벨이 아니라 finding을 낸다):
 - finding 있으면 그 violation_type이 라벨(플래그 위반/검토필요는 별도 집계).
 - finding 없으면 '미플래그'(= 합법/대상외로 안 잡음). 미판정(VLM 실패)은 따로.
@@ -23,6 +29,7 @@ score_eval.py는 base PromptJudge(제로샷)를 재지만, 실제 /check는 RagJ
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -33,7 +40,7 @@ for _p in (ROOT, ROOT / "src"):
         sys.path.insert(0, _sp)
 
 import score_eval as se  # noqa: E402
-from barum.judge.cosmetic import RagJudge  # noqa: E402
+from barum.judge.cosmetic import JudgeResult, RagJudge  # noqa: E402
 from barum.storage.cases_store import build_case_retriever  # noqa: E402
 from barum.vlm import get_vlm  # noqa: E402
 
@@ -41,6 +48,56 @@ COMPARE = Path("data/eval_compare.csv")
 
 
 HOLDOUT = Path("data/prompt_holdout.jsonl")
+INGREDIENTS = Path("data/eval_ingredients.json")
+
+
+def _load_ingredients() -> dict[str, dict]:
+    """상품별 전성분·함량을 읽는다(`extract_eval_ingredients.py` 산출물).
+
+    2호(기능성오인) 판정은 전성분을 대조해 합법/검토필요를 가르는데, 지금까지 평가셋에
+    전성분이 안 붙어 그 경로가 한 번도 작동한 적이 없었다. 상세 이미지에 이미 들어 있던
+    것을 읽어온 것이라 새 수집이 아니다(로그 ㉑-2).
+    """
+    if not INGREDIENTS.exists():
+        sys.exit(f"[없음] {INGREDIENTS} — extract_eval_ingredients.py를 먼저 돌릴 것")
+    raw = json.loads(INGREDIENTS.read_text(encoding="utf-8"))
+    out = {}
+    for code, v in raw.items():
+        # "1,2-헥산다이올"·"1, 2-헥산다이올"은 성분명 안에 쉼표가 있다. 숫자 사이
+        # 쉼표를 먼저 보호하고 자른다(그냥 자르면 "1"과 "2-헥산다이올"로 갈린다).
+        raw = re.sub(r"(\d),(\s*\d)", "\\1\x01\\2", v.get("ingredients_raw") or "")
+        names = [n.replace("\x01", ",").strip() for n in raw.split(",") if n.strip()]
+        amounts = [(a.get("name", ""), a.get("amount", "")) for a in (v.get("amounts") or [])
+                   if a.get("name")]
+        out[code] = {"ingredients": names or None, "amounts": amounts or None}
+    return out
+
+
+def _judge_all(judge, sentences: list[dict], scored: list[dict],
+               by_product: bool, ing_map: dict | None) -> JudgeResult:
+    """판정을 돌린다. by_product면 상품 단위로 나눠 부른다.
+
+    전성분은 상품마다 다르므로 한 배치에 여러 상품을 섞으면 넘길 수가 없다. 운영
+    파이프라인도 상품 하나씩 판정하므로 이쪽이 실제와 더 가깝다. 다만 배치 구성이
+    바뀌면 판정도 조금 달라지므로, 전성분 효과만 보려면 `--by-product`만 켠 조건과
+    비교해야 한다(두 변경을 한꺼번에 재면 무엇 때문인지 못 가린다).
+    """
+    if not by_product:
+        return judge.judge(sentences, "KR")
+
+    groups: dict[str, list[int]] = {}
+    for i, r in enumerate(scored):
+        groups.setdefault(r.get("product") or "(미상)", []).append(i)
+
+    merged = JudgeResult()
+    for code, idxs in groups.items():
+        ing = (ing_map or {}).get(code) or {}
+        r = judge.judge([sentences[i] for i in idxs], "KR",
+                        ingredients=ing.get("ingredients"),
+                        ingredient_amounts=ing.get("amounts"))
+        merged.findings.extend(r.findings)
+        merged.unjudged.extend(r.unjudged)
+    return merged
 
 
 def _load_holdout() -> list[dict]:
@@ -56,7 +113,8 @@ def _load_holdout() -> list[dict]:
     return [json.loads(line) for line in HOLDOUT.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def main(reps: int = 1, holdout: bool = False) -> None:
+def main(reps: int = 1, holdout: bool = False, by_product: bool = False,
+         ingredients: bool = False) -> None:
     rows = _load_holdout() if holdout else se.load_labeled()
     # ver2는 검토필요 행의 유형 칸이 비어 있을 수 있다(963셋이 유형을 잘 안 매김).
     # `human in LABELS`만 보면 그 행들이 조용히 채점에서 빠진다 — 확정도가 있으면
@@ -77,22 +135,32 @@ def main(reps: int = 1, holdout: bool = False) -> None:
         print(f"사례 pgvector 검색: 비활성({type(e).__name__}) — 규정 grounding만")
 
     judge = RagJudge(get_vlm("openai"), case_retriever=retriever)
-    print(f"판정: RagJudge(provider=openai, model={get_vlm('openai').model})\n", flush=True)
+    print(f"판정: RagJudge(provider=openai, model={get_vlm('openai').model})")
 
-    runs = [_score_once(judge, sentences, scored) for _ in range(reps)]
+    ing_map = None
+    if ingredients:
+        if not by_product:
+            sys.exit("[중단] 전성분은 상품 단위다. --single-batch와 같이 못 쓴다.")
+        ing_map = _load_ingredients()
+        have = sum(1 for v in ing_map.values() if v["ingredients"])
+        print(f"전성분: {have}/{len(ing_map)} 상품 투입")
+    print(f"배치: {'상품 단위' if by_product else '전체 한 묶음'}\n", flush=True)
+
+    runs = [_score_once(judge, sentences, scored, by_product, ing_map) for _ in range(reps)]
     if reps > 1:
         _report_repeats(runs, len(scored))
     _report_one(runs[-1], len(scored))
     _append_compare(runs[-1], len(scored))
 
 
-def _score_once(judge, sentences: list[dict], scored: list[dict]) -> dict:
+def _score_once(judge, sentences: list[dict], scored: list[dict],
+                by_product: bool = False, ing_map: dict | None = None) -> dict:
     """한 회차를 돌려 채점 결과를 dict로 낸다(출력은 안 한다).
 
     반복 측정을 위해 판정+채점만 떼어냈다. 문장별 판정(`verdicts`)도 같이 돌려주는데,
     회차 간 흔들림을 문장 단위로 보려면 그게 필요하다.
     """
-    result = judge.judge(sentences, "KR")
+    result = _judge_all(judge, sentences, scored, by_product, ing_map)
 
     by_order: dict[int, tuple[str, str]] = {
         f.location.order: (f.violation_type.value, f.flag.value) for f in result.findings
@@ -239,8 +307,13 @@ if __name__ == "__main__":
     ap.add_argument("--reps", type=int, default=1,
                     help="반복 실행 횟수(기본 1). A/B 비교는 2~3 이상을 쓴다 — "
                          "이 평가셋은 실행 편차가 커서 1회 결과로는 판단할 수 없다.")
+    ap.add_argument("--single-batch", action="store_true",
+                    help="옛 방식(전체 문장을 한 배치에). 운영과 다르므로 재현용으로만 쓴다.")
+    ap.add_argument("--ingredients", action="store_true",
+                    help="상품별 전성분을 판정에 넘긴다. --by-product 필요.")
     ap.add_argument("--holdout", action="store_true",
                     help="ver2 골드셋 대신 프롬프트 A/B 홀드아웃(data/prompt_holdout.jsonl)을 쓴다. "
                          "표본이 크고 프롬프트 실험에 안 쓰인 셋이라 A/B 판단은 이쪽으로 한다.")
     _a = ap.parse_args()
-    main(reps=_a.reps, holdout=_a.holdout)
+    main(reps=_a.reps, holdout=_a.holdout, by_product=not _a.single_batch,
+         ingredients=_a.ingredients)

@@ -94,7 +94,17 @@ VARIANT_C = VARIANT_B.replace(
     "효능 표현이 없는 브랜드명·제품명 단독 표기.",
 )
 
-VARIANTS = {"A": VARIANT_A, "B": VARIANT_B, "C": VARIANT_C}
+# D = C + 천연·유기농 축. 팩 §1 T5(안내서 부적합 제품에 '천연(Natural)'·'유기농(organic)')
+# 와 §3(ISO 천연·유기농 지수)이 근거. 제품이 안내서에 적합한지 우리는 모르므로 확인이
+# 필요하고, 그러면 판정기가 봐야 한다. 로그 ⑳에서 C가 놓친 두 문장("제주산 천연탠저린
+# 추출물 함유"·"✓ 천연 한방 추출물 함유")이 이 축으로 이미 판정 대상이었다. [구조] 출처.
+VARIANT_D = VARIANT_C.replace(
+    "- 제품명·상품명·제목에 효능 표현이 들어간 문구",
+    "- 천연·유기농·오가닉을 내세운 문구(안내서 적합 여부를 확인해야 한다)\n"
+    "- 제품명·상품명·제목에 효능 표현이 들어간 문구",
+)
+
+VARIANTS = {"A": VARIANT_A, "B": VARIANT_B, "C": VARIANT_C, "D": VARIANT_D}
 
 # 채택안(C)이 운영 코드와 같은지 확인한다. 프롬프트를 손보면서 여기 값이 어긋나면
 # "측정한 것과 배포된 것이 다른" 상태가 되는데, 그건 실행해 봐도 안 보인다.
@@ -261,8 +271,8 @@ if __name__ == "__main__":
     ap.add_argument("--set", dest="which", choices=["probe", "holdout", "both", "goldset"], default="probe")
     ap.add_argument("--reps", type=int, default=3,
                     help="반복 횟수. A/B 비교는 3회 이상. 범위가 겹치면 효과 없음으로 본다.")
-    ap.add_argument("--variant", choices=["A", "B", "C"], default="A",
-                    help="A=현행 / B=성분 갈래 정비 / C=B+제품명 갈래")
+    ap.add_argument("--variant", choices=["A", "B", "C", "D"], default="A",
+                    help="A=현행 / B=성분 갈래 / C=B+제품명 갈래(현행 운영) / D=C+천연·유기농 축")
     ap.add_argument("--tag", default="", help="출력에 조건 이름을 붙인다(baseline/fix 등)")
     _a = ap.parse_args()
     main(which=_a.which, reps=_a.reps, tag=_a.tag, variant=_a.variant)
