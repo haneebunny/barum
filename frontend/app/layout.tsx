@@ -36,6 +36,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"
         />
+        {/* --mono에 섞이는 한글용 고정폭 폴백. JetBrains Mono엔 한글 글리프가 없음 */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/@kfonts/d2coding@0.2.0/index.min.css"
+        />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
