@@ -317,3 +317,26 @@ def has_functional_claim(sentence: str) -> bool:
     """
     norm = _normalize(sentence)
     return any(_normalize(m) in norm for m in _functional_markers())
+
+
+# 절대적·과장 수식어의 **어간**. `prohibited_expressions.md:85`가 "완벽한·최적의·
+# 파워·탁월한·최고·최상 등 절대적·과장 표현은 객관적 근거 없으면 검토필요"라고 명시한
+# 것을 옮겼다. judge_rules.json의 5호 키워드는 활용형 그대로("완벽한")라 "완벽하게"를
+# 놓친다 — 실제로 "단 3일만에 완벽하게 미백되는 기적의 크림"이 규칙에 안 걸렸다
+# (2026-08-20 실측). 여기선 어간으로 잡아 활용형까지 커버한다.
+_EXAGGERATION_STEMS: tuple[str, ...] = (
+    "완벽", "최적", "탁월", "최고", "최상", "유일", "파워", "기적",
+)
+
+
+def has_exaggeration(sentence: str) -> bool:
+    """문장에 절대적·과장 수식어가 섞여 있는지 본다(어간 기준).
+
+    2호 합법 강등의 안전장치로 쓴다. 한 문장에 라벨이 하나뿐이라, 성분 대조로 2호를
+    합법으로 내리면 같은 문장의 과장 표현이 통째로 빠진다(누수 실측 확인, 상세는
+    `judge/cosmetic.py:_functional_evidence`). `approved_efficacy_statements.md`
+    "판정에 쓰는 법" 4항도 "인정문구를 벗어난 과장 표현이 붙으면 별개로 T5 판정 가능"
+    이라고 안내한다 — 성분이 맞아도 과장은 따로 봐야 한다는 뜻이다.
+    """
+    norm = _normalize(sentence)
+    return any(stem in norm for stem in _EXAGGERATION_STEMS)

@@ -22,7 +22,8 @@ sys.path.insert(0, "src")
 from barum.judge.cosmetic import JUDGE_PROMPT  # noqa: E402
 from barum.vlm import get_vlm  # noqa: E402
 
-XLSX = Path("data/cosmetic_eval_labeling.xlsx")
+XLSX = Path("data/cosmetic_eval_labeling.xlsx")       # ver1(유형 1축, 낡음. 보존용)
+XLSX_V2 = Path("data/cosmetic_eval_labeling_v2.xlsx")  # ver2(유형+확정도 2축, 현행)
 COMPARE = Path("data/eval_compare.csv")   # 모델별 요약 누적 → 비교표
 
 LABELS = ["합법", "1호_의약품오인", "2호_기능성오인", "5호_거짓과장기만", "대상외"]
@@ -33,19 +34,40 @@ VIOLATION = {"1호_의약품오인", "2호_기능성오인", "5호_거짓과장�
 
 
 def load_labeled():
-    """xlsx에서 (번호, 문장, 사람라벨) 중 사람라벨이 채워진 행만 읽는다."""
-    if not XLSX.exists():
-        sys.exit(f"[없음] {XLSX} 먼저 준비할 것")
-    wb = openpyxl.load_workbook(XLSX)
+    """평가셋에서 (번호, 문장, 사람라벨, 확정도)를 읽는다.
+
+    **ver2가 있으면 ver2를 쓴다.** ver1은 위반유형 1축뿐이라 "검토필요"를 적을 칸이
+    없어, 검토필요여야 할 문장이 전부 합법 아니면 위반유형으로 몰려 있었다. 실측으로
+    ver1과 현행 963셋에 겹치는 35문장 중 14건(40%)이 합법 여부부터 어긋났다
+    (2026-08-20, `docs/result/2026-08-20_판정로직_고도화_로그.md` ⑥). ver2는
+    `build_eval_goldset_v2.py`가 현행 정답셋 기준으로 만든다.
+
+    `flag`는 ver2에만 있다(위반·검토필요, 합법/대상외/애매는 ""). ver1로 떨어지면
+    빈 문자열이라 기존 1축 채점 그대로 동작한다.
+
+    ver2에서 검토필요 행은 `human`(유형)이 비어 있을 수 있다 — 963셋이 검토필요
+    160건 중 154건에 유형을 안 매겼기 때문이다("유형은 정해도 확정을 못 하는" 상태).
+    그런 행은 유형 불문 플래그 여부만 보는 게 맞다(채점기가 그렇게 처리한다).
+    """
+    path = XLSX_V2 if XLSX_V2.exists() else XLSX
+    if not path.exists():
+        sys.exit(f"[없음] {path} 먼저 준비할 것 (ver2는 build_eval_goldset_v2.py로 생성)")
+    if path == XLSX:
+        print(f"[주의] ver2({XLSX_V2})가 없어 ver1로 채점한다. ver1은 검토필요 축이 "
+              f"없어 지표를 신뢰할 수 없다 — build_eval_goldset_v2.py를 먼저 돌릴 것.")
+    wb = openpyxl.load_workbook(path)
     ws = wb["라벨링"]
+    headers = {str(ws.cell(1, c).value or "").strip(): c for c in range(1, ws.max_column + 1)}
+    flag_col = headers.get("확정도")  # ver2에만 있다. 고정 열번호로 읽지 않는다.
     rows = []
     for r in range(2, ws.max_row + 1):
         n = ws.cell(r, 1).value
         text = ws.cell(r, 3).value
         human = (ws.cell(r, 4).value or "").strip()
+        flag = (ws.cell(r, flag_col).value or "").strip() if flag_col else ""
         if not text:
             continue
-        rows.append({"n": n, "text": text, "human": human})
+        rows.append({"n": n, "text": text, "human": human, "flag": flag})
     return rows
 
 
