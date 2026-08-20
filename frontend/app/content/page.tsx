@@ -663,9 +663,9 @@ function ContentGeneratorContent() {
         return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    <div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+    <div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
       }
-      return `<div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+      return `<div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
     }).join("\n    ");
 
     const placedImages = await Promise.all(
@@ -673,7 +673,7 @@ function ContentGeneratorContent() {
         const dataUri = await resolveOrInline(img.image_url);
         return dataUri
           ? `<div class="dp-mood" style="background-image:url('${dataUri}')"></div>`
-          : `<div class="dp-mood"><span class="dp-mood-fallback">${img.image_url}</span></div>`;
+          : `<div class="dp-mood"><span class="dp-mood-fallback">${escapeHtml(img.image_url)}</span></div>`;
       })
     );
     const imagesHtml = placedImages.join("\n    ");
@@ -742,7 +742,7 @@ function ContentGeneratorContent() {
     ${sectionsHtml}
     ${imagesHtml}
     ${aiPageNotice}
-    <div class="dp-close">${result.disclaimer}</div>
+    <div class="dp-close">${escapeHtml(result.disclaimer)}</div>
   </div>`;
 
     return { detailPageHtml, styleTag };
