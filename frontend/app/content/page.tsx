@@ -1076,7 +1076,7 @@ function ContentGeneratorContent() {
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (선택, 향·발림성·재구매의향 등 비효능 항목만 — 실증자료 아님)</p>
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (선택, 향·발림성·재구매의향 등 비효능 항목만. 실증자료 아님)</p>
               <div className="flex flex-col gap-2.5">
                 {createSurveyEvidence.map((row) => (
                   <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
@@ -1150,7 +1150,7 @@ function ContentGeneratorContent() {
                 </button>
               </div>
               <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">
-                피부 변화(효능) 주장은 설문으로 못 받쳐서 생성에서 빠지고 사유가 남아요. 6개 항목을 다 채워도 판정에서 자동으로 안전해지는 건 아니에요 — 검토 범위만 좁혀줘요.
+                피부 변화(효능) 주장은 설문으로 못 받쳐서 생성에서 빠지고 사유가 남아요. 6개 항목을 다 채워도 판정에서 자동으로 안전해지는 건 아니에요. 검토 범위만 좁혀줄 뿐이에요.
               </p>
             </div>
 
