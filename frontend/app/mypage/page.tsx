@@ -4,7 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
-import { useTier } from "@/lib/tier";
+import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+import { useTier, type Tier } from "@/lib/tier";
+
+const TIER_OPTIONS: TabOption<Tier>[] = [
+  { value: "Free", label: "Free" },
+  { value: "Basic", label: "Basic" },
+  { value: "Pro", label: "Pro" },
+];
 
 interface FeatItem {
   text: string;
@@ -93,23 +100,13 @@ export default function MyPage() {
           </Link>{" "}
           <span className="text-[var(--ink-3)]">›</span> 마이페이지
         </span>
-        <div className="ml-auto flex items-center gap-1.75">
-          <span className="text-[var(--ink-3)] text-[10px]">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="flex border border-[var(--line-2)]" id="tierSwitch" role="group" aria-label="요금제 전환">
-            {(["Free", "Basic", "Pro"] as const).map((t) => (
-              <button
-                key={t}
-                className={`font-mono text-[10.5px] p-[4px_10px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                  tier === t
-                    ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold"
-                    : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                }`}
-                onClick={() => setTier(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+        <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
+          <TabSwitch
+            label="티어 미리보기"
+            options={TIER_OPTIONS}
+            value={tier}
+            onChange={setTier}
+          />
         </div>
       </div>
 
