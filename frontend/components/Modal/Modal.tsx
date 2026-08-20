@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   isOpen: boolean;
@@ -14,17 +15,23 @@ interface ModalProps {
 export const Modal = React.forwardRef<HTMLButtonElement, ModalProps>(
   ({ isOpen, title, onClose, children, footer, size = "sm" }, ref) => {
     const closeBtnRef = useRef<HTMLButtonElement>(null);
+    const [mounted, setMounted] = useState(false);
+
+    // SSR 대응을 위해 클라이언트 사이드 마운트 여부 체크
+    useEffect(() => {
+      setMounted(true);
+    }, []);
 
     // Forward the ref to closeBtnRef
     useImperativeHandle(ref, () => closeBtnRef.current!);
 
     useEffect(() => {
-      if (isOpen) {
+      if (isOpen && mounted) {
         closeBtnRef.current?.focus();
       }
-    }, [isOpen]);
+    }, [isOpen, mounted]);
 
-    if (!isOpen) return null;
+    if (!isOpen || !mounted) return null;
 
     const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target === e.currentTarget) {
@@ -32,7 +39,7 @@ export const Modal = React.forwardRef<HTMLButtonElement, ModalProps>(
       }
     };
 
-    return (
+    const modalHTML = (
       <div
         className="fixed inset-0 bg-[#070b08]/50 flex items-center justify-center p-5 z-50"
         onClick={handleBackdropClick}
@@ -68,6 +75,8 @@ export const Modal = React.forwardRef<HTMLButtonElement, ModalProps>(
         </div>
       </div>
     );
+
+    return createPortal(modalHTML, document.body);
   }
 );
 
