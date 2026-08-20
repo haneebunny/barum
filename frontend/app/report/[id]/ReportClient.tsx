@@ -209,9 +209,9 @@ function FindingCard({
               </div>
             </div>
 
-            {/* 2행: 위반 유형 */}
+            {/* 2행: 위반/검토필요 유형. flag가 검토필요인데 "위반"이라고 적으면 확정 위반과 헷갈린다 */}
             <div className="text-[11px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
-              위반 유형 {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+              {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
             </div>
           </div>
         </div>

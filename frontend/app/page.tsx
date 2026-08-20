@@ -333,6 +333,7 @@ export default function LandingPage() {
   // 0 = 위반 검출(진입 즉시) / 1 = 검토필요 추가 / 2 = 위반 카드 해결 / 3 = 전체 해결·점수 98
   const [compact, setCompact] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [reportPhase, setReportPhase] = useState(0);
   // 스크럽 동안 카드를 제자리에서 살짝 확대 유지(들어올 때 한 번, 나갈 때 한 번만 전환)
   const [reportZoom, setReportZoom] = useState(false);
@@ -600,13 +601,13 @@ export default function LandingPage() {
           </span>
         </div>
 
-        {/* Right Nav menu */}
-        <div className="ml-auto flex items-center gap-6">
+        {/* Right Nav menu: md 이상은 가로 나열, 그 아래는 햄버거로 접는다 (반응형 처리 없이 글자 단위로 줄바꿈되던 버그 수정) */}
+        <div className="ml-auto hidden md:flex items-center gap-6">
           <a href="#features" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">기능</a>
           <a href="#export" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">수출 검사</a>
           <a href="#pricing" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">요금제</a>
           <a href="#faq" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">FAQ</a>
-          
+
           <div className="flex items-center gap-4">
             <ThemeToggle />
             <Link
@@ -618,6 +619,46 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
+
+        {/* md 미만: 햄버거 토글 */}
+        <button
+          type="button"
+          className="ml-auto md:hidden inline-flex items-center justify-center w-9 h-9 border border-[var(--line-2)] text-[var(--ink-2)] bg-transparent cursor-pointer shrink-0"
+          onClick={() => setIsMobileMenuOpen((v) => !v)}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="landingMobileNav"
+          aria-label={isMobileMenuOpen ? "메뉴 닫기" : "메뉴 열기"}
+        >
+          <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+            {isMobileMenuOpen ? (
+              <path d="M5 5l14 14M19 5 5 19" />
+            ) : (
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+
+        {isMobileMenuOpen && (
+          <div
+            id="landingMobileNav"
+            className="md:hidden absolute top-full left-0 w-full border-b border-[var(--line-2)] bg-[var(--surface-sub)] flex flex-col p-4 gap-3.5 text-[13.5px] font-semibold z-50"
+          >
+            <a href="#features" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">기능</a>
+            <a href="#export" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">수출 검사</a>
+            <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">요금제</a>
+            <a href="#faq" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">FAQ</a>
+            <div className="flex items-center justify-between gap-4 pt-2 border-t border-dashed border-[var(--line-2)]">
+              <ThemeToggle />
+              <Link
+                href="/home"
+                onClick={(e) => { setIsMobileMenuOpen(false); enterConsole(e); }}
+                className="inline-flex items-center gap-2 no-underline text-[var(--on-brand)] bg-[var(--brand)] hover:bg-[var(--brand-deep)] cursor-pointer p-[10px_18px] text-[13px] font-bold"
+              >
+                {returning ? "내 콘솔로" : "무료 검사 시작"} <span className="font-mono">→</span>
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* ── 스크롤 진행률 라인 (헤더 내부 하단 절대 배치, ref로 직접 갱신) ── */}
         <div
@@ -662,7 +703,8 @@ export default function LandingPage() {
       </div>
 
       {/* ── 히어로: 첫 화면을 히어로+퀴즈가 소유한다 (54px = 헤더 높이) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_560px] md:min-h-[calc(100dvh-54px)] border-b border-[var(--line)] items-stretch">
+      {/* lg 미만은 우측 560px 고정폭이 안 들어가 가로 스크롤이 났다(768px 태블릿에서 확인). lg부터 2단 */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_560px] lg:min-h-[calc(100dvh-54px)] border-b border-[var(--line)] items-stretch">
 
         {/* 좌 */}
         <div className="border-r border-[var(--line)] p-[62px_44px_56px] flex flex-col justify-center">

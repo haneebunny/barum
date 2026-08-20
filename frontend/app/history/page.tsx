@@ -75,7 +75,7 @@ const MOCK_STATS = [
 ];
 
 const STATUS_META: Record<RowStatus, { label: string; crit: boolean }> = {
-  review: { label: "검토 필요", crit: true },
+  review: { label: "검토 필요", crit: false },
   done: { label: "검사 완료", crit: false },
   draft: { label: "작성중", crit: false },
 };

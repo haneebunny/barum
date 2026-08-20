@@ -638,10 +638,14 @@ function ContentGeneratorContent() {
     * { box-sizing: border-box; }
     body { font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; margin: 0; padding: 48px 16px; background: var(--dp-surface-sub); color: var(--dp-ink-2); display: flex; justify-content: center; }
     .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; }
-    .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 20px; }
-    .dp-hero-card { background: var(--dp-surface); border-radius: var(--dp-radius); padding: 16px 18px; max-width: 84%; }
-    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; color: var(--dp-accent); margin: 0 0 6px; }
-    .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--dp-ink-2); }
+    .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 24px; }
+    /* 불투명 카드는 이미지를 가려 "발표자료" 느낌이 난다(팀장 지시, 2026-08-20). 카드 대신
+       아래에서 올라오는 스크림 위에 글자만 얹는다. 스크림 최하단 alpha 0.6은 최악 조건
+       (순백 이미지)에서도 흰 글자 대비 5.74:1로 WCAG AA 본문 기준(4.5:1)을 넘는다(DESIGN.md §3.1). */
+    .dp-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.34) 34%, rgba(0,0,0,0) 68%); pointer-events: none; }
+    .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
+    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; color: #ffffff; margin: 0 0 7px; }
+    .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
