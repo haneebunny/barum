@@ -1382,6 +1382,26 @@ function ContentGeneratorContent() {
                       const moduleImage = genResult.image_plan.module_images.find(
                         (mi) => mi.module_kind === s.kind && mi.status === "generated" && mi.image_url
                       );
+                      if (s.table_rows && s.table_rows.length > 0) {
+                        return (
+                          <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
+                            <div className="flex items-center gap-2 m-[0_0_7px]">
+                              <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
+                              <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
+                            </div>
+                            <table className="w-full text-[13px] border-collapse">
+                              <tbody>
+                                {s.table_rows.map((r, ri) => (
+                                  <tr key={ri} className="border-t border-[var(--line-2)] first:border-t-0">
+                                    <td className="py-1.5 pr-2 text-[var(--ink-3)] whitespace-nowrap">{r.label}</td>
+                                    <td className="py-1.5 text-[var(--ink-2)] font-semibold">{r.value}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      }
                       if (moduleImage?.image_url) {
                         return (
                           <div
