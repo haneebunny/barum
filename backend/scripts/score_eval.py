@@ -67,7 +67,9 @@ def load_labeled():
         flag = (ws.cell(r, flag_col).value or "").strip() if flag_col else ""
         if not text:
             continue
-        rows.append({"n": n, "text": text, "human": human, "flag": flag})
+        src = str(ws.cell(r, 2).value or "").strip()  # "24500688/detail_003"
+        rows.append({"n": n, "text": text, "human": human, "flag": flag,
+                     "product": src.split("/")[0] if "/" in src else ""})
     return rows
 
 
