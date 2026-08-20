@@ -31,10 +31,11 @@ image_url만 받는다(냐냐 판단, 2026-08-20).
    상세페이지 전제로 박혀 있다. 점수 함수(`find_quiet_rows`)만 가져다 쓰고 밴드 선택은
    여기서 새로 한다.
 
-**미해결(디디 판단 대기)**: 밴드가 모듈 수보다 적을 때 어떻게 할지. 실측에서 밴드 2개인데
-모듈은 8~11개였다. 배경 연장·겹쳐 얹기·스크림 세 갈래가 있는데, 스크림은 "본문 색은
-이미지가 결정한다"는 확정 원칙과 충돌할 수 있어 디자이너가 정해야 한다. 그 처리는
-**일부러 여기 안 넣었다**(정해지기 전에 짜면 버리게 된다, PM8 지시).
+**"밴드 2개 vs 모듈 8~11개"는 해소됐다(디디 §4).** 배경을 늘리거나 전면 스크림을 까는
+게 아니라 **대상 스코프를 좁혀서** 푼다. 어휘집 12종 중 사진 위에 문구를 직접 겹치는
+건 `hero_fullbleed`(페이지당 1회)와 `mood_macro`(보통 1회) **둘뿐**이고, 나머지 10종은
+완전 평면이거나 이미지·텍스트 분리형이라 애초에 겹칠 일이 없다. 실제로 밴드를 다투는
+건 1~2개라 2개로 충분하다.
 """
 
 from dataclasses import dataclass
@@ -124,3 +125,128 @@ def _band(start: int, end: int, height: int, score) -> SafeBand:
         y_end_pct=round(end / height, 4),
         quiet_score=round(float(score[start:end].mean()), 2),
     )
+
+
+# 사진 위에 문구를 직접 겹치는 layout_type. 이 둘만 안전지대(밴드)를 다툰다.
+#
+# 디디 §4(`design/mockups/long-canvas-placement-rules.md`) 판단이다. 어휘집 12종 중
+# 나머지 10종은 겹칠 필요가 없다:
+# - 완전 평면(사진 없음): section_statement·clinical_bar_compare·icon_grid·step_list·
+#   table_info·banner_strip
+# - 이미지·텍스트 분리형(문구가 이미지 위가 아니라 자기 패널에): image_text_split·
+#   clinical_photo_compare·card_list_repeat·lineup_strip
+#
+# 그래서 "밴드 2개 vs 모듈 8~11개" 불일치는 배경을 늘리거나 전면 스크림을 까는 게 아니라
+# **대상 스코프를 좁혀서** 해소된다.
+_OVERLAY_LAYOUT_TYPES = ("hero_fullbleed", "mood_macro")
+
+# 겹침 대상이 밴드를 못 받았을 때 쓰는 바탕. 스크림이 1순위, 플레이트가 2순위다(디디 §2).
+_MODE_SCRIM = "image_scrim"
+_MODE_PLATE = "solid_plate"
+
+
+def assign_placements(modules, bands: list[SafeBand]) -> list["ModulePlacement"]:
+    """모듈들을 배경 위 좌표에 배치한다.
+
+    **겹침 대상(hero_fullbleed·mood_macro)만 밴드를 소비한다.** 나머지는 애초에 사진 위에
+    문구를 얹지 않으므로 `solid_plate`로 자기 자리를 갖는다(폴백이 아니라 기본값).
+
+    `hero_fullbleed`는 항상 페이지 최상단이라 첫 밴드를 먼저 가져간다. 그 다음
+    `mood_macro`가 남은 밴드를 받는다. 밴드가 모자라면 스크림으로 떨어지고, 그것도
+    안 되는 경우는 지금 없다(스크림은 어떤 배경에서도 대비를 보장한다).
+
+    평면 모듈의 구간은 겹침 대상이 쓰지 않는 나머지 세로를 순서대로 나눠 갖는다.
+    """
+    from barum.models import ModulePlacement
+
+    overlay = [m for m in modules if m.layout_type in _OVERLAY_LAYOUT_TYPES]
+    flat = [m for m in modules if m.layout_type not in _OVERLAY_LAYOUT_TYPES]
+
+    placements: dict[str, ModulePlacement] = {}
+    remaining = list(bands)
+
+    # 히어로 먼저. 최상단 고정이라 가장 위 밴드를 준다.
+    for module in sorted(overlay, key=lambda m: m.layout_type != "hero_fullbleed"):
+        band = remaining.pop(0) if remaining else None
+        if band is not None:
+            placements[module.kind] = ModulePlacement(
+                module_kind=module.kind,
+                y_start_pct=band.y_start_pct,
+                y_end_pct=band.y_end_pct,
+                background_mode=_MODE_SCRIM,
+            )
+        else:
+            # 밴드가 없어도 스크림이면 대비가 보장된다. 위치는 균등 분배로 잡는다.
+            placements[module.kind] = ModulePlacement(
+                module_kind=module.kind,
+                y_start_pct=0.0,
+                y_end_pct=0.0,
+                background_mode=_MODE_SCRIM,
+                status="skipped",
+                reason="안전지대(quiet zone)가 부족해 좌표를 확정하지 못했습니다",
+            )
+
+    # 평면 모듈은 겹침 대상이 쓰고 남은 세로를 순서대로 나눈다.
+    # **앞서 배치된 평면 모듈끼리도 안 겹쳐야 한다.** 겹침 대상만 피하고 각자 독립적으로
+    # 밀면 평면 모듈끼리 같은 자리에 앉는다(2026-08-20 실측: cause_explain 39.9~59.9%와
+    # ingredient_highlight 40.0~60.0%가 겹쳤다). 남은 구간을 통째로 계산해서 나눈다.
+    used = sorted(
+        (p.y_start_pct, p.y_end_pct) for p in placements.values() if p.status == "placed"
+    )
+    for module, (start, end) in zip(flat, _split_free_space(used, len(flat))):
+        placements[module.kind] = ModulePlacement(
+            module_kind=module.kind,
+            y_start_pct=start,
+            y_end_pct=end,
+            background_mode=_MODE_PLATE,
+        )
+
+    # 계획 순서를 유지해서 낸다(프론트가 순서대로 렌더할 수 있게).
+    return [placements[m.kind] for m in modules if m.kind in placements]
+
+
+def _free_intervals(used: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """겹침 대상이 쓰고 남은 세로 구간들(위에서 아래 순)."""
+    free: list[tuple[float, float]] = []
+    cursor = 0.0
+    for start, end in used:
+        if start > cursor:
+            free.append((cursor, start))
+        cursor = max(cursor, end)
+    if cursor < 1.0:
+        free.append((cursor, 1.0))
+    return free
+
+
+def _split_free_space(used: list[tuple[float, float]], count: int) -> list[tuple[float, float]]:
+    """남은 구간 전체를 count개로 순서대로 쪼갠다. 서로 안 겹친다.
+
+    **각 모듈은 하나의 빈 구간 안에만 들어간다.** 슬롯이 빈 구간 경계를 가로지르게 두면
+    그 사이에 있는 겹침 대상 구간을 통째로 삼킨다(2026-08-20 실측: cause_explain이
+    15.6~44.8%를 받아 히어로의 26.2~39.9%를 덮었다).
+
+    빈 구간이 여러 조각이면 길이에 비례해 모듈 수를 나눠 준 뒤, 각 조각을 그 안에서
+    균등 분할한다. 나머지는 큰 조각부터 하나씩 더 준다(최대잔여법).
+    """
+    if count <= 0:
+        return []
+    free = _free_intervals(used)
+    total = sum(end - start for start, end in free)
+    if not free or total <= 0:  # 겹침 대상이 세로 전체를 덮은 극단적 경우
+        return [(0.0, 0.0)] * count
+
+    # 길이 비례 배분 + 최대잔여법으로 정확히 count개를 맞춘다.
+    exact = [(end - start) / total * count for start, end in free]
+    quota = [int(x) for x in exact]
+    remainder = count - sum(quota)
+    for i in sorted(range(len(free)), key=lambda i: exact[i] - quota[i], reverse=True)[:remainder]:
+        quota[i] += 1
+
+    out: list[tuple[float, float]] = []
+    for (start, end), n in zip(free, quota):
+        if n <= 0:
+            continue
+        step = (end - start) / n
+        for k in range(n):
+            out.append((round(start + step * k, 4), round(start + step * (k + 1), 4)))
+    return out
