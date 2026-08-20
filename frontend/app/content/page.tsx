@@ -603,6 +603,23 @@ function ContentGeneratorContent() {
     </div>`;
       }
 
+      if (layoutType === "step_list" && dataUri) {
+        // 디디 지정: 스텝마다 개별 이미지가 아니라 섹션 전체에 대표 이미지 1장(예: 손으로
+        // 펴 바르는 동작 하나). 골격은 image_text_split과 같되, 사용법 문구는 헤드라인이
+        // 아니라 흐르는 본문이라 헤드라인/서브카피로 안 쪼갠다(구조화된 steps[] 필드가
+        // 아직 없어 s.text를 그대로 쓴다. 2026-08-20 디디 판단).
+        const side = statementAltIndex % 2 === 0 ? "left" : "right";
+        statementAltIndex++;
+        return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
+      <div class="dp-split-copy"><p class="dp-step-text">${escapeHtml(s.text)}</p></div>
+    </div>`;
+      }
+
       if (layoutType === "section_statement") {
         const { headline, subcopy } = splitHeadline(s.text);
         const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
@@ -688,6 +705,7 @@ function ContentGeneratorContent() {
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-block.dp-fine { padding: 20px 24px; background: var(--dp-surface-sub); }
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
+    .dp-step-text { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 14.5px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); white-space: pre-line; }
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
     .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
