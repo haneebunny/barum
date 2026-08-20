@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getReferenceBasis } from "@/lib/api/client";
 import type { BasisCitation, RegulatoryBasis } from "@/lib/api/schema";
 
@@ -63,6 +64,13 @@ export function PageFooter({ basis, snapshot = false }: PageFooterProps) {
       <b className="text-[var(--brand-ink)] font-semibold">
         {label}: {line}
       </b>
+      <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[var(--ink-3)]">
+        <span>&copy; 2026 바름</span>
+        <span aria-hidden="true">·</span>
+        <Link href="/" className="text-[var(--ink-3)] hover:text-[var(--ink)] underline underline-offset-2">
+          회사 소개
+        </Link>
+      </div>
     </div>
   );
 }

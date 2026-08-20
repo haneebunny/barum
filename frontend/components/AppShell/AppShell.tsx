@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle/ThemeToggle";
 import { Dropdown } from "@/components/Dropdown/Dropdown";
@@ -41,6 +41,7 @@ function toggleNav(current: boolean) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const collapsed = useSyncExternalStore(subscribeNav, getNavSnapshot, getNavServerSnapshot);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isLandingPage = pathname === "/";
@@ -49,6 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setIsProfileOpen(false);
     if (window.confirm("로그아웃 하시겠습니까?")) {
       alert("로그아웃 되었습니다.");
+      router.push("/");
     }
   };
 
