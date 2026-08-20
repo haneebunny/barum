@@ -152,3 +152,182 @@ def test_build_replacements_falls_back_to_needs_review_when_nothing_cleaner(monk
 
     assert len(reps) == 1
     assert reps[0].replaced == "피부 진정"
+
+
+class _FakeRewriter:
+    """대체표현 다듬기용 가짜 LLM. 호출 인자를 기록해 프롬프트 구성도 검증한다."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt, images):
+        self.prompts.append(prompt)
+        return self.payload
+
+
+def test_llm_rewrite_drops_suggestion_when_nothing_can_be_suggested():
+    """대체할 수 없는 문구에는 제안을 아예 안 낸다.
+
+    2026-08-20 팀장 지시: "제안할 수 없는 표현은 제안도 하지 마라."
+    도도3 실측에서 '전국 약국 오프라인매장 입점!'(유통 채널 안내)에 5호 fallback
+    '우수한 효과'가 붙었다. 원문은 어디서 파는지인데 제안은 효능 주장이라,
+    근거 없는 효과 주장을 새로 넣으라고 권하는 셈이었다.
+    """
+    rewriter = _FakeRewriter({"items": [{"index": 0, "can_suggest": False, "reason": "유통 채널 안내라 대체할 효능 표현이 없다"}]})
+    findings = [
+        _finding("전국 약국 오프라인매장 입점!", "전국 약국 오프라인매장 입점!", ViolationType.type_5_deception)
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert reps == [], f"제안이 없어야 하는데 {reps}가 나왔다"
+
+
+def test_llm_rewrite_uses_natural_sentence_when_it_can():
+    """대체 가능하면 LLM이 다듬은 자연스러운 표현을 쓴다."""
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부를 보호하는 성분이 함유된 세럼"}]}
+    )
+    findings = [
+        _finding("치료", "상처를 치료하는 연고의 주성분이 함유된 세럼", ViolationType.type_1_drug_misperception)
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].replaced == "피부를 보호하는 성분이 함유된 세럼"
+
+
+def test_llm_rewrite_is_rejected_when_it_produces_a_violation():
+    """LLM이 낸 문구도 규칙집을 다시 통과해야 한다. 위반이면 제안하지 않는다.
+
+    조건표에서 배운 것과 같은 함정이다. 만드는 쪽이 누구든 검증 없이 내보내면
+    위반 문구를 위반 문구로 바꿔주게 된다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "줄기세포 배양액 함유"}]}
+    )
+    findings = [_finding("줄기세포", "줄기세포 배양액 세럼", ViolationType.type_5_deception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert reps == [], f"LLM이 낸 위반 문구가 걸러져야 하는데 {reps}가 나왔다"
+
+
+def test_llm_failure_falls_back_to_condition_table():
+    """LLM 호출이 실패하면 조건표 결과로 돌아간다. 과금 호출이라 재시도는 안 한다."""
+
+    class _BrokenRewriter:
+        def generate_json(self, prompt, images):
+            raise RuntimeError("API 죽음")
+
+    findings = [_finding("완벽한", "완벽한 효과를 보장합니다", ViolationType.type_5_deception)]
+    reps = build_replacements(findings, rewriter=_BrokenRewriter())
+    assert len(reps) == 1
+    assert reps[0].replaced == "우수한 효과"  # 조건표 1순위
+
+
+def test_replacement_carries_evidence_note_for_needs_review_suggestion():
+    """검토필요로 걸리는 대체표현에는 실증자료가 필요하다고 알린다.
+
+    2026-08-20 팀장 지시. 안 붙이면 사용자는 위반에서 벗어난 줄 알고 그대로 쓴다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부 진정에 도움"}]}
+    )
+    findings = [_finding("염증", "염증을 가라앉힙니다", ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].note, "실증자료 고지가 비어 있다"
+    assert "실증" in reps[0].note
+
+
+def test_evidence_number_is_kept_and_user_is_asked_for_substantiation():
+    """실증 수치는 빼지 않고, 실증자료를 넣으라고 권한다.
+
+    2026-08-20 팀장 지시: "그런건 사용자에게 실증자료를 넣으라고 권하자."
+    LLM이 '콜라겐 밀도 38% 증가'에서 38%를 통째로 빼버렸다. 안전하긴 한데
+    광고주에게는 그 숫자가 핵심이고, 실증자료가 있으면 쓸 수 있는 값이다.
+    지우는 게 아니라 자료를 붙이라고 안내하는 게 맞다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "4주 사용 시 콜라겐 밀도 38% 증가 (인체적용시험 결과)"}]}
+    )
+    findings = [
+        _finding(
+            "콜라겐 밀도 38% 증가 (4주 사용시)",
+            "임상 시험 결과 4주 사용 시 콜라겐 밀도 38% 증가.",
+            ViolationType.type_1_drug_misperception,
+        )
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert "38%" in reps[0].replaced, "실증 수치가 사라졌다"
+    assert reps[0].note and "실증자료" in reps[0].note
+
+
+def test_prompt_tells_llm_to_keep_numbers():
+    """프롬프트가 LLM에게 수치를 지우지 말라고 지시하는지."""
+    rewriter = _FakeRewriter({"items": []})
+    findings = [_finding("38% 증가", "콜라겐 밀도 38% 증가", ViolationType.type_1_drug_misperception)]
+    build_replacements(findings, rewriter=rewriter)
+    prompt = rewriter.prompts[0]
+    assert "수치" in prompt and "지우지" in prompt
+
+
+def test_llm_rewrite_applied_to_content_does_not_corrupt_the_sentence():
+    """다시 쓴 문장을 실제로 적용했을 때 원문이 깨지지 않는다.
+
+    2026-08-20 도도3 리뷰에서 잡힌 버그. LLM은 문장 전체를 다시 쓰는데
+    `Replacement.original`이 span(단어 하나)으로 남아 있어서, 치환하면 단어 자리에
+    문장이 통째로 박혔다.
+
+        전: 피부 깊숙이, 세포재생의 시작
+        후: 피부 깊숙이, 세포피부에 생기를 더해 ... 줍니다의 시작
+
+    **고치려던 문제를 더 심하게 만든 상태였다.** build_replacements 출력만 보는
+    테스트로는 안 잡힌다. apply_replacements까지 태워야 드러난다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부에 생기를 더해 건강해 보이는 피부로 가꿔 줍니다"}]}
+    )
+    content = "피부 깊숙이, 세포재생의 시작"
+    findings = [_finding("재생", content, ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    out = apply_replacements(content, reps)
+
+    assert out == "피부에 생기를 더해 건강해 보이는 피부로 가꿔 줍니다", f"문장이 깨졌다: {out!r}"
+    assert "세포피부에" not in out
+
+
+def test_condition_table_path_still_replaces_only_the_span():
+    """조건표 경로는 기존대로 span만 갈아끼운다(하위호환)."""
+    content = "아토피 완화에 좋은 순한 크림"
+    findings = [_finding("아토피", content, ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings)  # rewriter 없음
+    assert reps[0].original == "아토피"
+    out = apply_replacements(content, reps)
+    assert out.endswith("완화에 좋은 순한 크림")
+
+
+def test_needs_review_note_uses_original_finding_flag_not_rematch():
+    """실증 고지는 원본 finding의 flag를 기준으로 붙인다. 재매칭 결과가 아니다.
+
+    2026-08-20 도도3 리뷰: '콜라겐 밀도 38% 증가' 규칙 키워드는 붙여쓰기
+    '콜라겐증가'라서, 다시 쓴 문장을 규칙에 재매칭하면 미매칭으로 걸려 고지가
+    안 붙었다. 그 문장이 검토필요였던 건 규칙이 아니라 VLM이 잡은 것이었다.
+    규칙 표현과 안 맞는 원본은 전부 이 구멍에 걸린다. 원본 finding.flag를
+    신뢰하는 게 맞다. 판정기가 이미 검토필요라고 봤으면 그 판정을 따른다.
+    """
+    # 숫자가 없는 문장으로 잡는다. 숫자 검사(_NUMBER_PATTERN)가 우연히 커버해
+    # 버그를 가리는 걸 피하려는 것이다. flag 자체를 봐야 잡히는 경우만 남긴다.
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부 결 정돈에 도움을 주는 성분이 함유된 세럼"}]}
+    )
+    f = Finding(
+        span="세럼",
+        sentence="피부 결 정돈 효과가 있는 세럼",
+        violation_type=ViolationType.type_1_drug_misperception,
+        legal_basis="화장품법 제13조",
+        flag=JudgmentFlag.needs_review,  # VLM이 검토필요로 판정 (규칙 매칭 아님)
+        explanation="테스트",
+        location=Location(order=0),
+    )
+    reps = build_replacements([f], rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].note, "원본이 검토필요인데 고지가 안 붙었다"

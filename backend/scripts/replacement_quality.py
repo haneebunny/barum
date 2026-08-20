@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """치환 품질 실측. 홀드아웃(119문장), 규칙 경로만, API 비용 0.
 
-    ./venv/bin/python scripts/replacement_quality.py
+    ./venv/bin/python scripts/replacement_quality.py          # 조건표만
+    ./venv/bin/python scripts/replacement_quality.py --llm    # LLM 다듬기 포함(과금)
 
 **왜 규칙 경로만 재나**: 위반 span을 누가 만드느냐가 다르다. 규칙 경로(RagJudge)는
 `span=match.span`이라 **걸린 키워드 한 단어**가 오고, VLM 경로(PromptJudge)는
@@ -28,6 +29,14 @@ if not HOLDOUT.exists():
     raise SystemExit(f"홀드아웃이 없다: {HOLDOUT}\n원본 backend/에서 실행하거나 그 파일을 복사할 것.")
 
 lines = [json.loads(l) for l in HOLDOUT.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+# --llm을 주면 실제 LLM을 태운다(과금). 안 주면 조건표만으로 재는 기존 동작.
+REWRITER = None
+if "--llm" in sys.argv:
+    from barum.vlm import OpenAIVLM
+
+    REWRITER = OpenAIVLM()
+    print(f"LLM 다듬기 포함: {REWRITER.model}")
 print(f"홀드아웃 {len(lines)}문장\n")
 
 rule_hit = 0          # 규칙 경로로 위반/검토필요로 잡힌 문장
@@ -47,7 +56,7 @@ for row in lines:
                 legal_basis="화장품법 제13조",
                 flag=m.flag or JudgmentFlag.violation,
                 explanation="측정", location=Location(order=0))
-    reps = build_replacements([f])
+    reps = build_replacements([f], rewriter=REWRITER)
     if not reps:
         continue
     out = apply_replacements(text, reps)
