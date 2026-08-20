@@ -98,3 +98,109 @@ def test_이봉형_분포에서_조용한_구간이_안_쪼개진다():
     top = [b for b in bands if b.y_start_pct < 0.05]
     assert top, "맨 위 조용한 구간을 못 찾았다"
     assert top[0].height_pct > 0.2, f"조용한 구간이 쪼개졌다: {top[0].height_pct:.2f}"
+
+
+# ── 모듈 배치 (디디 §4: 겹침 대상은 hero_fullbleed·mood_macro 둘뿐) ──
+
+
+from barum.generate.canvas_bands import SafeBand, assign_placements  # noqa: E402
+from barum.models import LayoutModule  # noqa: E402
+
+
+def _mod(kind: str, layout_type: str) -> LayoutModule:
+    return LayoutModule(kind=kind, purpose="p", layout_type=layout_type)
+
+
+def _bands(*pairs) -> list[SafeBand]:
+    return [SafeBand(a, b, 10.0) for a, b in pairs]
+
+
+def test_겹침_대상만_밴드를_소비한다():
+    """평면·분리형 모듈은 사진 위에 문구를 안 얹으므로 밴드를 다투지 않는다."""
+    modules = [
+        _mod("hero_intro", "hero_fullbleed"),
+        _mod("cause_explain", "section_statement"),
+        _mod("texture", "mood_macro"),
+        _mod("spec", "table_info"),
+    ]
+    out = assign_placements(modules, _bands((0.26, 0.40), (0.67, 0.75)))
+    by_kind = {p.module_kind: p for p in out}
+    assert by_kind["hero_intro"].background_mode == "image_scrim"
+    assert by_kind["texture"].background_mode == "image_scrim"
+    assert by_kind["cause_explain"].background_mode == "solid_plate"
+    assert by_kind["spec"].background_mode == "solid_plate"
+
+
+def test_히어로가_가장_위_밴드를_가져간다():
+    """hero_fullbleed는 항상 페이지 최상단이다."""
+    modules = [_mod("texture", "mood_macro"), _mod("hero_intro", "hero_fullbleed")]
+    out = {p.module_kind: p for p in assign_placements(modules, _bands((0.26, 0.40), (0.67, 0.75)))}
+    assert out["hero_intro"].y_start_pct == 0.26
+    assert out["texture"].y_start_pct == 0.67
+
+
+def test_밴드가_모자라면_스킵으로_기록한다():
+    """조용히 빠지지 않게 사유를 남긴다(CLAUDE.md §E)."""
+    modules = [_mod("hero_intro", "hero_fullbleed"), _mod("texture", "mood_macro")]
+    out = {p.module_kind: p for p in assign_placements(modules, _bands((0.26, 0.40)))}
+    assert out["hero_intro"].status == "placed"
+    assert out["texture"].status == "skipped"
+    assert "안전지대" in out["texture"].reason
+
+
+def test_평면_모듈은_겹침_대상_구간을_피한다():
+    modules = [_mod("hero_intro", "hero_fullbleed")] + [
+        _mod(f"m{i}", "section_statement") for i in range(3)
+    ]
+    out = assign_placements(modules, _bands((0.0, 0.20)))
+    hero = next(p for p in out if p.module_kind == "hero_intro")
+    for p in out:
+        if p.module_kind == "hero_intro":
+            continue
+        assert not (p.y_start_pct < hero.y_end_pct and p.y_end_pct > hero.y_start_pct)
+
+
+def test_계획_순서를_유지한다():
+    """프론트가 순서대로 렌더할 수 있어야 한다."""
+    modules = [_mod("a", "section_statement"), _mod("b", "hero_fullbleed"), _mod("c", "table_info")]
+    out = assign_placements(modules, _bands((0.0, 0.2)))
+    assert [p.module_kind for p in out] == ["a", "b", "c"]
+
+
+def test_밴드가_아예_없어도_평면_모듈은_배치된다():
+    """배경 분석이 실패해도 평면 모듈은 원래 밴드가 필요 없다."""
+    modules = [_mod("a", "section_statement"), _mod("b", "table_info")]
+    out = assign_placements(modules, [])
+    assert all(p.status == "placed" for p in out)
+    assert all(p.background_mode == "solid_plate" for p in out)
+
+
+def test_평면_모듈끼리도_안_겹친다():
+    """겹침 대상만 피하고 각자 독립적으로 밀면 평면 모듈끼리 같은 자리에 앉는다.
+    실측: cause_explain 39.9~59.9%와 ingredient_highlight 40.0~60.0%가 겹쳤다."""
+    modules = [_mod("hero", "hero_fullbleed")] + [
+        _mod(f"m{i}", "section_statement") for i in range(6)
+    ]
+    out = [p for p in assign_placements(modules, _bands((0.26, 0.40))) if p.status == "placed"]
+    spans = sorted((p.y_start_pct, p.y_end_pct, p.module_kind) for p in out)
+    for a, b in zip(spans, spans[1:]):
+        assert a[1] <= b[0] + 1e-9, f"{a[2]}와 {b[2]}가 겹친다: {a[:2]} / {b[:2]}"
+
+
+def test_슬롯이_겹침_대상_구간을_삼키지_않는다():
+    """빈 구간 경계를 가로지르는 슬롯을 허용하면 그 사이 히어로 자리를 덮는다.
+    실측: cause_explain이 15.6~44.8%를 받아 히어로의 26.2~39.9%를 덮었다."""
+    modules = [_mod("hero", "hero_fullbleed"), _mod("a", "section_statement"), _mod("b", "table_info")]
+    out = {p.module_kind: p for p in assign_placements(modules, _bands((0.26, 0.40)))}
+    hero = out["hero"]
+    for kind in ("a", "b"):
+        p = out[kind]
+        assert not (p.y_start_pct < hero.y_end_pct and p.y_end_pct > hero.y_start_pct)
+
+
+def test_세로를_빠짐없이_덮는다():
+    """구간이 비면 배경이 그대로 드러난다. 남은 공간을 다 나눠 가져야 한다."""
+    modules = [_mod(f"m{i}", "section_statement") for i in range(4)]
+    out = assign_placements(modules, [])
+    covered = sum(p.y_end_pct - p.y_start_pct for p in out)
+    assert abs(covered - 1.0) < 0.01, f"커버리지 {covered:.3f}"

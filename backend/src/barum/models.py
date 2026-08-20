@@ -306,24 +306,55 @@ class ModuleImage(BaseModel):
     image_url: str | None = None
 
 
+class ModulePlacement(BaseModel):
+    """모듈 하나가 긴 배경 위 어디에 어떤 바탕으로 앉는지 (레이어 구조 2단계).
+
+    **좌표는 픽셀이 아니라 배경 세로 대비 비율이다.** 배경 크기가 생성마다 달라지고
+    (비율을 프롬프트로만 지시한다), export HTML은 컨테이너 폭에 맞춰 스케일된다.
+    퍼센트라야 둘 다에 안 깨진다. VLM bbox 하이라이트가 이미 같은 관례를 쓴다
+    (`design/mockups/long-canvas-placement-rules.md` §1).
+
+    `background_mode`는 **`layout_type`으로 결정된다. 밝기 계산이 아니다.**
+    처음엔 "quiet zone의 대비 여유"로 가르자는 안이 있었는데 성립하지 않는다.
+    스크림 `rgba(0,0,0,.6)`은 PR #208에서 **최악 조건(순백 배경)으로 역산한 값**이라
+    어떤 배경에서도 AA를 넘긴다(순백 5.74:1, 어두울수록 더 올라감). 밝기를 아무리
+    재도 답이 항상 `image_scrim`이라 `solid_plate`가 죽은 코드가 된다.
+
+    실제 기준은 어휘집 12종의 성격이다(디디 §4):
+    - 사진 위에 문구를 직접 겹치는 건 `hero_fullbleed`·`mood_macro` **둘뿐**
+    - 나머지는 완전 평면이거나 이미지·텍스트 분리형이라 `solid_plate`가 **기본값**이지
+      안전지대를 못 찾아 쓰는 폴백이 아니다
+    """
+
+    module_kind: str
+    y_start_pct: float = Field(..., ge=0.0, le=1.0)
+    y_end_pct: float = Field(..., ge=0.0, le=1.0)
+    background_mode: str = Field(
+        "solid_plate",
+        description="image_scrim(사진 위 스크림) | solid_plate(불투명 플레이트). layout_type으로 정해진다.",
+    )
+    status: str = Field("placed", description="placed(배치됨) | skipped(배치 실패)")
+    reason: str | None = Field(
+        None, description="skipped 사유. 조용히 빠지지 않게 남긴다(CLAUDE.md §E)."
+    )
+
+
 class CanvasBackground(BaseModel):
     """상세페이지 전체에 깔리는 긴 배경 이미지 1장 (레이어 구조 1단계).
 
     구조: 이 배경 위에 모듈 이미지·표·설문 결과·문구가 얹힌다(팀장 확정, 2026-08-20).
     모듈 이미지를 **대신하지 않는다** — 둘 다 쓰인다.
 
-    `placements`는 **2단계 자리다.** 어느 모듈이 배경의 몇 % 지점에 앉는지를 담게
-    되는데, 그 규칙은 프론트 렌더 구조가 바뀌는 일이라 디자이너·프론트와 같이
-    정한다. 지금은 항상 비어 있고, 프론트는 이 값이 비면 기존 방식(모듈마다 자기
-    이미지를 쓰는 렌더)으로 폴백하면 된다.
+    `placements`가 비어 있으면 프론트는 기존 방식(모듈마다 자기 이미지를 쓰는 렌더)으로
+    폴백한다. 배경 분석에 실패해도 생성 전체를 실패시키지 않기 위한 경로다.
     """
 
     status: str  # generated(생성됨) | skipped(실패·거부·미요청)
     reason: str | None = None
     image_url: str | None = None
-    placements: list[dict] = Field(
+    placements: list[ModulePlacement] = Field(
         default_factory=list,
-        description="2단계 예약 필드. 모듈별 배치 좌표(배경 대비 %). 지금은 항상 빈 목록.",
+        description="모듈별 배치 좌표. 비면 프론트가 기존 렌더로 폴백한다.",
     )
 
 
