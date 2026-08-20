@@ -29,11 +29,14 @@ from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check, run_us_sunscreen_check
 from barum.storage.checks_store import (
+    build_cache_key,
     build_check_row,
     download_image,
     ensure_bucket,
+    get_cached_check,
     get_check,
     new_result_id,
+    save_cached_check,
     save_check,
     sha256_hex,
     upload_image,
@@ -109,6 +112,17 @@ def _checks_client():
     from barum.storage.client import get_supabase_client
 
     return get_supabase_client()
+
+
+def _maybe_checks_client():
+    """CHECKS_PERSIST가 꺼져 있거나 클라이언트 생성 실패 시 None을 돌려준다."""
+    if os.environ.get("CHECKS_PERSIST", "1") == "0":
+        return None
+    try:
+        return _checks_client()
+    except Exception:
+        return None
+
 
 
 def _persist_check(
@@ -224,6 +238,22 @@ async def check(
             detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
+    cache_key = None
+    if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
+        image_sha256 = sha256_hex(image_bytes)
+        cache_key = build_cache_key(
+            image_sha256=image_sha256,
+            region_or_country=region.value,
+            ad_text=ad_text,
+            ingredients=ingredients,
+            ingredient_amounts=ingredient_amounts,
+            product_name=product_name,
+        )
+        cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
+        if cached_report is not None and isinstance(cached_report, CheckReport):
+            print(f"    [info] 이미지 동일, 캐시된 리포트 사용 (sha256={image_sha256[:8]})")
+            return cached_report
+
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
     ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
 
@@ -243,6 +273,8 @@ async def check(
         report, region.value, image_bytes, image.content_type if image else None,
         product_name=product_name,
     )
+    if cache_key:
+        save_cached_check(cache_key, report)
     return report
 
 
@@ -279,9 +311,24 @@ async def check_us_sunscreen(
             detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
+    cache_key = None
+    if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
+        image_sha256 = sha256_hex(image_bytes)
+        cache_key = build_cache_key(
+            image_sha256=image_sha256,
+            region_or_country=country,
+            ad_text=ad_text,
+            ingredients=ingredients,
+            product_name=product_name,
+        )
+        cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
+        if cached_report is not None and isinstance(cached_report, USPreflightReport):
+            print(f"    [info] 이미지 동일, 캐시된 US 리포트 사용 (sha256={image_sha256[:8]})")
+            return cached_report
+
     ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
 
-    return run_us_sunscreen_check(
+    report = run_us_sunscreen_check(
         ad_text=ad_text,
         image_bytes=image_bytes,
         image_filename=image.filename if image is not None else None,
@@ -290,6 +337,10 @@ async def check_us_sunscreen(
         ingredients=ingredients,
         product_name=product_name,
     )
+    if cache_key:
+        save_cached_check(cache_key, report)
+    return report
+
 
 
 @app.post("/remediate", response_model=RemediationResponse)
