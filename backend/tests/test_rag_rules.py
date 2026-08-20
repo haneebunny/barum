@@ -80,6 +80,16 @@ def test_sensitive_with_completed_test_claim_is_not_legal_allow():
     assert match_rule("피부 자극 테스트를 완료한 세럼으로 민감한 피부에도 걱정없이 사용 가능합니다") is None
 
 
+def test_sensitive_with_functional_ingredient_name_is_not_legal_allow():
+    """성분명만으로 암묵적 2호 클레임을 거는 경우도 예외를 취소한다.
+
+    정답셋 53번 실사례. '알파-비사보롤'은 `functional_ingredients.md` 8행에 등재된
+    미백 고시원료(0.5%)라 "미백" 단어 없이도 2호 클레임으로 봐야 하는데, '민감'의
+    legal_allow가 먼저 확정돼 VLM에도 못 가고 증발했다.
+    """
+    assert match_rule("민감한 피부도 걱정 없는 알파 비사보롤") is None
+
+
 def test_legal_allow_markers_cover_pack_synonyms():
     """마커가 '미백'만이 아니라 팩이 같이 묶어 놓은 표기까지 봐야 한다.
 
