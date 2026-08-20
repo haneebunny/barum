@@ -77,10 +77,11 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 **전체 컬러톤·분위기(이 상세페이지의 다른 배경 이미지들과 반드시 통일할 것): {tone}**
 
 무엇을 그릴지:
-- 이 제품 제형에 맞는 질감·소재의 클로즈업: {texture_hint}
-- 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)
+{composition_lines}
 {body_part_line}
 - 위에 명시한 컬러톤·분위기를 따를 것
+- **선명하고 또렷하게 그려라.** 안개 낀 듯 뿌옇거나 과도한 소프트포커스·흐림 효과는
+  쓰지 마라. 실제 상품 사진처럼 디테일과 초점이 또렷해야 한다
 
 절대 넣지 말 것:
 {product_instruction}
@@ -94,25 +95,65 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 
 문구를 얹을 여백이 남도록 화면 한쪽을 비교적 비워 둬라."""
 
-# layout_type별 구도 지시. "손으로 제품 바르는 장면"이 모든 모듈에 예시로 똑같이
-# 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한 페이지
-# 6장이 전부 손 장면으로 나옴). layout_type(LayoutModule에 항상 채워짐, PR #186)으로
-# 손 허용 여부를 갈라서 강제한다. kind는 LLM이 자유롭게 짓는 문자열이라 커버리지를
-# 보장 못 해서 안 쓴다.
+# layout_type별 "무엇을 그릴지" 지시. 예전엔 전 모듈에 "질감 클로즈업 또는 추상
+# 배경(색·빛 그라데이션)"이 동일하게 들어가서, 모델이 매번 더 쉬운 쪽(추상 그라데이션)
+# 으로 수렴했다(2026-08-19 팀장 실측 지적: 6장 이어붙여보니 대부분 "그냥 초록 블러"
+# 였고, "상세페이지에 쓰기 힘들 만큼 추상적"·"전체적으로 뿌옇다"는 두 가지 문제 확인).
+# 사진성이 필요한 유형은 "그라데이션만" 옵션을 아예 빼고 구체적 질감을 강제한다.
+# 사진성이 필요없는 유형(icon_grid·table_info·banner_strip)은 아예 이미지 생성을
+# 스킵한다(_NO_IMAGE_LAYOUT_TYPES, generate_module_images에서 처리).
+_COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES: dict[str, str] = {
+    "hero_fullbleed": (
+        "- 넓은 분위기컷으로 그려라. 공간감이 느껴지는 전체 장면 안에 구체적 질감이\n"
+        "  또렷이 보여야 한다: {hint}. **순수 색상 그라데이션만으로 채우지 마라.**\n"
+        "  실사 상세페이지 사진처럼 보여야 한다"
+    ),
+    "image_text_split": (
+        "- 화면 한쪽에 치우친 구체적 질감 클로즈업 하나만 그려라: {hint}\n"
+        "  (반대쪽은 확실히 비워서 문구 자리를 만들어라). 색상 그라데이션만으로 채우지 마라"
+    ),
+    "mood_macro": (
+        "- 극단적인 클로즈업으로 구체적 질감 하나를 프레임 가득 채워라: {hint}\n"
+        "  순수 그라데이션·색면은 안 된다. 여백 없이 꽉 채워라"
+    ),
+    "clinical_bar_compare": "- 짙은 톤의 단색 또는 은은한 그라데이션 배경만 그려라(수치·막대는 프론트가 얹는다)",
+    "clinical_photo_compare": "- 차분한 단색 또는 은은한 그라데이션 배경만 그려라(비교 사진은 판매자가 올린다)",
+}
+
+_DEFAULT_COMPOSITION = (
+    "- 이 제품 제형에 맞는 질감·소재의 클로즈업: {hint}\n"
+    "- 또는 색·빛·그라데이션 위주의 추상 배경(제형 질감 없이)"
+)
+
+
+def _composition_lines(layout_type: str, product_type: str | None) -> str:
+    """layout_type별 "무엇을 그릴지" 지시를 낸다. 카탈로그에 없는 유형은 기존
+    범용 문구(질감 또는 추상 배경)로 폴백한다."""
+    hint = _texture_hint(product_type)
+    template = _COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES.get(layout_type, _DEFAULT_COMPOSITION)
+    return template.format(hint=hint)
+
+
+# 사진성 배경이 필요없는 layout_type. 어휘집 정의상 아이콘·표·배너 텍스트라 사진
+# 배경 슬롯이 아니다. 지금까지는 여기도 이미지를 만들어서 프론트가 그냥 버리고
+# 있었다(2026-08-19, 팀장 확인 후 스킵 승인).
+_NO_IMAGE_LAYOUT_TYPES = frozenset({"icon_grid", "table_info", "banner_strip"})
+
+# layout_type별 손·팔 허용 여부. "손으로 제품 바르는 장면"이 모든 모듈에 예시로
+# 똑같이 들어가 있으면 모델이 매번 그리로 수렴한다(2026-08-19 실측·팀장 지적: 한
+# 페이지 6장이 전부 손 장면으로 나옴). kind는 LLM이 자유롭게 짓는 문자열이라
+# 커버리지를 보장 못 해서 layout_type을 쓴다.
 _HAND_ALLOWED_LAYOUT_TYPES = frozenset({"hero_fullbleed", "step_list"})
 
 _HAND_ALLOWED_LINE = (
     "- 필요하면 손·팔·뒷모습 등 얼굴이 안 보이는 신체 일부를 자연스럽게 넣어도 된다\n"
     "  (예: 손으로 제품을 바르는 장면). 얼굴은 절대 안 됨(아래 금지 목록 참고)"
 )
-_HAND_FORBIDDEN_LINE = (
-    "- 사람 신체(손·팔 포함)는 넣지 마라. 위에 있는 질감 클로즈업이나 추상 배경 중에서만 골라라"
-)
+_HAND_FORBIDDEN_LINE = "- 사람 신체(손·팔 포함)는 넣지 마라. 위 지시대로만 그려라"
 
 
 def _body_part_line(layout_type: str) -> str:
-    """모듈 구도 지시를 layout_type에 따라 가른다. 대부분은 손을 금지해서
-    나머지 두 선택지(질감 클로즈업·추상 배경)로 다양성을 강제한다."""
+    """모듈 구도 지시를 layout_type에 따라 가른다."""
     return _HAND_ALLOWED_LINE if layout_type in _HAND_ALLOWED_LAYOUT_TYPES else _HAND_FORBIDDEN_LINE
 
 
@@ -141,15 +182,16 @@ def build_image_prompt(
     지시가 바뀐다. 참조가 없을 땐 기존처럼 제품을 아예 안 그린다(가짜 라벨 방지,
     39b2b54 참고).
 
-    module.layout_type으로 손·팔 허용 여부를 가른다(_body_part_line). 안 가르면
-    모든 모듈이 "손으로 제품 바르는 장면"으로 수렴한다(2026-08-19 실측 버그).
+    module.layout_type으로 구도(_composition_lines)와 손·팔 허용 여부(_body_part_line)를
+    가른다. 안 가르면 모든 모듈이 비슷한 추상 그라데이션이나 "손으로 제품 바르는
+    장면"으로 수렴한다(2026-08-19 실측·팀장 지적).
     """
     return _PROMPT.format(
         product_name=req.product_name or "화장품",
         product_type_line=f" ({product_type})" if product_type else "",
         purpose=module.purpose or module.kind,
-        texture_hint=_texture_hint(product_type),
         tone=_resolve_tone(req, product_type),
+        composition_lines=_composition_lines(module.layout_type, product_type),
         body_part_line=_body_part_line(module.layout_type),
         product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
     )
@@ -198,6 +240,18 @@ def generate_module_images(
 
     made = 0
     for module in plan.modules:
+        if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
+            # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
+            # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.
+            results.append(
+                ModuleImage(
+                    module_kind=module.kind,
+                    status="skipped",
+                    reason=f"{module.layout_type}은 사진 배경이 필요없는 유형이라 이미지를 만들지 않습니다",
+                )
+            )
+            continue
+
         if made >= max_images:
             # 상한으로 잘린 것도 기록한다. 조용히 자르면 "다 만들었다"로 오해된다.
             results.append(

@@ -390,3 +390,68 @@ def test_모듈마다_구도_지시가_달라_페이지_전체가_다양해진�
     assert "넣어도 된다" in hand_allowed
     assert "넣지 마라" in hand_forbidden
     assert hand_allowed != hand_forbidden
+
+
+# ── 구도 구체화 + 흐림 금지 (2026-08-20, 팀장 실측: "너무 추상적"·"전체적으로 뿌옇다") ──
+
+
+def test_사진성_layout_type은_그라데이션만_금지한다():
+    for layout_type in ("hero_fullbleed", "image_text_split", "mood_macro"):
+        prompt = build_image_prompt(
+            LayoutModule(kind="x", purpose="x", layout_type=layout_type), _REQ
+        )
+        assert "그라데이션" in prompt and ("안 된다" in prompt or "채우지 마라" in prompt)
+
+def test_layout_type마다_구도_지시가_서로_다르다():
+    hero = build_image_prompt(LayoutModule(kind="a", purpose="a", layout_type="hero_fullbleed"), _REQ)
+    split = build_image_prompt(LayoutModule(kind="b", purpose="b", layout_type="image_text_split"), _REQ)
+    macro = build_image_prompt(LayoutModule(kind="c", purpose="c", layout_type="mood_macro"), _REQ)
+    assert len({hero, split, macro}) == 3
+
+
+def test_선명함_지시가_모든_프롬프트에_들어간다():
+    prompt = build_image_prompt(LayoutModule(kind="x", purpose="x"), _REQ)
+    assert "선명" in prompt
+    assert "뿌옇" in prompt or "흐림" in prompt
+
+
+def test_clinical_비교_유형은_단색_배경만_지시한다():
+    prompt = build_image_prompt(
+        LayoutModule(kind="x", purpose="x", layout_type="clinical_bar_compare"), _REQ
+    )
+    assert "단색" in prompt
+
+
+# ── 사진성 없는 유형은 이미지 생성 자체를 스킵 (2026-08-20, 팀장 승인) ──
+
+
+def test_icon_grid_table_info_banner_strip은_이미지_생성을_스킵한다():
+    for layout_type in ("icon_grid", "table_info", "banner_strip"):
+        plan = _plan_with_layout_types([("x", layout_type)])
+        gen = FakeGenerator(b"A")
+        results, blobs = generate_module_images(plan, _REQ, gen)
+        assert results[0].status == "skipped"
+        assert "사진 배경이 필요없는" in results[0].reason
+        assert blobs == {}
+        assert gen.prompts == []  # 과금 호출 자체를 안 함
+
+
+def test_스킵된_모듈은_상한을_소모하지_않는다():
+    modules = [("a", "table_info"), ("b", "hero_fullbleed")]
+    plan = _plan_with_layout_types(modules)
+    gen = FakeGenerator(b"A")
+    results, blobs = generate_module_images(plan, _REQ, gen, max_images=1)
+    statuses = {r.module_kind: r.status for r in results}
+    assert statuses["a"] == "skipped"
+    assert statuses["b"] == "generated"
+
+
+def _plan_with_layout_types(kind_layout_pairs):
+    return LayoutPlan(
+        modules=[
+            LayoutModule(kind=k, purpose=f"{k} 목적", layout_type=lt)
+            for k, lt in kind_layout_pairs
+        ],
+        product_type="세럼",
+        source="planner",
+    )
