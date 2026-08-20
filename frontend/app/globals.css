@@ -8,8 +8,8 @@
    새 색·새 상태색을 여기서 추가하지 않는다. 필요하면 멈추고 PM 승인 + validate_palette.
    ========================================================================= */
 :root {
-  --sans: "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
-  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "D2Coding", "Cascadia Mono", Consolas, monospace;
 
   --canvas: #e7ecec;
   --surface: #ffffff;
