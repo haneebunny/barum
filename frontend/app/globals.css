@@ -9,7 +9,7 @@
    ========================================================================= */
 :root {
   --sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
-  --mono: "JetBrains Mono", "D2Coding", "Cascadia Mono", Consolas, monospace;
+  --mono: var(--font-jetbrains-mono), var(--font-d2coding), "Cascadia Mono", Consolas, monospace;
 
   --canvas: #e7ecec;
   --surface: #ffffff;
