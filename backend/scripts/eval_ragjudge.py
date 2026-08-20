@@ -22,6 +22,7 @@ score_eval.py는 base PromptJudge(제로샷)를 재지만, 실제 /check는 RagJ
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -39,13 +40,30 @@ from barum.vlm import get_vlm  # noqa: E402
 COMPARE = Path("data/eval_compare.csv")
 
 
-def main(reps: int = 1) -> None:
-    rows = se.load_labeled()
+HOLDOUT = Path("data/prompt_holdout.jsonl")
+
+
+def _load_holdout() -> list[dict]:
+    """프롬프트 A/B용 홀드아웃(jsonl)을 읽는다.
+
+    42문장 골드셋은 실행 편차(±2~3건)보다 작은 효과를 검출할 수 없고, 같은 셋으로
+    여러 안을 비교하면 선택 편향이 생긴다. 이 셋은 963 정답셋 중 평가셋과 안 겹치는
+    문장에서 층화표본으로 뽑았고 **프롬프트 실험에 한 번도 안 쓰였다**
+    (`scripts/build_prompt_holdout.py`). 규칙 A/B에는 쓰면 안 된다.
+    """
+    if not HOLDOUT.exists():
+        sys.exit(f"[없음] {HOLDOUT} — build_prompt_holdout.py를 먼저 돌릴 것")
+    return [json.loads(line) for line in HOLDOUT.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def main(reps: int = 1, holdout: bool = False) -> None:
+    rows = _load_holdout() if holdout else se.load_labeled()
     # ver2는 검토필요 행의 유형 칸이 비어 있을 수 있다(963셋이 유형을 잘 안 매김).
     # `human in LABELS`만 보면 그 행들이 조용히 채점에서 빠진다 — 확정도가 있으면
     # 채점 대상이다. "애매"는 여기서도 제외된다(유형이 LABELS 밖, 확정도도 빈칸).
     scored = [r for r in rows if r["human"] in se.LABELS or r.get("flag")]
-    print(f"채점대상 {len(scored)}문장 (RagJudge 파이프라인)")
+    src = "홀드아웃(프롬프트 A/B 전용)" if holdout else "ver2 골드셋"
+    print(f"채점대상 {len(scored)}문장 (RagJudge 파이프라인, {src})")
 
     sentences = [
         {"order": i, "tile": None, "text": r["text"]} for i, r in enumerate(scored)
@@ -215,4 +233,8 @@ if __name__ == "__main__":
     ap.add_argument("--reps", type=int, default=1,
                     help="반복 실행 횟수(기본 1). A/B 비교는 2~3 이상을 쓴다 — "
                          "이 평가셋은 실행 편차가 커서 1회 결과로는 판단할 수 없다.")
-    main(reps=ap.parse_args().reps)
+    ap.add_argument("--holdout", action="store_true",
+                    help="ver2 골드셋 대신 프롬프트 A/B 홀드아웃(data/prompt_holdout.jsonl)을 쓴다. "
+                         "표본이 크고 프롬프트 실험에 안 쓰인 셋이라 A/B 판단은 이쪽으로 한다.")
+    _a = ap.parse_args()
+    main(reps=_a.reps, holdout=_a.holdout)
