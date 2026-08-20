@@ -13,6 +13,7 @@
 마크다운이 정본이라 여기서 파생 가공 없이 원문 그대로 이어 붙인다.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -38,11 +39,38 @@ _REGULATION_FILES: tuple[str, ...] = (
 # 실사례. Phase1은 통째로, Phase3은 pgvector 검색 top-K로 대체한다.
 _CASES_FILE = "cases.md"
 
+# cases.md 안에 사례가 아니라 **규칙 표**가 하나 들어 있다 — KCA(대한화장품협회) 실증자료
+# 구비서류 체크리스트. "○○ 원료 함유"·"원산지(○○산 원료)"처럼 어떤 광고 표현에 어떤 자료가
+# 필요한지 정한 표라 사례 검색(Phase3 top-K)으로는 안 걸릴 수 있고, 그러면 모델이 그 기준을
+# 아예 못 본다(⑥에서 인정문구가 컨텍스트에 없어 위반으로 찍히던 것과 같은 구조).
+# **팩 파일은 안 고친다**(레퍼런스팩 변경은 승인 사안). 그 절만 읽어 규정 컨텍스트에 싣는다.
+_CHECKLIST_SECTION = ("cases.md", "**KCA 실증자료 구비서류 체크리스트**")
+
 
 def _read_block(rel: str) -> str:
     """근거 문서 하나를 읽어 헤더 붙인 블록으로. 없으면 FileNotFoundError(삼키지 않음)."""
     text = (_REF_DIR / rel).read_text(encoding="utf-8").strip()
     return f"### 근거 문서: {rel}\n{text}"
+
+
+def _read_section(rel: str, marker: str) -> str:
+    """문서에서 marker로 시작하는 절만 잘라낸다(다음 `---` 또는 `## ` 앞까지).
+
+    팩 원문을 안 고치고 일부만 컨텍스트에 싣기 위한 것이다. marker가 없으면 조용히
+    빈 문자열을 돌려주지 않고 **예외로 터뜨린다** — 팩이 개편돼 절 이름이 바뀌면
+    grounding에서 이 기준이 소리 없이 사라지는데, 그건 실행해도 안 보인다.
+    """
+    text = (_REF_DIR / rel).read_text(encoding="utf-8")
+    i = text.find(marker)
+    if i < 0:
+        raise ValueError(f"{rel}에서 '{marker}' 절을 못 찾았다 — 팩이 바뀌었는지 확인할 것")
+    rest = text[i:]
+    end = len(rest)
+    for stop in ("\n---", "\n## "):
+        j = rest.find(stop, len(marker))
+        if j > 0:
+            end = min(end, j)
+    return f"### 근거 문서: {rel} ({marker})\n{rest[:end].strip()}"
 
 
 @lru_cache(maxsize=1)
@@ -51,7 +79,12 @@ def build_regulation_context() -> str:
 
     검색 경로(Phase3)는 여기에 '검색된 사례'만 덧붙인다(cases.md 통째 안 넣음).
     """
-    return "\n\n".join(_read_block(rel) for rel in _REGULATION_FILES)
+    blocks = [_read_block(rel) for rel in _REGULATION_FILES]
+    # A/B 측정용 스위치. 끄고 켜서 이 블록의 효과를 잴 수 있게 남긴다(기본 켜짐).
+    # 변형을 코드에 안 남기면 다음 세션이 재실행이 아니라 재구현을 하게 된다(⑲ 교훈).
+    if os.getenv("BARUM_GROUNDING_CHECKLIST", "1") != "0":
+        blocks.append(_read_section(*_CHECKLIST_SECTION))
+    return "\n\n".join(blocks)
 
 
 @lru_cache(maxsize=1)
