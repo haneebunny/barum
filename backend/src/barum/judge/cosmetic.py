@@ -77,14 +77,16 @@ class CosmeticJudge(Protocol):
 
 
 def _loc(s: dict) -> Location:
-    """문장 dict → Location. 밴드 좌표·원본 크기는 이미지 입력에만 실린다.
+    """문장 dict → Location. 밴드/bbox 좌표·원본 크기는 이미지 입력에만 실린다.
 
-    _ocr_image가 문장 dict에 넣어 준 y_start/y_end/source_h/source_w를 그대로
-    옮긴다. 텍스트 입력엔 이 키들이 없어 None으로 남는다(밴드 하이라이트 스킵).
+    _ocr_image가 문장 dict에 넣어 준 x_start/x_end/y_start/y_end/source_h/source_w를
+    그대로 옮긴다. 텍스트 입력엔 이 키들이 없어 None으로 남는다(하이라이트 스킵).
     """
     return Location(
         tile=s.get("tile"),
         order=s.get("order", 0),
+        x_start=s.get("x_start"),
+        x_end=s.get("x_end"),
         y_start=s.get("y_start"),
         y_end=s.get("y_end"),
         source_h=s.get("source_h"),

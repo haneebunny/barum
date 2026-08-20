@@ -640,6 +640,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                                 const topPct = (loc.y_start / srcH) * 100;
                                 const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+                                const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                                const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+
                                 const isViolation = o.f.flag === "위반";
                                 const isHovered = hoveredIndex === o.idx;
 
@@ -648,49 +652,52 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                     id={`highlight-box-${o.idx}`}
                                     key={`find-${o.idx}`}
                                     style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  right: 0,
-                                  top: `${topPct}%`,
-                                  height: `${heightPct}%`,
-                                  border: isViolation
-                                    ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.4)"}`
-                                    : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.3)"}`,
-                                  backgroundColor: isViolation
-                                    ? (isHovered ? "rgba(239, 68, 68, 0.12)" : "rgba(239, 68, 68, 0.04)")
-                                    : (isHovered ? "rgba(100, 116, 139, 0.12)" : "rgba(100, 116, 139, 0.02)"),
-                                  pointerEvents: "auto",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s ease-in-out",
-                                }}
-                                onMouseEnter={() => setHoveredIndex(o.idx)}
-                                onMouseLeave={() => setHoveredIndex(null)}
-                              >
-                                <span
-                                  style={{
-                                    position: "absolute",
-                                    left: "6px",
-                                    top: "6px",
-                                    width: "19px",
-                                    height: "19px",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontFamily: "monospace",
-                                    fontSize: "10px",
-                                    fontWeight: "bold",
-                                    borderRadius: "50%",
-                                    border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
-                                    color: isViolation ? "var(--crit)" : "var(--ink-3)",
-                                    backgroundColor: "var(--surface)",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                  }}
-                                >
-                                  {o.num}
-                                </span>
-                              </div>
-                            );
-                          })}
+                                      position: "absolute",
+                                      left: `${leftPct}%`,
+                                      width: `${widthPct}%`,
+                                      top: `${topPct}%`,
+                                      height: `${heightPct}%`,
+                                      border: isViolation
+                                        ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.75)"}`
+                                        : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.5)"}`,
+                                      backgroundColor: isViolation
+                                        ? (isHovered ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.08)")
+                                        : (isHovered ? "rgba(100, 116, 139, 0.15)" : "rgba(100, 116, 139, 0.04)"),
+                                      borderRadius: "3px",
+                                      pointerEvents: "auto",
+                                      cursor: "pointer",
+                                      transition: "all 0.15s ease-in-out",
+                                      boxShadow: isHovered ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : "none",
+                                    }}
+                                    onMouseEnter={() => setHoveredIndex(o.idx)}
+                                    onMouseLeave={() => setHoveredIndex(null)}
+                                  >
+                                    <span
+                                      style={{
+                                        position: "absolute",
+                                        left: "-8px",
+                                        top: "-8px",
+                                        width: "18px",
+                                        height: "18px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontFamily: "monospace",
+                                        fontSize: "10px",
+                                        fontWeight: "bold",
+                                        borderRadius: "50%",
+                                        border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
+                                        color: isViolation ? "var(--crit)" : "var(--ink-3)",
+                                        backgroundColor: "var(--surface)",
+                                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                        zIndex: 2,
+                                      }}
+                                    >
+                                      {o.num}
+                                    </span>
+                                  </div>
+                                );
+                              })}
 
                               {ujByOrder.map((u, i) => {
                                 const loc = u.location;
@@ -698,6 +705,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                                 const topPct = (loc.y_start / srcH) * 100;
                                 const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                                const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+                                const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                                const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
                                 const letter = String.fromCharCode(65 + i);
 
                                 return (
@@ -705,41 +715,43 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                     id={`highlight-box-uj-${i}`}
                                     key={`uj-${i}`}
                                     style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  right: 0,
-                                  top: `${topPct}%`,
-                                  height: `${heightPct}%`,
-                                  border: "2px dashed rgba(100, 116, 139, 0.2)",
-                                  backgroundColor: "rgba(100, 116, 139, 0.01)",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    position: "absolute",
-                                    right: "6px",
-                                    top: "6px",
-                                    width: "19px",
-                                    height: "19px",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontFamily: "monospace",
-                                    fontSize: "10px",
-                                    fontWeight: "bold",
-                                    borderRadius: "50%",
-                                    border: "1px dashed var(--ink-3)",
-                                    color: "var(--ink-3)",
-                                    backgroundColor: "var(--surface)",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                  }}
-                                >
-                                  {letter}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                                      position: "absolute",
+                                      left: `${leftPct}%`,
+                                      width: `${widthPct}%`,
+                                      top: `${topPct}%`,
+                                      height: `${heightPct}%`,
+                                      border: "2px dashed rgba(100, 116, 139, 0.4)",
+                                      backgroundColor: "rgba(100, 116, 139, 0.04)",
+                                      borderRadius: "3px",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        position: "absolute",
+                                        right: "-8px",
+                                        top: "-8px",
+                                        width: "18px",
+                                        height: "18px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontFamily: "monospace",
+                                        fontSize: "10px",
+                                        fontWeight: "bold",
+                                        borderRadius: "50%",
+                                        border: "1px dashed var(--ink-3)",
+                                        color: "var(--ink-3)",
+                                        backgroundColor: "var(--surface)",
+                                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                        zIndex: 2,
+                                      }}
+                                    >
+                                      {letter}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
                       </div>
                     </div>
                   );

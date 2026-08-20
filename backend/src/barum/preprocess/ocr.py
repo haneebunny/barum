@@ -14,6 +14,7 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
+- 각 문장마다 이미지 내에서의 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 좌표)을 `box_2d`로 함께 반환한다.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -22,13 +23,14 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 - **이미지를 건너뛰지 마라.** 첨부 순서대로 {n}개 항목을 모두 반환한다.
 
 JSON으로만 답하라:
-{{"images": [{{"i": 0, "sentences": ["문장1"]}}, {{"i": 1, "sentences": []}}]}}"""
+{{"images": [{{"i": 0, "sentences": [{{"text": "문장1", "box_2d": [ymin, xmin, ymax, xmax]}}]}}, {{"i": 1, "sentences": []}}]}}"""
 
 OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 일부다.
 이미지에 보이는 모든 한국어 텍스트를 위에서 아래 순서로 읽어라.
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
+- 각 문장마다 이미지 내에서의 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 좌표)을 `box_2d`로 함께 반환한다.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -36,7 +38,7 @@ OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 �
 - 읽을 수 없는 글자는 그 문장을 통째로 빼지 말고 읽을 수 있는 부분만 담는다.
 - 한국어가 전혀 없으면 빈 배열을 반환한다.
 
-JSON으로만 답하라: {"sentences": ["문장1", "문장2"]}"""
+JSON으로만 답하라: {"sentences": [{"text": "문장1", "box_2d": [ymin, xmin, ymax, xmax]}, {"text": "문장2", "box_2d": [ymin, xmin, ymax, xmax]}]}"""
 
 
 def _normalize(s: str) -> str:
@@ -44,7 +46,7 @@ def _normalize(s: str) -> str:
     return re.sub(r"[\s\W_]+", "", s)
 
 
-def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[str]]:
+def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[dict | str]]:
     """타일 여러 장을 한 번에 보내고 이미지별 문장 배열을 받는다.
 
     한 요청에 이미지를 몰아넣으면 모델이 뒤쪽을 빠뜨리기 쉬우므로, 응답 개수가
@@ -57,7 +59,7 @@ def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[str]]:
     result = vlm.generate_json(
         BATCH_PROMPT.format(n=len(tiles)), [t.read_bytes() for t in tiles]
     )
-    out: list[list[str]] = [[] for _ in tiles]
+    out: list[list[dict | str]] = [[] for _ in tiles]
     for item in result.get("images", []):
         try:
             idx = int(item["i"])
@@ -76,7 +78,7 @@ def extract_product_sentences(
     같은 문구가 여러 번 잡힌다 — 타일 경계(80px 겹침)로도, 상세페이지가 같은
     슬로건을 반복해서도. 홀드아웃엔 유니크 문장만 필요하므로 상품 단위로 중복을 없앤다.
 
-    반환: {product_id, sentences: [{order, tile, text}], tiles_ok, tiles_failed}
+    반환: {product_id, sentences: [{order, tile, text, box_2d}], tiles_ok, tiles_failed}
     """
     tiles = sorted((product_dir / "tiles").glob("*.png"))
     sentences: list[dict] = []
@@ -96,17 +98,28 @@ def extract_product_sentences(
 
         for tile, raw in zip(chunk, per_tile):
             fresh = []
-            for s in raw:
-                s = (s or "").strip()
-                key = _normalize(s)
+            for item in raw:
+                if isinstance(item, dict):
+                    text = (item.get("text") or "").strip()
+                    box_2d = item.get("box_2d")
+                else:
+                    text = str(item or "").strip()
+                    box_2d = None
+
+                key = _normalize(text)
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                fresh.append(s)
+                fresh.append({"text": text, "box_2d": box_2d})
 
             for s in fresh:
                 sentences.append(
-                    {"order": len(sentences), "tile": tile.name, "text": s}
+                    {
+                        "order": len(sentences),
+                        "tile": tile.name,
+                        "text": s["text"],
+                        "box_2d": s["box_2d"],
+                    }
                 )
             if verbose:
                 print(f"    {tile.name}: +{len(fresh)}문장 (누적 {len(sentences)})")

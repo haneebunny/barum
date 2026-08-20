@@ -294,3 +294,39 @@ def test_verify_functional_evidence_keeps_on_unknown():
         [f], image_bytes=_tiny_png(), product_name="p", vlm=fake
     )
     assert out == [f]
+
+
+def test_attach_bands_converts_bbox_to_source_coords():
+    """타일의 box_2d가 원본 이미지 기준 절대 픽셀 좌표(x_start, x_end, y_start, y_end)로 환산된다."""
+    from barum.pipeline import _attach_bands
+
+    sentences = [
+        {
+            "order": 0,
+            "tile": "tile_00.png",
+            "text": "피부 재생 세럼",
+            "box_2d": [100, 200, 300, 800],  # ymin, xmin, ymax, xmax (0~1000)
+        },
+        {
+            "order": 1,
+            "tile": "tile_00.png",
+            "text": "좌표 없는 문장",
+            "box_2d": None,
+        },
+    ]
+    # 타일은 top=500, bot=1500 (높이 1000px), 원본 너비 1000px, 원본 높이 3000px
+    band_by_tile = {"tile_00.png": (500, 1500)}
+    res = _attach_bands(sentences, band_by_tile, source_w=1000, source_h=3000)
+
+    # 1번째 문장: 정밀 bbox
+    assert res[0]["x_start"] == 200
+    assert res[0]["x_end"] == 800
+    assert res[0]["y_start"] == 500 + 100  # 600
+    assert res[0]["y_end"] == 500 + 300    # 800
+
+    # 2번째 문장: fallback 타일 전체 폭 및 밴드
+    assert res[1]["x_start"] == 0
+    assert res[1]["x_end"] == 1000
+    assert res[1]["y_start"] == 500
+    assert res[1]["y_end"] == 1500
+
