@@ -589,3 +589,50 @@ def test_pack_listed_superlative_is_covered():
     assert m is not None
     assert m.outcome == RuleOutcome.needs_review
     assert m.span == "탁월한"
+
+
+def test_pack_listed_type1_expressions_are_covered():
+    """팩 별표1(T1)이 명시한 금지표현이 규칙집에 있는지 확인한다(커버리지 스모크).
+
+    **정답셋 검증이 아니다.** 이 표현들은 963문장 정답셋에 아예 안 나온다 — 그래서
+    `rule_sweep`으로는 탐지 여부를 확인할 수 없고, 이 테스트가 유일한 확인 수단이다.
+    합성 문장이라 실전 성능을 대표하지 않는다는 한계는 그대로 있다.
+
+    배경: 규칙 후보를 "정답셋이 틀린 문장"에서 찾다 보니 표본에 있는 표현만 방어하고
+    있었다(팀장 지적, 2026-08-20). 팩을 기준으로 뒤집어 대조하니 §1이 명시한 148개 중
+    87개가 규칙집에 없었다(`scripts/pack_coverage_audit.py`).
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for sentence in [
+        "발모 효과가 뛰어난 샴푸",
+        "탈모방지에 도움을 주는 앰플",
+        "다이어트 보조 크림",
+        "V라인 리프팅 마스크",
+        "셀룰라이트 완화 바디로션",
+        "튼살 케어 오일",
+        "가려움 완화에 좋아요",
+        "코스메슈티컬 브랜드",
+        "기저귀 발진에 사용하세요",
+        "유전자 활성화 세럼",
+    ]:
+        m = match_rule(sentence)
+        assert m is not None, sentence
+        assert m.outcome == RuleOutcome.violation, sentence
+
+
+def test_bare_itching_word_does_not_match_legal_warning_text():
+    """맨 '가려움'은 규칙에 넣지 않는다 — 법정 주의사항 문구에 걸린다.
+
+    정답셋에서 '가려움'이 나오는 6건이 **전부** "화장품 사용 시 ... 붉은 반점,
+    부어오름 또는 가려움증 등의 이상 증상"이라는 **의무 표시 문구**였다(2026-08-20 실측).
+    모든 화장품에 들어가는 문구라 맨 단어로 넣으면 전량 오탐이다. 그래서 팩 표현을
+    그대로가 아니라 복합어("가려움 완화"·"가려움 개선")로만 넣었다.
+    """
+    from barum.reference.rules import match_rule
+
+    warning = (
+        "화장품 사용 시 또는 사용 후 직사광선에 의하여 사용부위가 붉은 반점, "
+        "부어오름 또는 가려움증 등의 이상 증상이나 부작용이 있는 경우"
+    )
+    assert match_rule(warning) is None
