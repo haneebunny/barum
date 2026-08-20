@@ -418,8 +418,9 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
     """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM)."""
     # 1. 원본 검사 → 위반 findings
     initial = run_check("KR", req.content, None, None, None, judge, ingredients=req.ingredients)
-    # 2. 위반 문구 조건표 치환
-    reps = build_replacements(initial.findings)
+    # 2. 위반 문구 치환. 조건표가 방향을 정하고 LLM이 문장을 다듬는다.
+    #    LLM이 "대체할 수 없다"고 본 문구(유통 채널 안내·제품명 등)는 제안 자체를 안 낸다.
+    reps = build_replacements(initial.findings, rewriter=vlm)
     safe_content = apply_replacements(req.content, reps)
     # 3. 섹션 조립: 개선된 원문(광고문구) + LLM 저위험 서술
     sections = [

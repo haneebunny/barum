@@ -152,3 +152,86 @@ def test_build_replacements_falls_back_to_needs_review_when_nothing_cleaner(monk
 
     assert len(reps) == 1
     assert reps[0].replaced == "피부 진정"
+
+
+class _FakeRewriter:
+    """대체표현 다듬기용 가짜 LLM. 호출 인자를 기록해 프롬프트 구성도 검증한다."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt, images):
+        self.prompts.append(prompt)
+        return self.payload
+
+
+def test_llm_rewrite_drops_suggestion_when_nothing_can_be_suggested():
+    """대체할 수 없는 문구에는 제안을 아예 안 낸다.
+
+    2026-08-20 팀장 지시: "제안할 수 없는 표현은 제안도 하지 마라."
+    도도3 실측에서 '전국 약국 오프라인매장 입점!'(유통 채널 안내)에 5호 fallback
+    '우수한 효과'가 붙었다. 원문은 어디서 파는지인데 제안은 효능 주장이라,
+    근거 없는 효과 주장을 새로 넣으라고 권하는 셈이었다.
+    """
+    rewriter = _FakeRewriter({"items": [{"index": 0, "can_suggest": False, "reason": "유통 채널 안내라 대체할 효능 표현이 없다"}]})
+    findings = [
+        _finding("전국 약국 오프라인매장 입점!", "전국 약국 오프라인매장 입점!", ViolationType.type_5_deception)
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert reps == [], f"제안이 없어야 하는데 {reps}가 나왔다"
+
+
+def test_llm_rewrite_uses_natural_sentence_when_it_can():
+    """대체 가능하면 LLM이 다듬은 자연스러운 표현을 쓴다."""
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부를 보호하는 성분이 함유된 세럼"}]}
+    )
+    findings = [
+        _finding("치료", "상처를 치료하는 연고의 주성분이 함유된 세럼", ViolationType.type_1_drug_misperception)
+    ]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].replaced == "피부를 보호하는 성분이 함유된 세럼"
+
+
+def test_llm_rewrite_is_rejected_when_it_produces_a_violation():
+    """LLM이 낸 문구도 규칙집을 다시 통과해야 한다. 위반이면 제안하지 않는다.
+
+    조건표에서 배운 것과 같은 함정이다. 만드는 쪽이 누구든 검증 없이 내보내면
+    위반 문구를 위반 문구로 바꿔주게 된다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "줄기세포 배양액 함유"}]}
+    )
+    findings = [_finding("줄기세포", "줄기세포 배양액 세럼", ViolationType.type_5_deception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert reps == [], f"LLM이 낸 위반 문구가 걸러져야 하는데 {reps}가 나왔다"
+
+
+def test_llm_failure_falls_back_to_condition_table():
+    """LLM 호출이 실패하면 조건표 결과로 돌아간다. 과금 호출이라 재시도는 안 한다."""
+
+    class _BrokenRewriter:
+        def generate_json(self, prompt, images):
+            raise RuntimeError("API 죽음")
+
+    findings = [_finding("완벽한", "완벽한 효과를 보장합니다", ViolationType.type_5_deception)]
+    reps = build_replacements(findings, rewriter=_BrokenRewriter())
+    assert len(reps) == 1
+    assert reps[0].replaced == "우수한 효과"  # 조건표 1순위
+
+
+def test_replacement_carries_evidence_note_for_needs_review_suggestion():
+    """검토필요로 걸리는 대체표현에는 실증자료가 필요하다고 알린다.
+
+    2026-08-20 팀장 지시. 안 붙이면 사용자는 위반에서 벗어난 줄 알고 그대로 쓴다.
+    """
+    rewriter = _FakeRewriter(
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부 진정에 도움"}]}
+    )
+    findings = [_finding("염증", "염증을 가라앉힙니다", ViolationType.type_1_drug_misperception)]
+    reps = build_replacements(findings, rewriter=rewriter)
+    assert len(reps) == 1
+    assert reps[0].note, "실증자료 고지가 비어 있다"
+    assert "실증" in reps[0].note

@@ -271,6 +271,9 @@ class Replacement(BaseModel):
     replaced: str
     violation_type: ViolationType
     basis: str  # 합법 표기 틀 근거
+    # 대체표현 자체가 실증대상일 때 붙이는 고지. 안 붙이면 사용자가 위반에서 벗어난
+    # 줄 알고 그대로 써서, 우리가 검토필요를 만들어주는 셈이 된다(2026-08-20 팀장 지시).
+    note: str | None = None
 
 
 class PlacedImage(BaseModel):

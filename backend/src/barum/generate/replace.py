@@ -1,27 +1,35 @@
-"""위반 문구 → 안전 표현 치환 (조건표 재사용, 순수).
+"""위반 문구 → 안전 표현 치환.
 
-효능·기능 표현은 자유창작 없이 조건표(remediation_rules)로 결정적 치환한다
-(FR-11 "FR-14와 같은 원칙"). VLM 없이 돌아가는 결정적 로직이라 순수 유닛테스트.
+조건표(remediation_rules)가 방향을 정하고, LLM이 문장을 다듬는다.
+
+**왜 조건표만으로는 안 되나**(2026-08-20 실측). 조건표는 위반 span 자리에 표현을
+그대로 끼워넣는다. 그런데 규칙 경로에서 오는 span은 `치료`·`진정` 같은 **단어 하나**라
+(`RagJudge`가 `span=match.span`을 넣는다), 명사구를 그 자리에 넣으면 문장이 깨진다.
+
+    상처를 치료하는 연고    -> 상처를 피부 보호하는 연고     (품사 불일치)
+    피부 진정, 케어가 고민   -> 피부 피부 보호, 케어가 고민   (앞 어절과 중복)
+
+게다가 문장에 남은 다른 위반 요소(`상처`·`연고`)를 안 건드려서 의약품 오인이 유지된다.
+조건표에 표현을 더 넣어도 안 풀린다. 단어를 명사구로 바꾸는 방식 자체의 한계다.
+
+그래서 LLM을 한 번 거친다(팀장 지시). 다만 **만드는 쪽이 누구든 검증 없이 내보내면
+안 된다.** 조건표에서 배운 그대로다. LLM이 낸 문구도 규칙집을 다시 통과시킨다.
 """
 
-from barum.models import Finding, Replacement
+from barum.models import Finding, Replacement, ViolationType
 from barum.reference.remediation import get_remediation
 from barum.reference.rules import RuleOutcome, match_rule
 
 _BASIS = "합법 표기 틀(조건표) 기반 대체 표현"
+_BASIS_LLM = "합법 표기 틀(조건표) + 문장 다듬기"
+
+# 대체표현이 실증대상 표현일 때 붙인다. 팩 §3에 실린 표현은 자료가 있으면 쓸 수 있고
+# 없으면 못 쓴다. 그 구분을 안 알려주면 사용자는 위반을 벗어난 줄 안다.
+_EVIDENCE_NOTE = "이 표현은 실증자료가 있어야 쓸 수 있습니다. 자료가 없으면 검토필요로 남습니다."
 
 
 def _first_safe(suggestions: list[str]) -> str | None:
     """조건표 후보 중 규칙집에서 위반으로 안 걸리는 첫 번째를 고른다.
-
-    **왜 필요한가**: 조건표(`remediation_rules.json`)는 손으로 쓰는 JSON이고,
-    거기 실린 대체표현이 그 자체로 위반인지 아무도 대조하지 않았다.
-    2026-08-20 실사고로 5호 규칙이 '줄기세포'를 잡아 **'줄기세포 배양액 함유'**를
-    대체표현으로 내보내고 있었다. 위반 문구를 위반 문구로 바꿔주고 있던 셈이다.
-
-    데이터를 고치는 것만으로는 재발을 못 막는다. 조건표에 규칙이 추가될 때마다
-    같은 실수가 가능하므로 코드가 마지막 방어선이 된다. `match_rule`은 규칙집
-    정확조회라 API 비용이 0이다.
 
     **검토필요(needs_review)는 막지 않고 뒤로 미룬다.** 그 표현들은 팩이 §3 실증대상으로
     명시한 것이라(`피부 진정` → §3 "진정", `피부 저자극 테스트 완료` → §3 "시험·검사 표현"),
@@ -41,38 +49,150 @@ def _first_safe(suggestions: list[str]) -> str | None:
     return fallback
 
 
-def build_replacements(findings: list[Finding]) -> list[Replacement]:
-    """위반 finding마다 조건표에서 안전표현을 뽑아 Replacement 목록을 만든다.
+def _note_for(text: str) -> str | None:
+    """대체표현이 실증대상이면 고지 문구를, 아니면 None을 낸다."""
+    m = match_rule(text)
+    if m is not None and m.outcome is RuleOutcome.needs_review:
+        return _EVIDENCE_NOTE
+    return None
 
-    get_remediation은 키워드 매칭 실패 시에도 유형별 fallback을 주므로 대개 후보가 있다.
-    다만 후보가 전부 위반으로 걸리면 **치환하지 않고 건너뛴다**. 위반 문구를 다른
-    위반 문구로 바꾸느니 원문을 그대로 두고 사용자에게 위반으로 남겨 보이는 편이 낫다.
-    치환 대상(original)은 span 우선, 없으면 문장 전체.
+
+def _accept(text: str) -> bool:
+    """대체표현으로 내보내도 되는지. 위반으로 걸리면 안 내보낸다."""
+    m = match_rule(text)
+    return not (m is not None and m.outcome is RuleOutcome.violation)
+
+
+_REWRITE_PROMPT = """너는 화장품 광고 문구를 화장품법에 맞게 고쳐 주는 도우미다.
+
+아래 각 항목은 위반으로 지목된 광고 문구다. 항목마다 **대체 문구를 제안할 수 있는지
+먼저 판단하고**, 가능할 때만 제안하라.
+
+**제안하지 말아야 할 경우 (can_suggest=false):**
+- 효능·효과 주장이 아닌 문구. 판매처·유통 채널·가격·배송·이벤트 안내 등
+  (예: "전국 약국 오프라인매장 입점!" → 어디서 파는지에 대한 사실 진술이라
+   바꿀 효능 표현이 없다. 억지로 효능 문구를 넣으면 근거 없는 주장을 새로 만드는 것이다)
+- 제품명·브랜드명 그 자체 (예: "안나홀츠 안티링클 아이크림")
+  제품명은 문구를 바꾸는 게 아니라 제품명 자체를 바꿔야 하는 문제다
+- 원문 의미를 지키면서 합법으로 만들 방법이 없는 경우
+
+**제안할 경우 (can_suggest=true):**
+- 원문의 의미와 어조를 최대한 지킬 것. 없던 효과를 새로 넣지 마라
+- **문장 전체를 자연스러운 한국어로 다시 써라.** 단어만 갈아끼우지 마라
+- 참고 표현(reference)이 있으면 방향으로 삼되 그대로 넣을 필요는 없다
+- 의학적 효능(치료·재생·항염 등), 기능성 심사 대상 표현(미백·주름개선·자외선차단),
+  절대적 표현(완벽·최고·100%)을 새로 넣지 마라
+
+항목:
+{items}
+
+JSON으로만 답하라. 설명 문장을 덧붙이지 마라.
+{{"items": [{{"index": 0, "can_suggest": true, "suggestion": "다시 쓴 문장", "reason": "판단 근거"}}]}}
+can_suggest가 false면 suggestion은 넣지 마라."""
+
+
+def _build_prompt(entries: list[dict]) -> str:
+    """LLM에 넘길 배치 프롬프트. 항목마다 원문·위반부분·유형·참고표현을 준다."""
+    lines = []
+    for e in entries:
+        lines.append(
+            f"[{e['index']}] 원문: {e['sentence']}\n"
+            f"     위반으로 지목된 부분: {e['span']}\n"
+            f"     위반 유형: {e['violation_type']}\n"
+            f"     참고 표현: {e['reference'] or '(없음)'}"
+        )
+    return _REWRITE_PROMPT.format(items="\n".join(lines))
+
+
+def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replacement]:
+    """위반 finding마다 대체표현을 만든다. 못 만들면 그 finding은 건너뛴다.
+
+    `rewriter`(VLM 프로토콜)를 주면 조건표 후보를 방향으로 삼아 LLM이 문장을 다듬는다.
+    안 주면 조건표 결과를 그대로 쓴다(하위호환·오프라인 테스트용).
+
+    **제안할 수 없으면 제안하지 않는다**(2026-08-20 팀장 지시). 유통 채널 안내처럼
+    바꿀 효능 표현이 없는 문구에 억지로 대체표현을 붙이면, 근거 없는 효과 주장을
+    새로 넣으라고 권하는 셈이 된다. 실제로 5호 fallback `우수한 효과`가 약국 입점
+    안내 3건에 그대로 붙고 있었다.
     """
-    reps: list[Replacement] = []
-    for f in findings:
+    entries = []
+    for i, f in enumerate(findings):
         suggestions, _ = get_remediation(
             sentence=f.sentence, violation_type=f.violation_type, span=f.span
         )
-        if not suggestions:
-            continue
-        safe = _first_safe(suggestions)
-        if safe is None:
-            # 조건표가 이 유형에 안전한 대체표현을 못 낸다. 치환 없이 남긴다.
-            print(
-                f"[replace] 안전한 대체표현 없음, 치환 건너뜀: "
-                f"type={f.violation_type} span={f.span!r}"
-            )
+        entries.append(
+            {
+                "index": i,
+                "finding": f,
+                "sentence": f.sentence,
+                "span": f.span or f.sentence,
+                "violation_type": _vtype_value(f.violation_type),
+                "reference": _first_safe(suggestions) if suggestions else None,
+            }
+        )
+
+    rewritten: dict[int, str] = {}
+    dropped: set[int] = set()
+    if rewriter is not None and entries:
+        rewritten, dropped = _rewrite(rewriter, entries)
+
+    reps: list[Replacement] = []
+    for e in entries:
+        if e["index"] in dropped:
+            continue  # LLM이 "대체할 수 없다"고 판단한 문구
+        text = rewritten.get(e["index"]) or e["reference"]
+        if text is None:
+            print(f"[replace] 안전한 대체표현 없음, 치환 건너뜀: span={e['span']!r}")
             continue
         reps.append(
             Replacement(
-                original=f.span or f.sentence,
-                replaced=safe,
-                violation_type=f.violation_type,
-                basis=_BASIS,
+                original=e["span"],
+                replaced=text,
+                violation_type=e["finding"].violation_type,
+                basis=_BASIS_LLM if e["index"] in rewritten else _BASIS,
+                note=_note_for(text),
             )
         )
     return reps
+
+
+def _vtype_value(vtype) -> str:
+    return vtype.value if isinstance(vtype, ViolationType) else str(vtype)
+
+
+def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int]]:
+    """LLM에 배치로 한 번 물어 (다듬은 문구, 제안 불가 인덱스)를 낸다.
+
+    **실패하면 조건표 결과로 돌아간다.** 과금 호출이라 재시도하지 않는다(CLAUDE.md §E).
+    LLM이 낸 문구는 규칙집에 다시 태워 위반이면 버린다. 만드는 쪽이 누구든
+    검증 없이 내보내면 위반을 위반으로 바꿔주게 된다.
+    """
+    try:
+        res = rewriter.generate_json(_build_prompt(entries), [])
+    except Exception as exc:  # 과금 호출이라 재시도 없이 조건표로 폴백
+        print(f"[replace] 문장 다듬기 실패, 조건표 결과로 진행: {exc}")
+        return {}, set()
+
+    rewritten: dict[int, str] = {}
+    dropped: set[int] = set()
+    for item in (res or {}).get("items", []):
+        idx = item.get("index")
+        if not isinstance(idx, int):
+            continue
+        if not item.get("can_suggest"):
+            dropped.add(idx)
+            continue
+        text = (item.get("suggestion") or "").strip()
+        if not text:
+            dropped.add(idx)
+            continue
+        if not _accept(text):
+            # LLM이 위반 문구를 냈다. 조건표로 되돌리지 않고 제안 자체를 뺀다.
+            print(f"[replace] 다듬은 문구가 위반으로 걸림, 제안 제외: {text!r}")
+            dropped.add(idx)
+            continue
+        rewritten[idx] = text
+    return rewritten, dropped
 
 
 def apply_replacements(content: str, reps: list[Replacement]) -> str:
