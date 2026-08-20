@@ -75,6 +75,8 @@ def test_finding_json_serializes_korean():
     assert dumped["location"] == {
         "tile": "source_t00.png",
         "order": 0,
+        "x_start": None,
+        "x_end": None,
         "y_start": None,
         "y_end": None,
         "source_h": None,

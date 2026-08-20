@@ -7,7 +7,7 @@ create: 원본 없이 인증서-인정문구 매칭으로 광고문구 조립(�
 judge·vlm을 주입받아 유닛테스트는 오프라인.
 """
 
-from barum.generate.images import generate_module_images
+from barum.generate.images import generate_canvas_background, generate_module_images
 from barum.generate.layout import (
     PRODUCT_SPEC_KIND,
     clinical_sections_text,
@@ -20,6 +20,7 @@ from barum.models import (
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
+    CanvasBackground,
     ImagePlan,
     LayoutModule,
     LayoutPlan,
@@ -58,6 +59,16 @@ JSON으로만 답하라: {{"제품개요": "...", "사용법": "...", "주의사
 _SECTION_KINDS = ("제품개요", "사용법", "주의사항")
 
 # create 모드 모듈별 저위험 서술 프롬프트. 계획된 모듈만큼 한 번에 받는다(호출 1회).
+#
+# 헤드라인 길이 제약(20자)은 디디(디자이너)가 설화수 레퍼런스 15개 헤드라인을 실측한
+# 값이다: 12~31자, 대부분 15~25자, 전부 1줄(2026-08-20). **레퍼런스 JSON에는 실제 카피가
+# 없어서(kind/purpose/layout_type만) 우리 데이터로는 재현 검증이 안 된다** — 디디가 실제
+# 페이지를 직접 잰 값이다.
+#
+# 우리 생성물은 첫 문장이 56자·5줄까지 나와서 헤드라인 구실을 못 했다(팀장 지적).
+# headline/subcopy가 스키마로 분리돼 있지 않고 프론트가 첫 문장을 정규식으로 잘라 쓰는
+# 구조라, 지금은 프롬프트로 길이를 강제한다. 안 지켜지면 스키마 분리(B안,
+# memory `barum-structured-section-content-gap`)로 간다.
 _MODULE_PROMPT = """너는 화장품 상세페이지의 '저위험 서술'만 작성한다.
 효능·기능·치료·미백·주름·질병 관련 표현과 수치 주장은 절대 쓰지 마라(그건 별도 처리된다).
 
@@ -65,8 +76,16 @@ _MODULE_PROMPT = """너는 화장품 상세페이지의 '저위험 서술'만 �
 전성분: {ingredients}
 추가정보: {notes}
 
-아래 모듈마다 2~3문장씩 써라. kind는 그대로 돌려줘라.
+아래 모듈마다 써라. kind는 그대로 돌려줘라.
 {modules}
+
+**문장 구조를 반드시 지켜라. 프론트가 첫 문장을 헤드라인으로 크게 키워 쓴다.**
+- **첫 문장은 20자 이내의 짧은 한 마디**여야 한다. 설명하지 말고 던져라.
+  좋은 예: "속기미, 왜 생길까요?" / "발림성부터 다릅니다" / "이렇게 쓰세요"
+  나쁜 예: "칙칙함이나 속기미는 수면, 스트레스, 외부 환경 등 여러 요인으로 인해
+  피부 표면에서 나타나는 현상일 수 있습니다." (설명을 첫 문장에 넣었다)
+- 설명은 **두 번째 문장부터** 2~3문장으로 쓴다.
+- 첫 문장이 길면 상세페이지에서 큰 글씨가 다섯 줄로 흘러 헤드라인 구실을 못 한다.
 
 JSON으로만 답하라: {{"sections": [{{"kind": "모듈kind", "text": "..."}}]}}"""
 
@@ -136,7 +155,7 @@ def generate_module_sections(
             if isinstance(s, dict)
         }
         sections = [
-            Section(kind=m.kind, text=by_kind[m.kind], source="llm")
+            Section(kind=m.kind, text=by_kind[m.kind], source="llm", module_kind=m.kind)
             for m in modules
             if by_kind.get(m.kind)
         ]
@@ -178,12 +197,36 @@ def build_image_plan(
         gen = ImageGenResult(requested=True, allowed=allowed, reason=reason, ai_labeled=False)
 
     module_images: list[ModuleImage] = []
+    canvas: CanvasBackground | None = None
     if plan is not None and image_generator is not None:
         module_images, blobs = generate_module_images(
             plan, req, image_generator, photo_resolver=photo_resolver
         )
         _store_module_images(module_images, blobs, image_sink)
-    return ImagePlan(placed=placed, generation=gen, module_images=module_images)
+        # 긴 배경은 옵트인이다. 모듈 이미지를 대신하지 않고 더해지므로 과금이 는다.
+        if ig and ig.canvas_requested:
+            canvas, canvas_blob = generate_canvas_background(req, plan.product_type, image_generator)
+            _store_canvas(canvas, canvas_blob, image_sink)
+    return ImagePlan(placed=placed, generation=gen, module_images=module_images, canvas=canvas)
+
+
+def _store_canvas(canvas: CanvasBackground | None, blob: bytes | None, image_sink) -> None:
+    """긴 배경 이미지를 싱크에 넘기고 URL을 채운다.
+
+    `_store_module_images`와 같은 원칙: 과금해서 만든 걸 조용히 버리지 않고, 못
+    보관했으면 그 사실을 reason에 남긴다.
+    """
+    if canvas is None or blob is None or canvas.status != "generated":
+        return
+    if image_sink is None:
+        canvas.reason = "저장소가 없어 생성된 배경 이미지를 보관하지 못했습니다"
+        return
+    try:
+        canvas.image_url = image_sink("_canvas", blob)
+    except Exception as e:
+        print(f"    [skip] 배경 이미지 저장 실패: {type(e).__name__}: {e}")
+    if not canvas.image_url:
+        canvas.reason = "배경 이미지 저장에 실패해 보관되지 않았습니다"
 
 
 def _store_module_images(module_images: list[ModuleImage], blobs: dict, image_sink) -> None:
@@ -214,7 +257,10 @@ def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
     for s in sections:
         text, kinds = remove_pii(s.text)
         pii_kinds.update(kinds)
-        cleaned.append(Section(kind=s.kind, text=text, source=s.source, table_rows=s.table_rows))
+        # 필드를 하나씩 나열해 재조립하면 새 필드가 추가될 때마다 여기서 조용히
+        # 유실된다. 실제로 module_kind가 그렇게 떨어져 나갔다(2026-08-20). 텍스트만
+        # 갈아끼우는 방식으로 바꿔 앞으로 필드가 늘어도 자동으로 따라가게 한다.
+        cleaned.append(s.model_copy(update={"text": text}))
     return cleaned, pii_kinds
 
 
@@ -236,6 +282,69 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
 
 
 _CLAIM_CATEGORIES = ("미백", "주름개선", "자외선차단")
+
+
+def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> None:
+    """위반소지 모듈이 채워진 섹션에 원래 모듈 kind를 달아준다(제자리 수정).
+
+    **왜 필요한가**: 위반소지 모듈(hero_intro·value_prop·clinical_*)은 근거가 있어
+    계획에 남아도, 그 내용을 LLM이 쓰지 않는다. 인정문구가 채우면 섹션 kind가
+    "광고문구", 실증자료가 채우면 "실증자료"로 나온다. 그런데 프론트는 모듈 이미지를
+    `moduleImageDataUris[section.kind]`로 찾는다. kind가 안 맞으니 **그 모듈들의
+    이미지가 통째로 버려졌다.**
+
+    2026-08-20 실측: 6장을 과금해서 만들었는데 실제로 상세페이지에 들어간 건 2장이고
+    hero_intro·value_prop·clinical_intro·clinical_result 4장이 버려졌다. 히어로
+    이미지가 있는데도 페이지가 텍스트로 시작했다.
+
+    PR #215(중복 kind가 이미지를 덮어쓰던 문제)와 같은 계열이다. kind를 모듈 식별자로
+    쓰는 구조의 구멍이라, 섹션이 자기가 어느 모듈 자리인지 알게 해서 막는다.
+
+    계획 순서대로 짝짓는다. 임상 계열은 실증자료 섹션 하나가 대표하므로 첫 임상
+    모듈에만 붙인다(실증자료 섹션은 하나만 나온다).
+    """
+    claim_slots = [m for m in plan.modules if m.has_claim_risk and not m.kind.startswith("clinical")]
+    clinical_slots = [m for m in plan.modules if m.has_claim_risk and m.kind.startswith("clinical")]
+    claim_iter = iter(claim_slots)
+    for section in sections:
+        if section.module_kind is not None:
+            continue
+        if section.source == "approved_claim":
+            module = next(claim_iter, None)
+            if module is not None:
+                section.module_kind = module.kind
+        elif section.source == "clinical_evidence" and clinical_slots:
+            section.module_kind = clinical_slots[0].kind
+
+
+def _drop_unfilled_risky_modules(
+    plan: LayoutPlan, sections: list[Section]
+) -> tuple[LayoutPlan, list[SkippedClaim]]:
+    """내용이 안 채워진 위반소지 모듈을 계획에서 뺀다.
+
+    `filter_risky_modules`의 게이트는 "인정문구가 하나라도 있나"라는 **불리언**이라,
+    인정문구가 2개인데 위반소지 모듈이 3개면 셋 다 통과한다. 그런데 실제로 채울
+    문구는 2개뿐이라 세 번째는 **내용이 아예 없는 빈 모듈**이 된다.
+
+    빈 모듈은 화면에 안 나오는데 이미지 생성 대상에는 들어가서, 과금해놓고 버려진다
+    (2026-08-20 실측: persistence_claim이 그렇게 남았다). 여기서 미리 뺀다.
+
+    반드시 `_link_risky_module_sections` 뒤, `build_image_plan` 앞에 불러야 한다.
+    """
+    filled = {s.module_kind for s in sections if s.module_kind}
+    kept: list[LayoutModule] = []
+    skipped: list[SkippedClaim] = []
+    for module in plan.modules:
+        if module.has_claim_risk and module.kind not in filled:
+            skipped.append(
+                SkippedClaim(
+                    category=module.kind,
+                    reason="이 모듈을 채울 인정문구·실증자료가 부족해 계획에서 뺐습니다",
+                )
+            )
+            continue
+        kept.append(module)
+    return LayoutPlan(modules=kept, product_type=plan.product_type, source=plan.source), skipped
 
 
 def _usable_surveys(req: GenerateRequest) -> tuple[list, list[SkippedClaim]]:
@@ -381,6 +490,9 @@ def _generate_create_content(
                 source="survey_evidence",
             )
         )
+    _link_risky_module_sections(sections, plan)
+    plan, unfilled_skipped = _drop_unfilled_risky_modules(plan, sections)
+    skipped += unfilled_skipped
     sections += generate_module_sections(req, safe_modules, vlm)
     if product_spec_planned:
         sections.append(build_product_spec_section(req))

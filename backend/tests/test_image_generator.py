@@ -119,3 +119,70 @@ def test_모르는_provider는_거부한다():
     # 지원 목록에 없는 이름은 조용히 기본값으로 새지 않고 거부해야 한다.
     with pytest.raises(ValueError, match="지원하지 않는 provider"):
         get_image_generator("stability")
+
+
+# ── 콘텐츠 필터 거부 재시도 (2026-08-20, 거부율 3.1% 실측 후 도입) ──
+
+
+def test_콘텐츠_필터_거부는_1회_재시도한다():
+    """거부는 과금이 없고(토큰 실측) 비결정적이라 재시도가 유효하다."""
+    refusal = RuntimeError("400 Image generation blocked due to copyright/recitation.")
+    gen = _generator(refusal)
+    # 첫 호출은 거부, 두 번째는 성공하도록 응답을 갈아끼운다.
+    calls = {"n": 0}
+
+    def create(**kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise refusal
+        return FakeInteraction([FakePart("image", data=B64)])
+
+    gen.client.interactions.create = create
+    assert gen.generate_image("x", []) == PNG
+    assert calls["n"] == 2
+
+
+def test_재시도해도_거부되면_그대로_올린다():
+    """무한 재시도하지 않는다. 1회만."""
+    refusal = RuntimeError("Image generation blocked due to copyright/recitation")
+    gen = _generator(refusal)
+    calls = {"n": 0}
+
+    def create(**kwargs):
+        calls["n"] += 1
+        raise refusal
+
+    gen.client.interactions.create = create
+    with pytest.raises(RuntimeError, match="copyright"):
+        gen.generate_image("x", [])
+    assert calls["n"] == 2
+
+
+def test_거부가_아닌_실패는_재시도하지_않는다():
+    """인증 실패·네트워크 오류를 재시도하면 같은 실패를 반복하며 시간만 쓴다."""
+    gen = _generator(None)
+    calls = {"n": 0}
+
+    def create(**kwargs):
+        calls["n"] += 1
+        raise RuntimeError("401 UNAUTHENTICATED")
+
+    gen.client.interactions.create = create
+    with pytest.raises(RuntimeError, match="UNAUTHENTICATED"):
+        gen.generate_image("x", [])
+    assert calls["n"] == 1, "과금 호출 재시도 금지 원칙은 이 경우엔 그대로 적용된다"
+
+
+def test_기본_provider가_gemini다():
+    """라벨 보존력 때문에 전환(2026-08-20 팀장 승인)."""
+    import os
+
+    from barum.vlm import GeminiImageGenerator as G
+
+    prev = os.environ.pop("IMAGE_PROVIDER", None)
+    try:
+        os.environ["GEMINI_API_KEY"] = "k"
+        assert isinstance(get_image_generator(), G)
+    finally:
+        if prev is not None:
+            os.environ["IMAGE_PROVIDER"] = prev

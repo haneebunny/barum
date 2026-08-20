@@ -8,6 +8,7 @@ import type { USPreflightReport } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { useError } from "@/lib/error/ErrorContext";
 
 interface FileItem {
   id: string;
@@ -19,6 +20,7 @@ interface FileItem {
 function InspectContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { showError } = useError();
   const regionParam = searchParams.get("region")?.toUpperCase() === "US" ? "US" : "KR";
   const idParam = searchParams.get("id") || "";
 
@@ -37,16 +39,9 @@ function InspectContent() {
   const [adFiles, setAdFiles] = useState<FileItem[]>(
     isSunscreenDraft
       ? [{ id: "ad-file-draft", name: "선크림_기획안", ext: ".pdf" }]
-      : [
-          { id: "ad-file-1", name: "신제품_광고안", ext: ".jpg" },
-          { id: "ad-file-2", name: "상세페이지_v2", ext: ".pdf" },
-        ]
+      : []
   );
-  const [pFiles, setPFiles] = useState<FileItem[]>(
-    isSunscreenDraft
-      ? []
-      : [{ id: "p-file-1", name: "성분표_전성분", ext: ".xlsx" }]
-  );
+  const [pFiles, setPFiles] = useState<FileItem[]>([]);
 
   const [inspectStatus, setInspectStatus] = useState<"running" | "done" | null>(null);
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
@@ -214,6 +209,7 @@ function InspectContent() {
         setInspectStatus("done");
       } catch (err) {
         console.error(err);
+        showError("검사 오류", err instanceof Error ? err.message : String(err));
         setSteps(prev => prev.map(s => ({ ...s, status: "warn", valueText: "에러 발생" })));
         setInspectStatus(null);
       }
@@ -283,6 +279,7 @@ function InspectContent() {
       setInspectStatus("done");
     } catch (err) {
       console.error(err);
+      showError("검사 오류", err instanceof Error ? err.message : String(err));
       setSteps(prev => prev.map(s => {
         if (s.status === "running" || s.status === "idle") {
           return { ...s, status: "warn", valueText: "실패" };
@@ -384,7 +381,7 @@ function InspectContent() {
                 handleKeyDown(e, triggerAdFileSelect);
               }}
             >
-              <div className="text-[var(--brand-ink)] mb-2.25">
+              <div className="text-[var(--brand-ink)] mb-2.25 flex justify-center">
                 <UploadSimple size={24} weight="regular" />
               </div>
               <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">상세페이지 · 광고 이미지 던져넣기</h3>

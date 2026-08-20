@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Warning, ShieldWarning, Question, ArrowsClockwise } from "@phosphor-icons/react";
 import type { USPreflightReport, USPreflightFinding, USPreflightCategory } from "@/lib/api/schema";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { getReport } from "@/lib/api/client";
 
 const CATEGORY_META: Record<
   USPreflightCategory,
@@ -99,15 +100,27 @@ export function USReportClient({ resultId }: USReportClientProps) {
 
   useEffect(() => {
     const raw = sessionStorage.getItem(`us-preflight-${resultId}`);
-    if (!raw) {
-      setError("리포트 데이터를 찾을 수 없습니다. 검사 화면에서 다시 시도해 주세요.");
-      return;
+    if (raw) {
+      try {
+        setReport(JSON.parse(raw));
+        return;
+      } catch {
+        // 파싱 에러 시 API 조회로 폴백
+      }
     }
-    try {
-      setReport(JSON.parse(raw));
-    } catch {
-      setError("리포트 데이터를 파싱할 수 없습니다.");
-    }
+
+    getReport(resultId)
+      .then((envelope) => {
+        if (envelope.region === "US") {
+          setReport(envelope.report as USPreflightReport);
+        } else {
+          setError("해당 미국 리포트 데이터를 찾을 수 없습니다.");
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setError("리포트 데이터를 찾을 수 없습니다. 검사 화면에서 다시 시도해 주세요.");
+      });
   }, [resultId]);
 
   if (error) {

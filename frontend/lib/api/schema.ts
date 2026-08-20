@@ -20,6 +20,8 @@ export type Flag = z.infer<typeof FlagSchema>;
 export const LocationSchema = z.object({
   tile: z.string().nullable(),
   order: z.number(),
+  x_start: z.number().nullable().optional(),
+  x_end: z.number().nullable().optional(),
   y_start: z.number().nullable().optional(),
   y_end: z.number().nullable().optional(),
   source_h: z.number().nullable().optional(),
@@ -84,15 +86,7 @@ export const CheckReportSchema = z.object({
 });
 export type CheckReport = z.infer<typeof CheckReportSchema>;
 
-// GET /reports/{result_id} 응답 (다시 보기)
-export const ReportEnvelopeSchema = z.object({
-  result_id: z.string(),
-  created_at: z.string(),
-  region: RegionSchema,
-  image_available: z.boolean(),
-  report: CheckReportSchema,
-});
-export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;
+
 
 // POST /remediate 요청/응답
 export const RemediationRequestSchema = z.object({
@@ -124,6 +118,10 @@ export const SectionSchema = z.object({
   source: z.string(),
   // table_info layout_type 모듈용 구조화 데이터(제형·용량). 베베 배선 전 구버전 응답엔 없을 수 있어 optional
   table_rows: z.array(TableRowSchema).nullable().optional(),
+  // 이 섹션이 채우는 layout_plan 모듈의 kind. kind와 다를 수 있다 — 위반소지 모듈
+  // (hero_intro 등)의 내용은 인정문구·실증자료가 채워서 섹션 kind가 "광고문구"·"실증자료"로
+  // 나온다. 이미지·layout_type은 이 값으로 먼저 찾아야 한다(구버전 응답엔 없어 optional).
+  module_kind: z.string().nullable().optional(),
 });
 export type Section = z.infer<typeof SectionSchema>;
 
@@ -310,3 +308,13 @@ export const USPreflightReportSchema = z.object({
   disclaimer: z.string(),
 });
 export type USPreflightReport = z.infer<typeof USPreflightReportSchema>;
+
+// GET /reports/{result_id} 응답 (다시 보기)
+export const ReportEnvelopeSchema = z.object({
+  result_id: z.string(),
+  created_at: z.string(),
+  region: RegionSchema,
+  image_available: z.boolean(),
+  report: z.union([CheckReportSchema, USPreflightReportSchema]),
+});
+export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;

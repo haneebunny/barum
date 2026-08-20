@@ -99,10 +99,10 @@ function ReportDemo({ phase, score }: { phase: number; score: number }) {
           {resolved
             ? "위반 0 · 검토필요 0"
             : fixedViolation
-            ? "위반 0 · 검토필요 1"
-            : showReview
-            ? "위반 1 · 검토필요 1"
-            : "위반 1 · 검토필요 0"}
+              ? "위반 0 · 검토필요 1"
+              : showReview
+                ? "위반 1 · 검토필요 1"
+                : "위반 1 · 검토필요 0"}
         </span>
         <span className="text-[var(--ink-3)]">이미지 4 / 12</span>
       </div>
@@ -556,7 +556,7 @@ export default function LandingPage() {
     <div className="flex flex-col bg-[var(--surface)] text-[var(--ink)]">
 
       {/* ── 랜딩 전용 네비 (목업 헤더 우측 nav 파트 + 테마 토글 탑재) ── */}
-      <div 
+      <div
         className="flex items-center gap-6 px-4 border-b bg-[var(--surface-sub)] text-[13.5px] font-semibold sticky top-0 z-50 transition-all relative"
         style={{
           paddingTop: compact ? "8px" : "12px",
@@ -588,7 +588,7 @@ export default function LandingPage() {
               />
             </svg>
           </span>
-          <span 
+          <span
             className="font-mono text-[11px] text-[var(--ink-3)] border border-[var(--line-2)] px-[7px] py-[2px] whitespace-nowrap"
             style={{
               opacity: compact ? 0 : 1,
@@ -704,7 +704,7 @@ export default function LandingPage() {
 
       {/* ── 히어로: 첫 화면을 히어로+퀴즈가 소유한다 (54px = 헤더 높이) ── */}
       {/* lg 미만은 우측 560px 고정폭이 안 들어가 가로 스크롤이 났다(768px 태블릿에서 확인). lg부터 2단 */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_560px] lg:min-h-[calc(100dvh-54px)] border-b border-[var(--line)] items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_650px] lg:min-h-[calc(100dvh-54px)] border-b border-[var(--line)] items-stretch">
 
         {/* 좌 */}
         <div className="border-r border-[var(--line)] p-[62px_44px_56px] flex flex-col justify-center">
@@ -872,9 +872,9 @@ export default function LandingPage() {
       </div>
 
       {/* ── 기능 섹션 ── */}
-      <div 
-        id="features" 
-        ref={featuresRef} 
+      <div
+        id="features"
+        ref={featuresRef}
         className="border-b border-[var(--line)] p-[58px_44px_54px]"
         style={{
           opacity: featuresRevealed ? 1 : 0,
@@ -891,7 +891,7 @@ export default function LandingPage() {
         </p>
         <div className="grid grid-cols-4 gap-3">
           {/* 01 찾고 */}
-          <div 
+          <div
             className="bg-[var(--surface)] border border-[var(--line-2)] p-[20px_18px]"
             style={{
               clipPath: featuresRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -911,7 +911,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* 02 근거 대고 */}
-          <div 
+          <div
             className="bg-[var(--surface)] border border-[var(--line-2)] p-[20px_18px]"
             style={{
               clipPath: featuresRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -931,7 +931,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* 03 고치고 */}
-          <div 
+          <div
             className="bg-[var(--surface)] border border-[var(--line-2)] p-[20px_18px]"
             style={{
               clipPath: featuresRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -951,7 +951,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* 04 만들고 PRO */}
-          <div 
+          <div
             className="bg-[var(--surface)] border border-[var(--brand-deep)] shadow-[inset_0_0_0_1px_var(--brand-deep)] p-[20px_18px]"
             style={{
               clipPath: featuresRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -1028,9 +1028,9 @@ export default function LandingPage() {
         </div>
       )}
       {/* ── 수출 검사 섹션 ── */}
-      <div 
-        id="export" 
-        ref={exportSectionRef} 
+      <div
+        id="export"
+        ref={exportSectionRef}
         className="border-b border-[var(--line)] p-[58px_44px_54px]"
         style={{
           opacity: exportSectionRevealed ? 1 : 0,
@@ -1046,7 +1046,7 @@ export default function LandingPage() {
         </p>
         <div ref={exportObserverRef} className="grid grid-cols-[1fr_44px_1fr] items-stretch overflow-hidden">
           {/* KR */}
-          <div 
+          <div
             className="bg-[var(--surface)] border border-[var(--line-2)]"
             style={{
               transform: exportActive ? "none" : "translateX(-16px)",
@@ -1068,7 +1068,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* 가운데 ⇄ */}
-          <div 
+          <div
             className="flex items-center justify-center text-[var(--brand-ink)] font-mono text-[16px] font-bold"
             style={{
               transform: exportActive ? "rotate(180deg)" : "rotate(0)",
@@ -1078,7 +1078,7 @@ export default function LandingPage() {
             ⇄
           </div>
           {/* US */}
-          <div 
+          <div
             className="bg-[var(--surface)] border"
             style={{
               transform: exportActive ? "none" : "translateX(16px)",
@@ -1087,7 +1087,7 @@ export default function LandingPage() {
               transition: prefersReducedMotion ? "none" : "transform 300ms ease-out, opacity 300ms ease-out, border-color 300ms ease-out 200ms"
             }}
           >
-            <div 
+            <div
               className="flex items-center gap-[8px] border-b px-[13px] py-2 font-mono text-[10.5px]"
               style={{
                 borderColor: exportActive ? "var(--crit-bd)" : "var(--line-2)",
@@ -1096,7 +1096,7 @@ export default function LandingPage() {
                 transition: prefersReducedMotion ? "none" : "border-color 300ms ease-out 200ms, background-color 300ms ease-out 200ms, color 300ms ease-out 200ms"
               }}
             >
-              <span 
+              <span
                 className="font-bold text-[var(--surface)] px-[6px] py-[1px]"
                 style={{
                   backgroundColor: exportActive ? "var(--crit)" : "var(--ink-3)",
@@ -1109,7 +1109,7 @@ export default function LandingPage() {
             </div>
             <div className="p-[18px_17px]">
               <p className="m-0 mb-[12px] text-[var(--ink)] text-[15px] font-semibold leading-[1.6]">&quot;SPF50+ 자외선 차단, 톤업 선크림&quot;</p>
-              <span 
+              <span
                 className="inline-flex items-center gap-[5px] text-[var(--crit)] border border-[var(--crit-bd)] bg-[var(--crit-bg)] mb-[10px] text-[11.5px] font-semibold px-2 py-[2px]"
                 style={{
                   opacity: exportActive ? 1 : 0,
@@ -1147,7 +1147,7 @@ export default function LandingPage() {
         </h2>
         <div className="grid grid-cols-3 gap-3 mb-[12px]">
           {/* FREE */}
-          <div 
+          <div
             className="flex flex-col bg-[var(--surface)] border border-[var(--line-2)]"
             style={{
               clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -1175,7 +1175,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* BASIC */}
-          <div 
+          <div
             className="flex flex-col bg-[var(--surface)] border border-[var(--line-2)]"
             style={{
               clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -1203,7 +1203,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* PRO */}
-          <div 
+          <div
             className="flex flex-col bg-[var(--surface)] relative border border-[var(--brand-deep)] shadow-[inset_0_0_0_1px_var(--brand-deep)]"
             style={{
               clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
@@ -1269,9 +1269,9 @@ export default function LandingPage() {
       </div>
 
       {/* ── FAQ 섹션 ── */}
-      <div 
-        id="faq" 
-        ref={faqRef} 
+      <div
+        id="faq"
+        ref={faqRef}
         className="p-[58px_44px_46px]"
         style={{
           opacity: faqRevealed ? 1 : 0,
@@ -1287,15 +1287,15 @@ export default function LandingPage() {
             { q: "'통과'면 100% 안전한가요?", a: "아니요. 위험해 보이는 건 놓치지 않게 넓게 잡지만, 통과가 합법 보증은 아니에요. 화면과 약관에도 이 점을 계속 알려드려요." },
             { q: "올린 자료는 어떻게 처리되나요?", a: "검사와 초안 제작에만 쓰고, 개인정보는 자동으로 걸러내요. 올리신 자료를 AI 학습에 쓰지 않아요." },
           ].map((f, i) => (
-            <div 
-              key={f.q} 
+            <div
+              key={f.q}
               className="border border-[var(--line)] p-[16px_18px] bg-[var(--surface)]"
               style={{
                 clipPath: faqRevealed ? "inset(0)" : "inset(0 100% 0 0)",
                 transition: prefersReducedMotion ? "none" : `clip-path 220ms ease-out ${50 * i}ms`
               }}
             >
-              <div 
+              <div
                 style={{
                   opacity: faqRevealed ? 1 : 0,
                   transition: prefersReducedMotion ? "none" : `opacity 320ms ease-out ${50 * i + 220}ms`
@@ -1310,14 +1310,14 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
- 
+
         {/* CTA 배너 */}
-        <div 
+        <div
           ref={ctaRef}
           className="relative overflow-hidden flex items-center gap-[30px] p-[44px_40px]"
         >
           {/* Animated Background Wipe Layer */}
-          <div 
+          <div
             style={{
               position: "absolute",
               inset: 0,
@@ -1327,7 +1327,7 @@ export default function LandingPage() {
               transition: prefersReducedMotion ? "none" : "clip-path 420ms cubic-bezier(.2,.7,.2,1)"
             }}
           />
-          
+
           <div className="relative z-10 flex-1">
             <div className="text-[var(--on-brand)] mb-[8px] text-[30px] font-extrabold leading-[1.3] tracking-[-0.8px] break-keep">
               지금 광고 문구를 붙여넣으세요.<br />3분 뒤 조항까지 나옵니다.

@@ -14,6 +14,7 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
+- 반드시 각 문장마다 해당 문구가 위치한 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 정수 좌표)을 `box_2d` 필드에 반드시 포함하라.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -21,14 +22,15 @@ BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 �
 - 한국어가 전혀 없는 이미지는 빈 배열로 둔다.
 - **이미지를 건너뛰지 마라.** 첨부 순서대로 {n}개 항목을 모두 반환한다.
 
-JSON으로만 답하라:
-{{"images": [{{"i": 0, "sentences": ["문장1"]}}, {{"i": 1, "sentences": []}}]}}"""
+JSON 응답 형식 예시:
+{{"images": [{{"i": 0, "sentences": [{{"text": "유어베리 세럼", "box_2d": [120, 200, 180, 800]}}]}}, {{"i": 1, "sentences": []}}]}}"""
 
 OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 일부다.
 이미지에 보이는 모든 한국어 텍스트를 위에서 아래 순서로 읽어라.
 
 규칙:
 - 광고 문구를 **문장 단위**로 끊어서 배열에 담는다.
+- 반드시 각 문장마다 해당 문구가 위치한 2D 사각 영역(Bounding Box: [ymin, xmin, ymax, xmax], 0~1000 정규화 정수 좌표)을 `box_2d` 필드에 반드시 포함하라.
 - 줄바꿈은 문장 구분이 아니다. 디자인상 줄이 나뉜 한 문장은 하나로 합쳐라.
 - 가격·배송·교환/반품 안내·회사 주소·사업자번호 같은 거래 안내 문구는 제외한다.
 - 원문 그대로 옮긴다. 맞춤법을 고치거나 표현을 다듬지 마라.
@@ -36,7 +38,8 @@ OCR_PROMPT = """이 이미지는 한국 이커머스 상품 상세페이지의 �
 - 읽을 수 없는 글자는 그 문장을 통째로 빼지 말고 읽을 수 있는 부분만 담는다.
 - 한국어가 전혀 없으면 빈 배열을 반환한다.
 
-JSON으로만 답하라: {"sentences": ["문장1", "문장2"]}"""
+JSON 응답 형식 예시:
+{"sentences": [{"text": "피부 깊숙이, 세포재생의 시작", "box_2d": [750, 150, 850, 850]}, {"text": "차세대 안티에이징 세럼", "box_2d": [870, 200, 920, 800]}]}"""
 
 
 def _normalize(s: str) -> str:
@@ -44,7 +47,7 @@ def _normalize(s: str) -> str:
     return re.sub(r"[\s\W_]+", "", s)
 
 
-def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[str]]:
+def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[dict | str]]:
     """타일 여러 장을 한 번에 보내고 이미지별 문장 배열을 받는다.
 
     한 요청에 이미지를 몰아넣으면 모델이 뒤쪽을 빠뜨리기 쉬우므로, 응답 개수가
@@ -52,12 +55,14 @@ def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[str]]:
     """
     if len(tiles) == 1:
         result = vlm.generate_json(OCR_PROMPT, [tiles[0].read_bytes()])
+        print(f"    [VLM OCR RAW 응답 (tile={tiles[0].name})]: {result}")
         return [result.get("sentences") or []]
 
     result = vlm.generate_json(
         BATCH_PROMPT.format(n=len(tiles)), [t.read_bytes() for t in tiles]
     )
-    out: list[list[str]] = [[] for _ in tiles]
+    print(f"    [VLM BATCH OCR RAW 응답 ({len(tiles)}장)]: {result}")
+    out: list[list[dict | str]] = [[] for _ in tiles]
     for item in result.get("images", []):
         try:
             idx = int(item["i"])
@@ -69,14 +74,14 @@ def _ocr_batch(tiles: list[Path], vlm: VLM) -> list[list[str]]:
 
 
 def extract_product_sentences(
-    product_dir: Path, vlm: VLM, verbose: bool = True, batch_size: int = 1
+    product_dir: Path, vlm: VLM, verbose: bool = True, batch_size: int = 3
 ) -> dict:
     """상품 하나의 타일 전체를 OCR 해 문장 리스트를 만든다.
 
     같은 문구가 여러 번 잡힌다 — 타일 경계(80px 겹침)로도, 상세페이지가 같은
     슬로건을 반복해서도. 홀드아웃엔 유니크 문장만 필요하므로 상품 단위로 중복을 없앤다.
 
-    반환: {product_id, sentences: [{order, tile, text}], tiles_ok, tiles_failed}
+    반환: {product_id, sentences: [{order, tile, text, box_2d}], tiles_ok, tiles_failed}
     """
     tiles = sorted((product_dir / "tiles").glob("*.png"))
     sentences: list[dict] = []
@@ -96,17 +101,28 @@ def extract_product_sentences(
 
         for tile, raw in zip(chunk, per_tile):
             fresh = []
-            for s in raw:
-                s = (s or "").strip()
-                key = _normalize(s)
+            for item in raw:
+                if isinstance(item, dict):
+                    text = (item.get("text") or "").strip()
+                    box_2d = item.get("box_2d")
+                else:
+                    text = str(item or "").strip()
+                    box_2d = None
+
+                key = _normalize(text)
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                fresh.append(s)
+                fresh.append({"text": text, "box_2d": box_2d})
 
             for s in fresh:
                 sentences.append(
-                    {"order": len(sentences), "tile": tile.name, "text": s}
+                    {
+                        "order": len(sentences),
+                        "tile": tile.name,
+                        "text": s["text"],
+                        "box_2d": s["box_2d"],
+                    }
                 )
             if verbose:
                 print(f"    {tile.name}: +{len(fresh)}문장 (누적 {len(sentences)})")

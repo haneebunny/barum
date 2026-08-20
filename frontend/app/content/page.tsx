@@ -9,6 +9,7 @@ import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
+import { useError } from "@/lib/error/ErrorContext";
 
 interface ProductPhotoItem {
   id: string;
@@ -81,14 +82,6 @@ const DEFAULT_MOCKS: Record<string, ContentMockData> = {
   }
 };
 
-const SRC_LABEL = {
-  remediation: "조건표 치환",
-  llm: "LLM 생성",
-  template: "표준 문구",
-  approved_claim: "인정문구 매칭",
-  clinical_evidence: "실증자료(미검증)"
-};
-
 const CERT_CATEGORIES = ["미백", "주름개선", "자외선차단"];
 
 let clinicalEvidenceSeq = 0;
@@ -150,6 +143,7 @@ function UpgradeCard({ title, desc, children }: { title: string; desc: string; c
 function ContentGeneratorContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { showError } = useError();
   const id = searchParams.get("id") || "";
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
@@ -167,6 +161,10 @@ function ContentGeneratorContent() {
   const [exportingType, setExportingType] = useState<"html" | "png" | "pdf" | null>(null);
   const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
   const [confirmedRisks, setConfirmedRisks] = useState<Record<string, boolean>>({});
+  // 화면 미리보기와 export HTML이 렌더러 두 벌로 나뉘어 있어 결과가 어긋나던 문제(표가
+  // 미리보기에서만 빈 칸으로 나오는 등) 해결책. buildDetailContent()가 유일한 소스이고,
+  // 미리보기는 그 결과를 그대로 DOM에 꽂아 넣는다(2026-08-20 팀장 지시, 렌더러 통합).
+  const [previewContent, setPreviewContent] = useState<{ detailPageHtml: string; styleTag: string } | null>(null);
 
   // create 모드 입력: 제품명·성분+함량·인증서·실증자료·추가정보
   const [createProductName, setCreateProductName] = useState("");
@@ -318,7 +316,7 @@ function ContentGeneratorContent() {
     if (!id) return;
     getReport(id)
       .then((envelope) => {
-        setReport(envelope.report);
+        setReport(envelope.report as CheckReport);
       })
       .catch((err) => {
         console.error("Failed to fetch report context, falling back to mock", err);
@@ -486,7 +484,7 @@ function ContentGeneratorContent() {
       setIsGenerated(true);
     } catch (err) {
       console.error(err);
-      alert("콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
+      showError("콘텐츠 생성 오류", "콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -525,32 +523,61 @@ function ContentGeneratorContent() {
   // 파인프린트(작은 글씨)로 다룰 섹션 종류. 라벨은 안 보여주되 타이포로는 구분한다.
   const isFinePrintKind = (kind: string) => kind.includes("caution") || kind.includes("주의");
 
-  const escapeAttr = (s: string) => s.replace(/'/g, "&#39;");
+  // data-swap="${escapeAttr(s.kind)}"는 큰따옴표 속성인데 '만 막고 있었다. s.kind는 고정
+  // 리터럴이 아니라 레이아웃 플래너 LLM 출력(layout.py plan_layout)에서 온 값도 있어서
+  // "가 안 걸러진 채로 올 수 있다(2026-08-20 PM8 지적, 조사로 확인). &·<·>·"·' 전부 이스케이프.
+  const escapeAttr = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
   const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
 
   // 문장 하나짜리 text를 헤드라인(첫 문장)+서브카피(나머지)로 휴리스틱 분리.
   // 백엔드가 headline/subcopy를 따로 안 줘서 쓰는 임시 방편(디디 B안 대기, 팀장·PM 확인).
+  //
+  // **줄바꿈을 마침표보다 먼저 본다.** 백엔드 프롬프트에 "첫 문장은 20자 이내"를 넣은 뒤
+  // LLM이 실제로 "칙칙함의 원인\n피부 표면의 각질 축적과..." 처럼 줄바꿈으로 헤드라인을
+  // 분리해서 준다. 그런데 마침표만 경계로 보면 줄바꿈을 무시하고 첫 마침표까지 통째로
+  // 잘라서 65자짜리 "헤드라인"이 나온다(2026-08-20 실측). LLM은 이미 우리가 원하는
+  // 구조를 만들어주는데 이쪽이 못 받던 것이다.
   const splitHeadline = (text: string): { headline: string; subcopy: string } => {
-    const match = text.match(/^([\s\S]+?[.!?])\s*([\s\S]*)$/);
+    const newline = text.match(/^([^\n]+)\n([\s\S]*)$/);
+    if (newline) {
+      const [, headline, subcopy] = newline;
+      return { headline: headline.trim(), subcopy: subcopy.trim() };
+    }
+    // 마침표 뒤에 숫자가 붙으면 문장 끝이 아니라 소수점이다. 이 예외가 없으면
+    // 실증자료 "23.5% 개선"이 헤드라인 "…23." + 서브카피 "5% 개선…"으로 쪼개져
+    // **사업자가 입력한 수치가 왜곡된다**(2026-08-20 실측). barum은 실증 수치를
+    // LLM에도 안 태우고 그대로 싣는 게 원칙인데 렌더 단계에서 깨지고 있었다.
+    // 헤드라인이 길던 때는 안 보이다가 짧아지면서 드러났다.
+    const match = text.match(/^([\s\S]+?[.!?](?!\d))\s*([\s\S]*)$/);
     if (!match) return { headline: text, subcopy: "" };
     const [, headline, subcopy] = match;
     return { headline: headline.trim(), subcopy: subcopy.trim() };
   };
 
-  const exportHtml = async () => {
-    if (!genResult) return;
+  // 화면 미리보기와 export HTML이 렌더러 두 벌이라 결과가 어긋나던 문제(표가 미리보기에서만
+  // 빈 칸으로 나오는 등)의 근본 해결책. 이 함수가 유일한 소스이고, exportHtml()과 미리보기용
+  // useEffect 둘 다 이걸 호출한다(2026-08-20 팀장 지시, 렌더러 통합). inlineImages=true면
+  // 다운로드 파일이 네트워크 없이도 혼자 열리도록 이미지를 data URI로 굽고, false(미리보기)면
+  // fetch 없이 resolveImageUrl()만 써서 빠르게 그린다.
+  const buildDetailContent = async (
+    result: GenerateResponse,
+    opts: { inlineImages: boolean }
+  ): Promise<{ detailPageHtml: string; styleTag: string }> => {
     const productName = displayProductName;
-    const hasAnyGeneratedImage = genResult.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
+    const hasAnyGeneratedImage = result.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
     const layoutModulesByKind: Record<string, string | null | undefined> = {};
-    for (const m of genResult.layout_plan?.modules || []) {
+    for (const m of result.layout_plan?.modules || []) {
       layoutModulesByKind[m.kind] = m.layout_type;
     }
 
-    // 섹션별로 매칭되는 module_image가 있으면 이미지 data URI로 인라인
-    const moduleImageDataUris: Record<string, string | null> = {};
-    for (const mi of genResult.image_plan.module_images) {
+    const resolveOrInline = async (url: string): Promise<string | null> =>
+      opts.inlineImages ? toDataUri(url) : resolveImageUrl(url);
+
+    // 섹션별로 매칭되는 module_image를 이미지 URL(또는 다운로드용 data URI)로 매핑
+    const moduleImageUrls: Record<string, string | null> = {};
+    for (const mi of result.image_plan.module_images) {
       if (mi.status === "generated" && mi.image_url) {
-        moduleImageDataUris[mi.module_kind] = await toDataUri(mi.image_url);
+        moduleImageUrls[mi.module_kind] = await resolveOrInline(mi.image_url);
       }
     }
 
@@ -561,17 +588,22 @@ function ContentGeneratorContent() {
 
     // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
     // 없으면(백엔드 미배선 구버전) 무드컷(이미지)+카피(텍스트) 분리 블록으로 폴백.
-    const sectionsHtml = genResult.sections.map((s, idx) => {
-      const dataUri = moduleImageDataUris[s.kind];
+    const sectionsHtml = result.sections.map((s, idx) => {
+      // 이미지·layout_type은 module_kind로 먼저 찾는다. 위반소지 모듈(hero_intro 등)의
+      // 내용은 인정문구·실증자료가 채워서 s.kind가 "광고문구"·"실증자료"로 나오는데,
+      // s.kind로만 찾으면 그 모듈들의 이미지가 통째로 버려진다(2026-08-20 실측:
+      // 6장 생성해서 2장만 쓰였다). module_kind가 없는 구버전 응답은 s.kind로 폴백.
+      const lookupKey = s.module_kind || s.kind;
+      const dataUri = moduleImageUrls[lookupKey];
       const finePrint = isFinePrintKind(s.kind) ? " dp-fine" : "";
-      const layoutType = layoutModulesByKind[s.kind];
+      const layoutType = layoutModulesByKind[lookupKey];
       const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->`;
 
       if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
         const { headline, subcopy } = splitHeadline(s.text);
         return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${productName}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
     </div>
     ${aiImageCaption}`;
       }
@@ -587,6 +619,23 @@ function ContentGeneratorContent() {
         ${aiImageCaption}
       </div>
       <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
+    </div>`;
+      }
+
+      if (layoutType === "step_list" && dataUri) {
+        // 디디 지정: 스텝마다 개별 이미지가 아니라 섹션 전체에 대표 이미지 1장(예: 손으로
+        // 펴 바르는 동작 하나). 골격은 image_text_split과 같되, 사용법 문구는 헤드라인이
+        // 아니라 흐르는 본문이라 헤드라인/서브카피로 안 쪼갠다(구조화된 steps[] 필드가
+        // 아직 없어 s.text를 그대로 쓴다. 2026-08-20 디디 판단).
+        const side = statementAltIndex % 2 === 0 ? "left" : "right";
+        statementAltIndex++;
+        return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
+      <div class="dp-split-copy"><p class="dp-step-text">${escapeHtml(s.text)}</p></div>
     </div>`;
       }
 
@@ -622,17 +671,17 @@ function ContentGeneratorContent() {
         return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    <div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+    <div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
       }
-      return `<div class="dp-block${finePrint}"><p>${s.text}</p></div>`;
+      return `<div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
     }).join("\n    ");
 
     const placedImages = await Promise.all(
-      genResult.image_plan.placed.map(async (img) => {
-        const dataUri = await toDataUri(img.image_url);
+      result.image_plan.placed.map(async (img) => {
+        const dataUri = await resolveOrInline(img.image_url);
         return dataUri
           ? `<div class="dp-mood" style="background-image:url('${dataUri}')"></div>`
-          : `<div class="dp-mood"><span class="dp-mood-fallback">${img.image_url}</span></div>`;
+          : `<div class="dp-mood"><span class="dp-mood-fallback">${escapeHtml(img.image_url)}</span></div>`;
       })
     );
     const imagesHtml = placedImages.join("\n    ");
@@ -641,31 +690,7 @@ function ContentGeneratorContent() {
       ? `<div class="dp-ai-notice">이 상세페이지는 AI가 생성한 문구·이미지를 포함합니다.</div>`
       : "";
 
-    const htmlContent = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>${productName} 상세페이지 초안</title>
-  <!--
-    barum이 만든 상세페이지 초안입니다.
-    - 이미지를 판매자 본인 사진으로 바꾸려면: 아래 "이미지 교체" 주석이 붙은 <div data-swap="..."> 블록을 찾아
-      style="background-image:url('...')" 부분만 원하는 이미지 경로로 바꾸면 됩니다.
-    - 문구는 <p> 태그 안 텍스트를 그대로 수정하면 됩니다.
-    - AI 생성 표시(전체 안내문·이미지별 "AI 생성" 태그)는 관련 법령(AI기본법 제31조 3항, "이용자가
-      명확하게 인식할 수 있는 방식으로 고지") 대응용이니 임의로 지우거나 대비를 낮추지 마세요.
-    - 이 페이지의 색·폰트는 barum 서비스 화면과 별개의 상세페이지 전용 톤입니다.
-  -->
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
-  <style>
-    @font-face {
-      font-family: "Cafe24Ssurround";
-      src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2105_2@1.0/Cafe24Ssurround.woff") format("woff");
-      font-weight: normal;
-      font-style: normal;
-      font-display: swap;
-    }
+    const styleTag = `<style>
     :root {
       --dp-surface: #FAF9F6;
       --dp-surface-sub: #F1EFEA;
@@ -677,30 +702,30 @@ function ContentGeneratorContent() {
       --dp-on-accent: #FDFBF9;
       --dp-radius: 6px;
     }
-    * { box-sizing: border-box; }
-    body { font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; margin: 0; padding: 48px 16px; background: var(--dp-surface-sub); color: var(--dp-ink-2); display: flex; justify-content: center; }
-    .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; }
+    .detailpage * { box-sizing: border-box; }
+    .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; color: var(--dp-ink-2); }
     .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 24px; }
     /* 불투명 카드는 이미지를 가려 "발표자료" 느낌이 난다(팀장 지시, 2026-08-20). 카드 대신
        아래에서 올라오는 스크림 위에 글자만 얹는다. 스크림 최하단 alpha 0.6은 최악 조건
        (순백 이미지)에서도 흰 글자 대비 5.74:1로 WCAG AA 본문 기준(4.5:1)을 넘는다(DESIGN.md §3.1). */
     .dp-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.34) 34%, rgba(0,0,0,0) 68%); pointer-events: none; }
     .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
-    .dp-hero-card span { display: block; font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; color: #ffffff; margin: 0 0 7px; }
+    .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.4; color: #ffffff; margin: 0 0 7px; }
     .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-block.dp-fine { padding: 20px 24px; background: var(--dp-surface-sub); }
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
+    .dp-step-text { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 14.5px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); white-space: pre-line; }
     .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
     .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
     .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
-    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
-    .dp-subcopy { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-size: 13px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
     .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
     .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
-    .dp-statement .dp-headline { font-family: "Cafe24Ssurround", "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 21px; }
+    .dp-statement .dp-headline { font-size: 20px; }
     .dp-split { display: flex; align-items: stretch; gap: 0; }
     .dp-split-right { flex-direction: row-reverse; }
     .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
@@ -719,15 +744,42 @@ function ContentGeneratorContent() {
     .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
     .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
-  </style>
-</head>
-<body>
-  <div class="detailpage">
+  </style>`;
+
+    const detailPageHtml = `<div class="detailpage">
     ${sectionsHtml}
     ${imagesHtml}
     ${aiPageNotice}
-    <div class="dp-close">${genResult.disclaimer}</div>
-  </div>
+    <div class="dp-close">${escapeHtml(result.disclaimer)}</div>
+  </div>`;
+
+    return { detailPageHtml, styleTag };
+  };
+
+  const exportHtml = async () => {
+    if (!genResult) return;
+    const { detailPageHtml, styleTag } = await buildDetailContent(genResult, { inlineImages: true });
+    const htmlContent = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(displayProductName)} 상세페이지 초안</title>
+  <!--
+    barum이 만든 상세페이지 초안입니다.
+    - 이미지를 판매자 본인 사진으로 바꾸려면: 아래 "이미지 교체" 주석이 붙은 <div data-swap="..."> 블록을 찾아
+      style="background-image:url('...')" 부분만 원하는 이미지 경로로 바꾸면 됩니다.
+    - 문구는 <p> 태그 안 텍스트를 그대로 수정하면 됩니다.
+    - AI 생성 표시(전체 안내문·이미지별 "AI 생성" 태그)는 관련 법령(AI기본법 제31조 3항, "이용자가
+      명확하게 인식할 수 있는 방식으로 고지") 대응용이니 임의로 지우거나 대비를 낮추지 마세요.
+    - 이 페이지의 색·폰트는 barum 서비스 화면과 별개의 상세페이지 전용 톤입니다.
+  -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  ${styleTag}
+</head>
+<body style="margin:0; padding:48px 16px; background: var(--dp-surface-sub); display:flex; justify-content:center;">
+  ${detailPageHtml}
 </body>
 </html>`;
 
@@ -741,6 +793,36 @@ function ContentGeneratorContent() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // 미리보기도 exportHtml과 같은 buildDetailContent()를 쓴다(렌더러 통합). genResult가
+  // 바뀔 때마다 다시 그린다. inlineImages:false라 fetch 없이 즉시 끝난다.
+  useEffect(() => {
+    if (!genResult) return;
+    let cancelled = false;
+    buildDetailContent(genResult, { inlineImages: false }).then((r) => {
+      if (!cancelled) setPreviewContent(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genResult]);
+
+  // export HTML 전용 CDN 폰트(SUIT·Pretendard)를 미리보기에서도 쓰려면 문서에 한 번 걸어둬야
+  // 한다(앱 전역 폰트는 JetBrains Mono·D2Coding이라 이 상세페이지 톤과 다르다).
+  useEffect(() => {
+    const hrefs = [
+      "https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css",
+      "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css",
+    ];
+    hrefs.forEach((href) => {
+      if (document.querySelector(`link[href="${href}"]`)) return;
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      document.head.appendChild(link);
+    });
+  }, []);
 
   // PNG 내보내기 (html2canvas)
   const exportPng = async () => {
@@ -1371,56 +1453,21 @@ function ContentGeneratorContent() {
                 <span className="text-[var(--ink-2)]">detail_draft.html</span>
               </div>
               <div className="p-[22px] flex justify-center">
-                <div className="w-full max-w-[520px] bg-[var(--surface)] border border-[var(--line-2)]" id="detailPage">
-                  <div className="aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4">
+                {previewContent ? (
+                  <div
+                    className="w-full max-w-[520px]"
+                    id="detailPage"
+                    // export HTML과 같은 buildDetailContent() 결과를 그대로 꽂는다(렌더러 통합).
+                    // dp-* 클래스는 barum 서비스 토큰과 안 겹치게 이미 분리 설계돼 있다.
+                    dangerouslySetInnerHTML={{ __html: previewContent.styleTag + previewContent.detailPageHtml }}
+                  />
+                ) : (
+                  <div className="w-full max-w-[520px] aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4 border border-[var(--line-2)]">
                     <span className="text-[var(--ink)] text-[19px] font-extrabold tracking-[-0.3px] bg-[var(--surface)] p-[6px_10px] border border-[var(--line-2)]">
                       {displayProductName}
                     </span>
                   </div>
-                  <div id="secList">
-                    {genResult.sections.map((s, idx) => {
-                      const moduleImage = genResult.image_plan.module_images.find(
-                        (mi) => mi.module_kind === s.kind && mi.status === "generated" && mi.image_url
-                      );
-                      if (moduleImage?.image_url) {
-                        return (
-                          <div
-                            key={idx}
-                            className="relative border-t border-[var(--line)] bg-cover bg-center flex items-end min-h-[180px]"
-                            style={{ backgroundImage: `url(${resolveImageUrl(moduleImage.image_url)})` }}
-                          >
-                            <div className="w-full bg-gradient-to-t from-black/70 via-black/25 to-transparent p-[16px_18px] pt-10">
-                              <div className="flex items-center gap-2 m-[0_0_7px]">
-                                <b className="text-[11.5px] text-white font-bold">{s.kind}</b>
-                                <span className="font-mono text-[9px] text-white/80 border border-white/40 p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
-                              </div>
-                              <p className="m-0 text-[13.5px] text-white leading-[1.75]">{s.text}</p>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="p-[16px_18px] border-t border-[var(--line)] relative" key={idx}>
-                          <div className="flex items-center gap-2 m-[0_0_7px]">
-                            <b className="text-[11.5px] text-[var(--ink)] font-bold">{s.kind}</b>
-                            <span className="font-mono text-[9px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px]">{SRC_LABEL[s.source as keyof typeof SRC_LABEL] || s.source}</span>
-                          </div>
-                          <p className="m-0 text-[13.5px] text-[var(--ink-2)] leading-[1.75]">{s.text}</p>
-                        </div>
-                      );
-                    })}
-                    {genResult.image_plan.placed.map((img, idx) => (
-                      <div className="p-0 border-t border-[var(--line)] relative" key={`img-${idx}`}>
-                        <div className="aspect-[16/10] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] border-t border-[var(--line)] flex items-center justify-center">
-                          <span className="font-mono text-[10px] text-[var(--ink-3)]">{img.image_url}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-[14px_18px] border-t border-dashed border-[var(--line-2)] text-[11px] text-[var(--ink-3)] leading-1.6" id="dpDisclaimer">
-                    {genResult.disclaimer}
-                  </div>
-                </div>
+                )}
               </div>
             </div>
             {genResult.risk_confirmations.length > 0 && (

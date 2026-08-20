@@ -6,6 +6,20 @@ import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@pho
 import type { ReportEnvelope, Finding } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { useError } from "@/lib/error/ErrorContext";
+import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+
+const FIXTURE_OPTIONS: TabOption<"unjudged" | "text" | "image">[] = [
+  { value: "image", label: "이미지 예시" },
+  { value: "text", label: "텍스트 예시" },
+  { value: "unjudged", label: "미판정 포함" },
+];
+
+const TIER_OPTIONS: TabOption<"FREE" | "BASIC" | "PRO">[] = [
+  { value: "FREE", label: "Free" },
+  { value: "BASIC", label: "Basic" },
+  { value: "PRO", label: "Pro" },
+];
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -66,8 +80,9 @@ function FindingCard({
   remediationCount,
   onFetchRemediation,
 }: FindingCardProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const { showError } = useError();
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
 
@@ -75,7 +90,7 @@ function FindingCard({
     setSuggestions([]);
     setLoading(false);
     setHasFetched(false);
-    
+
     if (tier !== "FREE") {
       setShowSuggestionsArea(true);
       setLoading(true);
@@ -92,6 +107,7 @@ function FindingCard({
         })
         .catch((err) => {
           console.error("Failed to fetch remediation suggestion", err);
+          showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
           setLoading(false);
         });
     } else {
@@ -114,6 +130,7 @@ function FindingCard({
       })
       .catch((err) => {
         console.error("Failed to fetch remediation suggestion", err);
+        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
         setLoading(false);
       });
   };
@@ -127,14 +144,12 @@ function FindingCard({
   const isExcluded = act === "exclude";
 
   // 호버 translate 제거 및 피그마 디자인 규격 적용 (rounded, overflow, flex-col)
-  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${
-    cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
-  } ${isExcluded ? "opacity-50" : ""}`;
+  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
+    } ${isExcluded ? "opacity-50" : ""}`;
 
   // 텍스트 글자색은 유지하고 테두리와 배경으로만 하이라이트
-  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${
-    cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
-  }`;
+  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
+    }`;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -157,16 +172,15 @@ function FindingCard({
       >
         <div className="flex gap-2.5">
           {/* 사각형 번호 배지 */}
-          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${
-            cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
-          }`}>{num}</span>
+          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
+            }`}>{num}</span>
 
           {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
           <div className="flex-1 min-w-0">
             {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
             <div className="flex items-center justify-between gap-2">
               <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>{finding.span}</span>
-              
+
               <div className="flex items-center gap-1.5 ml-auto">
                 {tier === "FREE" ? (
                   <span className="text-[10px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
@@ -175,22 +189,20 @@ function FindingCard({
                 ) : (
                   <>
                     <button
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                        act === "accept"
-                          ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
-                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                      }`}
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
+                        ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                        }`}
                       onClick={() => onAction(index, orderIndex, "accept")}
                     >
                       <Check size={11} weight="bold" />
                       수용
                     </button>
                     <button
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${
-                        act === "exclude"
-                          ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
-                          : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                      }`}
+                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "exclude"
+                        ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
+                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                        }`}
                       onClick={() => onAction(index, orderIndex, "exclude")}
                     >
                       <X size={11} weight="bold" />
@@ -200,9 +212,8 @@ function FindingCard({
                 )}
                 {/* 토글 chevron */}
                 <span
-                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${
-                    open ? "rotate-180" : ""
-                  }`}
+                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${open ? "rotate-180" : ""
+                    }`}
                 >
                   <CaretDown size={14} weight="bold" />
                 </span>
@@ -221,7 +232,7 @@ function FindingCard({
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
           <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex flex-col gap-3.5">
-            
+
             {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
             {(tier !== "FREE" || num === 1) ? (
               !showSuggestionsArea && (
@@ -306,8 +317,10 @@ function FindingCard({
   );
 }
 
+import type { CheckReport } from "@/lib/api/schema";
+
 interface ReportClientProps {
-  envelope: ReportEnvelope;
+  envelope: Omit<ReportEnvelope, "report"> & { report: CheckReport };
 }
 
 function escapeHtml(s: string) {
@@ -326,7 +339,7 @@ function markSentence(
     if (out.indexOf(needle) === -1) return;
     const isExcluded = actions[it.idx] === "exclude";
     const isViolation = it.cls === "violation";
-    
+
     let spanCls = "relative px-1 rounded-sm cursor-default border inline ";
     if (isExcluded) {
       spanCls += "opacity-50 line-through ";
@@ -336,7 +349,7 @@ function markSentence(
     } else {
       spanCls += "border-[var(--line-2)] bg-[var(--surface-sub)]";
     }
-    
+
     out = out.replace(
       needle,
       `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
@@ -346,8 +359,9 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
-  const [activeEnvelope, setActiveEnvelope] = useState<ReportEnvelope>(envelope);
-  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
+  const { showError } = useError();
+  const [activeEnvelope, setActiveEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
+  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged">(() => {
     if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
     if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
     return "image";
@@ -392,7 +406,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         next[idx] = null;
       } else {
         next[idx] = act;
-        
+
         const nextOrderIndex = orderIndex + 1;
         if (nextOrderIndex < findByOrder.length) {
           setOpenOrderIndex(nextOrderIndex);
@@ -410,11 +424,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
     setLoading(true);
     try {
       const data = await getReport(key);
-      setActiveEnvelope(data);
+      setActiveEnvelope(data as any);
       setActiveFixture(key);
       setActions({});
     } catch (err) {
       console.error(err);
+      showError("리포트 조회 오류", "리포트를 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -445,13 +460,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const hasInteracted = Object.keys(actions).length > 0;
   const acceptedIndices = hasInteracted
     ? Object.entries(actions)
-        .filter(([_, act]) => act === "accept")
-        .map(([i]) => i)
-        .join(",")
+      .filter(([_, act]) => act === "accept")
+      .map(([i]) => i)
+      .join(",")
     : d.findings
-        .map((f, i) => (f.flag === "위반" ? i : -1))
-        .filter((idx) => idx !== -1)
-        .join(",");
+      .map((f, i) => (f.flag === "위반" ? i : -1))
+      .filter((idx) => idx !== -1)
+      .join(",");
 
   return (
     <>
@@ -470,76 +485,38 @@ export function ReportClient({ envelope }: ReportClientProps) {
           )}
           <span className="text-[var(--ink-3)]">›</span> 리포트
         </span>
-        <div className="ml-auto flex items-center gap-1.75 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
-          <span className="text-[var(--ink-3)] text-[10px]">목업 전용 · 실제 화면엔 없음:</span>
-          <div className="flex border border-[var(--line-2)]" id="fixtureSwitch" role="group" aria-label="fixture 전환">
-            <button
-              onClick={() => handleFixtureChange("image")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "image" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              이미지 예시
-            </button>
-            <button
-              onClick={() => handleFixtureChange("text")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "text" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              텍스트 예시
-            </button>
-            <button
-              onClick={() => handleFixtureChange("unjudged")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                activeFixture === "unjudged" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-              disabled={loading}
-            >
-              미판정 포함
-            </button>
-          </div>
-          <span className="text-[var(--ink-3)] text-[10px] ml-1.5">요금제:</span>
-          <div className="flex border border-[var(--line-2)]" id="tierSwitch" role="group" aria-label="요금제 전환">
-            <button
-              onClick={() => setTier("FREE")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "FREE" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              FREE (체험)
-            </button>
-            <button
-              onClick={() => setTier("BASIC")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "BASIC" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              BASIC (수정안 제공)
-            </button>
-            <button
-              onClick={() => setTier("PRO")}
-              className={`font-mono text-[10.5px] p-[4px_9px] border-0 border-r border-[var(--line-2)] bg-transparent cursor-pointer transition-all duration-[120ms] last:border-r-0 ${
-                tier === "PRO" ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              PRO (무제한+제작)
-            </button>
-          </div>
+        <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
+          <TabSwitch
+            label="목업 전용 · 실제 화면엔 없음:"
+            options={FIXTURE_OPTIONS}
+            value={activeFixture}
+            onChange={handleFixtureChange}
+            disabled={loading}
+          />
+          <TabSwitch
+            label="티어 미리보기"
+            options={TIER_OPTIONS}
+            value={tier}
+            onChange={setTier}
+          />
         </div>
       </div>
 
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
-        <p className="m-[0_0_12px] text-[16px] font-bold text-[var(--ink)] tracking-[-0.2px]">
-          <span className="text-[var(--crit)]">위반 <span className="font-mono">{nViol}</span>건</span>
-          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
-          검토필요 <span className="font-mono">{nReview}</span>건
-          <span className="text-[var(--ink-3)] font-normal mx-0.75">·</span>
-          미판정 <span className="font-mono">{d.unjudged.length}</span>건
-        </p>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]">
+            <Warning size={14} weight="bold" />
+            위반 <span className="font-mono">{nViol}</span> 건
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]">
+            <MagnifyingGlass size={14} weight="bold" />
+            검토필요 <span className="font-mono">{nReview}</span> 건
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
+            미판정 <span className="font-mono">{d.unjudged.length}</span> 건
+          </span>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(typeCounts).map(([type, count]) => {
             if (count === 0) return null;
@@ -647,97 +624,131 @@ export function ReportClient({ envelope }: ReportClientProps) {
                           }}
                         />
 
-                            {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
-                            <div className="absolute inset-0 z-10 pointer-events-none">
-                              {findByOrder.map((o) => {
-                                const loc = o.f.location;
-                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-                                const isExcluded = actions[o.idx] === "exclude";
-                                if (isExcluded) return null;
+                        {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
+                        <div className="absolute inset-0 z-10 pointer-events-none">
+                          {(() => {
+                            // 같은 위치(문장 order 또는 y_start)를 공유하는 항목들의 서브 인덱스 계산 (배지 겹침 방지)
+                            const locCounts: Record<string, number> = {};
+                            const itemSubIndices: Record<number, number> = {};
 
-                                const topPct = (loc.y_start / srcH) * 100;
-                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                                const isViolation = o.f.flag === "위반";
-                                const isHovered = hoveredIndex === o.idx;
+                            findByOrder.forEach((o) => {
+                              const key = `${o.f.location.tile}_${o.f.location.order}_${o.f.location.y_start}_${o.f.location.x_start ?? 0}`;
+                              itemSubIndices[o.idx] = locCounts[key] || 0;
+                              locCounts[key] = (locCounts[key] || 0) + 1;
+                            });
 
-                                return (
-                                  <div
-                                    id={`highlight-box-${o.idx}`}
-                                    key={`find-${o.idx}`}
-                                    style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  right: 0,
-                                  top: `${topPct}%`,
-                                  height: `${heightPct}%`,
-                                  border: isViolation
-                                    ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.4)"}`
-                                    : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.3)"}`,
-                                  backgroundColor: isViolation
-                                    ? (isHovered ? "rgba(239, 68, 68, 0.12)" : "rgba(239, 68, 68, 0.04)")
-                                    : (isHovered ? "rgba(100, 116, 139, 0.12)" : "rgba(100, 116, 139, 0.02)"),
-                                  pointerEvents: "auto",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s ease-in-out",
-                                }}
-                                onMouseEnter={() => setHoveredIndex(o.idx)}
-                                onMouseLeave={() => setHoveredIndex(null)}
-                              >
-                                <span
+                            return findByOrder.map((o) => {
+                              const loc = o.f.location;
+                              if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+                              const isExcluded = actions[o.idx] === "exclude";
+                              if (isExcluded) return null;
+
+                              const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+
+                              // 시각적 여백(패딩): 좌우 6px, 상하 4px 확장
+                              const padXPct = hasX ? (10 / srcW) * 100 : 0;
+                              const padYPct = (10 / srcH) * 100;
+
+                              const rawTopPct = (loc.y_start / srcH) * 100;
+                              const rawHeightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                              const rawLeftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                              const rawWidthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+
+                              const leftPct = Math.max(0, rawLeftPct - padXPct);
+                              const widthPct = hasX ? Math.min(100 - leftPct, rawWidthPct + padXPct * 2) : 100;
+                              const topPct = Math.max(0, rawTopPct - padYPct);
+                              const heightPct = Math.min(100 - topPct, rawHeightPct + padYPct * 2);
+
+                              const isViolation = o.f.flag === "위반";
+                              const isHovered = hoveredIndex === o.idx;
+                              const badgeOffset = (itemSubIndices[o.idx] || 0) * 22; // 4, 5번 등 같은 문장 항목 나란히 배치
+
+                              return (
+                                <div
+                                  id={`highlight-box-${o.idx}`}
+                                  key={`find-${o.idx}`}
                                   style={{
                                     position: "absolute",
-                                    left: "6px",
-                                    top: "6px",
-                                    width: "19px",
-                                    height: "19px",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontFamily: "monospace",
-                                    fontSize: "10px",
-                                    fontWeight: "bold",
-                                    borderRadius: "50%",
-                                    border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
-                                    color: isViolation ? "var(--crit)" : "var(--ink-3)",
-                                    backgroundColor: "var(--surface)",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                    top: `${topPct}%`,
+                                    height: `${heightPct}%`,
+                                    border: isViolation
+                                      ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.85)"}`
+                                      : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.6)"}`,
+                                    backgroundColor: isViolation
+                                      ? (isHovered ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.08)")
+                                      : (isHovered ? "rgba(100, 116, 139, 0.15)" : "rgba(100, 116, 139, 0.04)"),
+                                    borderRadius: "4px",
+                                    pointerEvents: "auto",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease-in-out",
+                                    boxShadow: isHovered ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : "none",
                                   }}
+                                  onMouseEnter={() => setHoveredIndex(o.idx)}
+                                  onMouseLeave={() => setHoveredIndex(null)}
                                 >
-                                  {o.num}
-                                </span>
-                              </div>
-                            );
-                          })}
-
-                              {ujByOrder.map((u, i) => {
-                                const loc = u.location;
-                                if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-
-                                const topPct = (loc.y_start / srcH) * 100;
-                                const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                                const letter = String.fromCharCode(65 + i);
-
-                                return (
-                                  <div
-                                    id={`highlight-box-uj-${i}`}
-                                    key={`uj-${i}`}
+                                  <span
                                     style={{
+                                      position: "absolute",
+                                      left: `${-8 + badgeOffset}px`,
+                                      top: "-10px",
+                                      width: "19px",
+                                      height: "19px",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontFamily: "monospace",
+                                      fontSize: "10.5px",
+                                      fontWeight: "bold",
+                                      borderRadius: "50%",
+                                      border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
+                                      color: isViolation ? "var(--crit)" : "var(--ink-3)",
+                                      backgroundColor: "var(--surface)",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                                      zIndex: 10 + (itemSubIndices[o.idx] || 0),
+                                    }}
+                                  >
+                                    {o.num}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+
+                          {ujByOrder.map((u, i) => {
+                            const loc = u.location;
+                            if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
+
+                            const topPct = (loc.y_start / srcH) * 100;
+                            const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
+                            const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+                            const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
+                            const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
+                            const letter = String.fromCharCode(65 + i);
+
+                            return (
+                              <div
+                                id={`highlight-box-uj-${i}`}
+                                key={`uj-${i}`}
+                                style={{
                                   position: "absolute",
-                                  left: 0,
-                                  right: 0,
+                                  left: `${leftPct}%`,
+                                  width: `${widthPct}%`,
                                   top: `${topPct}%`,
                                   height: `${heightPct}%`,
-                                  border: "2px dashed rgba(100, 116, 139, 0.2)",
-                                  backgroundColor: "rgba(100, 116, 139, 0.01)",
+                                  border: "2px dashed rgba(100, 116, 139, 0.4)",
+                                  backgroundColor: "rgba(100, 116, 139, 0.04)",
+                                  borderRadius: "3px",
                                 }}
                               >
                                 <span
                                   style={{
                                     position: "absolute",
-                                    right: "6px",
-                                    top: "6px",
-                                    width: "19px",
-                                    height: "19px",
+                                    right: "-8px",
+                                    top: "-8px",
+                                    width: "18px",
+                                    height: "18px",
                                     display: "inline-flex",
                                     alignItems: "center",
                                     justifyContent: "center",
@@ -748,7 +759,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                     border: "1px dashed var(--ink-3)",
                                     color: "var(--ink-3)",
                                     backgroundColor: "var(--surface)",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                    zIndex: 2,
                                   }}
                                 >
                                   {letter}
@@ -779,27 +791,24 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                 const isRowHovered = hoveredIndex === r.idx;
                                 return (
                                   <div
-                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${
-                                      isExcluded
-                                        ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                                        : cls === "violation"
-                                          ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
-                                          : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
-                                    }`}
+                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${isExcluded
+                                      ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                                      : cls === "violation"
+                                        ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
+                                        : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
+                                      }`}
                                     onMouseEnter={() => setHoveredIndex(r.idx)}
                                     onMouseLeave={() => setHoveredIndex(null)}
                                     key={ri}
                                   >
-                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${
-                                      isExcluded
-                                        ? "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                        : cls === "violation"
-                                          ? "text-[var(--crit)] border-[var(--crit)]"
-                                          : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                    }`}>{r.num}</span>
-                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                      cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
-                                    }`}>{r.item.span}</span>
+                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
+                                      ? "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                      : cls === "violation"
+                                        ? "text-[var(--crit)] border-[var(--crit)]"
+                                        : "text-[var(--ink-3)] border-[var(--ink-3)]"
+                                      }`}>{r.num}</span>
+                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
+                                      }`}>{r.item.span}</span>
                                   </div>
                                 );
                               } else {
@@ -970,6 +979,16 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
+              onClick={(e) => {
+                if (!hasInteracted) {
+                  const proceed = window.confirm(
+                    "수정 권고안에 대해 '수용' 또는 '제외'를 선택하지 않으셨습니다. 모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?\n\n'취소'를 누르시면 리포트에서 직접 선택하실 수 있습니다."
+                  );
+                  if (!proceed) {
+                    e.preventDefault();
+                  }
+                }
+              }}
               className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
             >
               이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
