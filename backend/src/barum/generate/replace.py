@@ -23,14 +23,22 @@ def _first_safe(suggestions: list[str]) -> str | None:
     같은 실수가 가능하므로 코드가 마지막 방어선이 된다. `match_rule`은 규칙집
     정확조회라 API 비용이 0이다.
 
-    검토필요(needs_review)는 여기서 안 거른다. 실증자료가 있으면 합법이 되는
-    표현이라 일률적으로 막으면 쓸 수 있는 대체표현이 거의 안 남는다.
+    **검토필요(needs_review)는 막지 않고 뒤로 미룬다.** 그 표현들은 팩이 §3 실증대상으로
+    명시한 것이라(`피부 진정` → §3 "진정", `피부 저자극 테스트 완료` → §3 "시험·검사 표현"),
+    금지하면 팩이 "자료 있으면 써도 된다"고 한 표현을 우리가 막는 셈이 된다. 대신 규칙에
+    아예 안 걸리는 후보가 뒤에 있으면 그쪽을 먼저 고른다. 조건표에는 1순위가 검토필요인데
+    2순위가 깨끗한 규칙이 실제로 있다(`피부 진정` 뒤의 `자극 완화` 등, 2026-08-20 도도3 리뷰).
     """
+    fallback = None  # 위반은 아니지만 검토필요인 후보. 더 나은 게 없을 때만 쓴다.
     for s in suggestions:
         m = match_rule(s)
-        if m is None or m.outcome is not RuleOutcome.violation:
-            return s
-    return None
+        if m is not None and m.outcome is RuleOutcome.violation:
+            continue
+        if m is None or m.outcome is not RuleOutcome.needs_review:
+            return s  # 규칙 미매칭이거나 합법 확정 = 가장 안전
+        if fallback is None:
+            fallback = s
+    return fallback
 
 
 def build_replacements(findings: list[Finding]) -> list[Replacement]:
