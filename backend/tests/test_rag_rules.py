@@ -592,33 +592,74 @@ def test_pack_listed_superlative_is_covered():
 
 
 def test_pack_listed_type1_expressions_are_covered():
-    """팩 별표1(T1)이 명시한 금지표현이 규칙집에 있는지 확인한다(커버리지 스모크).
+    """팩 별표1(T1)이 명시한 금지표현이 규칙집에 있는지 확인한다(커버리지, **양방향의 절반**).
 
     **정답셋 검증이 아니다.** 이 표현들은 963문장 정답셋에 아예 안 나온다 — 그래서
-    `rule_sweep`으로는 탐지 여부를 확인할 수 없고, 이 테스트가 유일한 확인 수단이다.
-    합성 문장이라 실전 성능을 대표하지 않는다는 한계는 그대로 있다.
+    `rule_sweep`으로는 탐지도 오탐도 확인할 수 없고, 이 테스트와 아래 짝 테스트가
+    유일한 확인 수단이다. 합성 문장이라 실전 성능을 대표하지 않는다.
 
-    배경: 규칙 후보를 "정답셋이 틀린 문장"에서 찾다 보니 표본에 있는 표현만 방어하고
-    있었다(팀장 지적, 2026-08-20). 팩을 기준으로 뒤집어 대조하니 §1이 명시한 148개 중
-    87개가 규칙집에 없었다(`scripts/pack_coverage_audit.py`).
+    **반드시 아래 `..._do_not_match_ordinary_copy`와 짝으로 유지할 것.** 처음엔 이 방향만
+    만들었다가 오탐 4건을 놓쳤다(드럭→드럭스토어, V라인→V라인 쉐이딩, 메디슨→브랜드명,
+    다이어트→"다이어트 중에도"). PM이 실측으로 찾아냈다(2026-08-20).
     """
     from barum.reference.rules import RuleOutcome, match_rule
 
     for sentence in [
         "발모 효과가 뛰어난 샴푸",
         "탈모방지에 도움을 주는 앰플",
-        "다이어트 보조 크림",
-        "V라인 리프팅 마스크",
-        "셀룰라이트 완화 바디로션",
-        "튼살 케어 오일",
+        "체중감량에 도움되는 바디 크림",
+        "피하지방 분해 효과",
+        "튼살 완화 오일",
         "가려움 완화에 좋아요",
         "코스메슈티컬 브랜드",
         "기저귀 발진에 사용하세요",
         "유전자 활성화 세럼",
+        "근육 이완에 도움을 줍니다",
     ]:
         m = match_rule(sentence)
         assert m is not None, sentence
         assert m.outcome == RuleOutcome.violation, sentence
+
+
+def test_pack_added_keywords_do_not_match_ordinary_copy():
+    """추가한 키워드가 **평범한 화장품 문구를 위반으로 찍지 않는지** 본다(양방향의 나머지 절반).
+
+    실제로 낸 오탐들이다(2026-08-20, PM 실측 + 전수 훑기):
+    - "드럭"이 **드럭스토어**(매장 유형)에 부분일치
+    - "V라인"이 **V라인 쉐이딩·메이크업**(화장 기법)에 매칭 — 팩 34행 비고가
+      "색조 제품류 '연출한다' 표현 함께 시 제외"라고 명시하는데 그 비고를 안 읽었다
+    - "메디슨"이 브랜드명에 매칭
+    - "다이어트"가 "다이어트 중에도 부담 없는 제형" 같은 일반 언급에 매칭
+
+    원인: `_keyword_present`는 순수 영단어에만 우측 경계를 본다(한국어는 조사가 붙어
+    경계를 못 봄). "Pin"이 "Pintox"에 걸리던 것과 같은 클래스다.
+    """
+    from barum.reference.rules import match_rule
+
+    for sentence in [
+        "올리브영 드럭스토어에서 만나보세요",
+        "V라인 쉐이딩으로 입체감을 연출하세요",
+        "V라인 메이크업 완성 팁",
+        "메디슨 브랜드의 신제품 라인",
+        "다이어트 중에도 부담 없는 가벼운 제형",
+        "얼굴 윤곽을 살려주는 쉐이딩 팔레트",
+    ]:
+        assert match_rule(sentence) is None, sentence
+
+
+def test_cellulite_is_needs_review_not_violation():
+    """셀룰라이트는 금지가 아니라 조건부다 — §3 실증대상.
+
+    별표1(T1)에 "셀룰라이트"가 있어서 violation에 넣었는데, §3 실증대상 목록에
+    "**일시적 셀룰라이트 감소**"가 따로 있다. 실증자료가 있으면 쓸 수 있는 표현이라
+    위반 단정 대상이 아니다(§3 머리말: "우리 판정에선 검토필요, 위반 단정 금지").
+    별표1만 보고 별표2를 안 보면 이런 걸 놓친다.
+    """
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    m = match_rule("일시적 셀룰라이트 감소에 도움")
+    assert m is not None
+    assert m.outcome == RuleOutcome.needs_review
 
 
 def test_bare_itching_word_does_not_match_legal_warning_text():
