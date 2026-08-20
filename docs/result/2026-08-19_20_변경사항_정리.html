@@ -1,0 +1,459 @@
+<title>8월 19~20일 무슨 일이 있었나</title>
+<style>
+  :root{
+    --paper:#F5F3EF;
+    --paper-raised:#FBFAF7;
+    --ink:#1C1A16;
+    --ink-2:#4B473F;
+    --ink-3:#837C6E;
+    --line:#DEDACF;
+    --found:#A6402F;
+    --found-soft:#F3E4DE;
+    --fixed:#2E5C4C;
+    --fixed-soft:#DEEAE2;
+    --added:#4A5A8A;
+    --added-soft:#E4E7F2;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#1A1815;
+      --paper-raised:#221F1B;
+      --ink:#EFEAE1;
+      --ink-2:#C9C2B4;
+      --ink-3:#8E8676;
+      --line:#38342C;
+      --found:#E28671;
+      --found-soft:#3A241E;
+      --fixed:#7FC1A6;
+      --fixed-soft:#1E332A;
+      --added:#9BA8DE;
+      --added-soft:#252A42;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#1A1815;
+    --paper-raised:#221F1B;
+    --ink:#EFEAE1;
+    --ink-2:#C9C2B4;
+    --ink-3:#8E8676;
+    --line:#38342C;
+    --found:#E28671;
+    --found-soft:#3A241E;
+    --fixed:#7FC1A6;
+    --fixed-soft:#1E332A;
+    --added:#9BA8DE;
+    --added-soft:#252A42;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink-2);
+    font-family:"Pretendard Variable","Pretendard","Noto Sans KR",-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.7;
+  }
+  .page{
+    max-width:760px;
+    margin:0 auto;
+    padding:64px 28px 120px;
+  }
+
+  /* header */
+  .doc-header{
+    padding-bottom:36px;
+    margin-bottom:44px;
+    border-bottom:1px solid var(--line);
+  }
+  .doc-eyebrow{
+    font-size:12.5px;
+    letter-spacing:0.09em;
+    color:var(--ink-3);
+    font-weight:600;
+    margin:0 0 14px;
+  }
+  .doc-title{
+    font-family:"Song Myung","Noto Serif KR",serif;
+    font-size:clamp(30px,5vw,42px);
+    line-height:1.28;
+    color:var(--ink);
+    margin:0 0 18px;
+    text-wrap:balance;
+    letter-spacing:-0.01em;
+  }
+  .doc-summary{
+    font-size:17px;
+    color:var(--ink-2);
+    max-width:60ch;
+    margin:0;
+  }
+  .doc-summary strong{
+    color:var(--ink);
+    font-weight:700;
+  }
+
+  /* section */
+  .section{
+    margin-top:56px;
+  }
+  .section-head{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  .section-num{
+    font-family:"Song Myung","Noto Serif KR",serif;
+    font-size:15px;
+    color:var(--ink-3);
+  }
+  .section-title{
+    font-family:"Song Myung","Noto Serif KR",serif;
+    font-size:24px;
+    color:var(--ink);
+    margin:0;
+    letter-spacing:-0.01em;
+  }
+  .section-sub{
+    font-size:14.5px;
+    color:var(--ink-3);
+    margin:0 0 28px;
+  }
+
+  /* entry card */
+  .entry{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:22px 24px;
+    margin-bottom:16px;
+  }
+  .entry-head{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+    flex-wrap:wrap;
+  }
+  .tag{
+    display:inline-flex;
+    align-items:center;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.03em;
+    padding:3px 10px;
+    border-radius:999px;
+  }
+  .tag.found{ color:var(--found); background:var(--found-soft); }
+  .tag.fixed{ color:var(--fixed); background:var(--fixed-soft); }
+  .tag.added{ color:var(--added); background:var(--added-soft); }
+  .entry-title{
+    font-size:16.5px;
+    font-weight:700;
+    color:var(--ink);
+    margin:0;
+  }
+  .entry-body{
+    font-size:15.5px;
+    color:var(--ink-2);
+  }
+  .entry-body p{ margin:0 0 10px; }
+  .entry-body p:last-child{ margin-bottom:0; }
+  .entry-body .arrow-line{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin:12px 0;
+    font-size:15px;
+  }
+  .before-pill, .after-pill{
+    padding:4px 10px;
+    border-radius:6px;
+    font-weight:600;
+    font-size:14px;
+    white-space:nowrap;
+  }
+  .before-pill{ color:var(--found); background:var(--found-soft); text-decoration:line-through; text-decoration-thickness:1.5px; }
+  .after-pill{ color:var(--fixed); background:var(--fixed-soft); }
+  .arrow{ color:var(--ink-3); font-size:15px; }
+
+  /* incident box */
+  .incident{
+    border:1.5px solid var(--found);
+    border-radius:10px;
+    padding:22px 24px;
+    background:var(--paper-raised);
+  }
+  .incident-label{
+    font-size:12.5px;
+    font-weight:700;
+    letter-spacing:0.06em;
+    color:var(--found);
+    margin:0 0 10px;
+  }
+  .incident p{
+    margin:0 0 10px;
+    color:var(--ink-2);
+    font-size:15.5px;
+  }
+  .incident p:last-child{ margin-bottom:0; }
+
+  /* next up list */
+  .next-list{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .next-list li{
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    font-size:15.5px;
+    color:var(--ink-2);
+  }
+  .next-list .dot{
+    width:6px; height:6px;
+    border-radius:50%;
+    background:var(--added);
+    margin-top:8px;
+    flex:none;
+  }
+
+  /* footnote */
+  .footnote{
+    margin-top:56px;
+    padding-top:24px;
+    border-top:1px solid var(--line);
+    font-size:13.5px;
+    color:var(--ink-3);
+  }
+  .footnote p{ margin:0 0 8px; }
+  .footnote p:last-child{ margin-bottom:0; }
+
+  @media (max-width:520px){
+    .page{ padding:44px 18px 90px; }
+    .entry{ padding:18px; }
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Song+Myung&family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet">
+
+<div class="page">
+
+  <header class="doc-header">
+    <p class="doc-eyebrow">barum · 팀 공유용 · 2026년 8월 19일 ~ 20일</p>
+    <h1 class="doc-title">이틀 동안 무슨 일이 있었나</h1>
+    <p class="doc-summary">
+      <strong>놓치고 있던 위반 문구를 더 잘 잡게 됐고, 상세페이지에 표를 넣을 수 있게 됐고,
+      위조 서류를 잡아내는 기능이 처음 완성됐습니다.</strong>
+      개발 용어를 몰라도 읽을 수 있게 정리했습니다.
+    </p>
+  </header>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">1</span>
+      <h2 class="section-title">판정 — 위반 문구 찾기</h2>
+    </div>
+    <p class="section-sub">광고 문구를 검사하는 쪽에서 있었던 변화입니다.</p>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag found">발견</span>
+        <span class="tag fixed">해결</span>
+        <h3 class="entry-title">놓치고 있던 위반 문구를 찾아냈습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          우리 시스템은 문장을 보고 먼저 "이게 화장품 효능을 주장하는 문장인가?"를 물어봅니다.
+          아니라고 판단되면 더 이상 검사를 안 합니다.
+        </p>
+        <p>
+          그런데 "약국에서 판다", "순위 1위" 같은 위반 문구는 애초에 효능 주장이 아니었습니다.
+          그래서 검사도 안 받고 그냥 통과되고 있었습니다. 확인해보니 확실한 위반 문구 중
+          <strong style="color:var(--ink)">43%가 이렇게 새고 있었습니다.</strong>
+        </p>
+        <div class="arrow-line">
+          <span class="before-pill">효능을 주장하는가?</span>
+          <span class="arrow">→</span>
+          <span class="after-pill">판정 대상인가?</span>
+        </div>
+        <p>질문을 이렇게 바꿔서 고쳤습니다. 실험을 세 번 반복해서 우연이 아니라는 것도 확인했습니다.</p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag added">신규</span>
+        <h3 class="entry-title">위조 서류를 잡아내는 기능을 처음 완성했습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          어떤 광고는 "임상시험을 통과했다"면서 시험 결과지를 첨부합니다. 그런데 그 결과지가
+          <strong style="color:var(--ink)">완전히 다른 제품의 것을 그대로 갖다 붙인 가짜</strong>인
+          경우가 있었습니다. 지금까지는 문장만 보고 판정해서 이런 위조를 구조적으로 못 잡았습니다.
+        </p>
+        <p>
+          이번에 "첨부된 서류 이미지를 실제로 열어서, 제품 이름과 시험 항목이 광고 내용과
+          일치하는지 대조하는" 기능을 새로 만들어서 완성했습니다. 개발 중 진짜 정상 서류를
+          위조로 잘못 판단하는 문제가 한 번 발견됐는데, 바로 고쳐서 다시 확인했습니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag added">추가</span>
+        <h3 class="entry-title">규칙 하나 추가</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          "탄력", "민감", "예민" 같은 단어가 들어간 문장 중 "저자극"이나 "완료"가 같이 있으면
+          원래는 그냥 통과시켰는데, 이것도 검사를 받도록 고쳤습니다.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">2</span>
+      <h2 class="section-title">상세페이지 만들기</h2>
+    </div>
+    <p class="section-sub">AI로 상세페이지를 만드는 쪽에서 있었던 변화입니다.</p>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag added">신규</span>
+        <h3 class="entry-title">표(제형·용량)를 넣을 수 있게 됐습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          제형(액상/크림 등)이나 용량 같은 정보를 표로 보여줄 방법이 없었는데, 이제 사업자가
+          입력한 값을 그대로 표로 만들어서 넣을 수 있습니다. AI가 마음대로 지어내지 않고
+          입력한 값 그대로만 씁니다. 실제로 만들어서 확인했고 정상적으로 나옵니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag found">발견</span>
+        <span class="tag fixed">해결</span>
+        <h3 class="entry-title">사진이 전부 "손으로 바르는 장면"만 나오던 문제</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          상세페이지 배경 사진을 AI로 6장 만드는데, 6장이 전부 손으로 제품을 바르는 모습만
+          나오고 있었습니다. 사용법을 설명하는 사진 한 장만 손이 나오고 나머지는 다른 느낌으로
+          나오도록 고쳤습니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag found">발견</span>
+        <span class="tag fixed">진행중</span>
+        <h3 class="entry-title">사진이 다 비슷하고 뿌옇게 나오던 문제</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          손 문제를 고치고 보니 이번엔 나머지 사진들이 서로 너무 비슷하고 뿌옇다는 지적이
+          있었습니다. 사진이 들어가는 자리마다 뭘 그릴지 더 구체적으로 지정하도록 고쳤고,
+          다시 만들어보니 흐림이 줄고 선명한 질감이 나왔습니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag fixed">절감</span>
+        <h3 class="entry-title">표 자리에 쓸데없이 사진을 만들고 버리던 것을 없앴습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          표가 들어가는 자리에도 매번 배경 사진을 만들고 있었는데, 정작 화면에는 안 쓰이고
+          버려지고 있었습니다. 돈만 쓰고 효과가 없던 부분이라 사진 생성 자체를 없앴습니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag fixed">개선</span>
+        <h3 class="entry-title">AI 이미지 표시 위치를 옮겼습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          AI로 만든 사진이라는 표시(법적으로 꼭 필요합니다)가 사진 위에 너무 크게 떠 있어서
+          거슬린다는 의견이 있었습니다. 사진 아래 작은 글씨 캡션으로 옮겼습니다.
+        </p>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <span class="tag added">추가</span>
+        <h3 class="entry-title">폰트를 다양화했습니다</h3>
+      </div>
+      <div class="entry-body">
+        <p>
+          글씨체가 2종류뿐이라 단조로웠는데, 큰 제목용 폰트를 하나 추가했습니다(카페24
+          써라운드). 브랜드 느낌을 살리는 폰트도 검토했지만 지금은 넣을 자리가 마땅치 않아
+          나중으로 미뤘습니다.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">3</span>
+      <h2 class="section-title">사고 하나 있었습니다</h2>
+    </div>
+
+    <div class="incident">
+      <p class="incident-label">사고 · 즉시 복구됨</p>
+      <p>
+        작업 중 실수로 시스템이 외부 서비스에 접속할 때 쓰는 비밀 열쇠 파일이 통째로 지워지는
+        사고가 있었습니다.
+      </p>
+      <p>
+        팀장이 바로 다시 넣어서 복구됐고, 재발 방지 방법도 정리해뒀습니다.
+        <strong style="color:var(--ink)">서비스에 실제 영향은 없었습니다.</strong>
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">4</span>
+      <h2 class="section-title">다음에 할 일</h2>
+    </div>
+
+    <ul class="next-list">
+      <li><span class="dot"></span>상세페이지 사진 다양성 마지막 점검</li>
+      <li><span class="dot"></span>위조 서류 잡는 기능, 다음 라운드에서 더 넓은 사례로 시험</li>
+      <li><span class="dot"></span>발표 자료에 이번 내용 반영</li>
+    </ul>
+  </section>
+
+  <div class="footnote">
+    <p>
+      숫자(퍼센트 등)는 이 문서에 최소한만 넣었습니다. 정확한 수치와 근거가 필요하면
+      코드 변경 기록(PR)을 참고하거나 PM한테 문의해주세요.
+    </p>
+    <p>
+      같은 실험을 여러 번 반복해도 결과가 조금씩 흔들리는 특성이 있어서(±6%p 정도),
+      한 자릿수 차이는 "개선"이라고 부르지 않는 게 우리 팀 원칙입니다.
+    </p>
+  </div>
+
+</div>
