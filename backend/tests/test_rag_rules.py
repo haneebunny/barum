@@ -704,3 +704,24 @@ def test_bare_itching_word_does_not_match_legal_warning_text():
         "부어오름 또는 가려움증 등의 이상 증상이나 부작용이 있는 경우"
     )
     assert match_rule(warning) is None
+
+
+def test_audit_tool_surfaces_pack_conditions():
+    """커버리지 감사 도구가 팩 비고의 **조건**을 뽑아내는지 확인한다.
+
+    이 도구가 처음엔 비고 칸을 "조건 설명이라 표현이 아니다"며 버렸고, 그래서 별표1
+    표현을 전부 violation에 넣었다가 오탐을 냈다(2026-08-20). 조건을 못 뽑으면 같은
+    사고가 재발하므로 테스트로 고정한다.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from pack_coverage_audit import _condition_hint
+
+    # 실제로 놓쳤던 비고들
+    assert "제외" in _condition_hint("색조 제품류 '연출한다' 표현 함께 시 제외")
+    assert _condition_hint("기능성 심사된 효능효과 제외")
+    # 조건이 없는 행은 빈 문자열
+    assert _condition_hint("—") == ""
+    assert _condition_hint("") == ""
