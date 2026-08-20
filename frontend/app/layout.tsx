@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell/AppShell";
+import { ErrorProvider } from "@/lib/error/ErrorContext";
 
 export const metadata: Metadata = {
   title: "바름 | 화장품 광고 심의 사전검수 서비스",
@@ -44,7 +45,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <ErrorProvider>
+          <AppShell>{children}</AppShell>
+        </ErrorProvider>
       </body>
     </html>
   );

@@ -8,6 +8,7 @@ import type { USPreflightReport } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { useError } from "@/lib/error/ErrorContext";
 
 interface FileItem {
   id: string;
@@ -19,6 +20,7 @@ interface FileItem {
 function InspectContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { showError } = useError();
   const regionParam = searchParams.get("region")?.toUpperCase() === "US" ? "US" : "KR";
   const idParam = searchParams.get("id") || "";
 
@@ -214,6 +216,7 @@ function InspectContent() {
         setInspectStatus("done");
       } catch (err) {
         console.error(err);
+        showError("검사 오류", err instanceof Error ? err.message : String(err));
         setSteps(prev => prev.map(s => ({ ...s, status: "warn", valueText: "에러 발생" })));
         setInspectStatus(null);
       }
@@ -283,6 +286,7 @@ function InspectContent() {
       setInspectStatus("done");
     } catch (err) {
       console.error(err);
+      showError("검사 오류", err instanceof Error ? err.message : String(err));
       setSteps(prev => prev.map(s => {
         if (s.status === "running" || s.status === "idle") {
           return { ...s, status: "warn", valueText: "실패" };

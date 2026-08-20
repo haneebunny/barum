@@ -6,6 +6,7 @@ import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@pho
 import type { ReportEnvelope, Finding } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { useError } from "@/lib/error/ErrorContext";
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -66,8 +67,9 @@ function FindingCard({
   remediationCount,
   onFetchRemediation,
 }: FindingCardProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const { showError } = useError();
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [hasFetched, setHasFetched] = useState(false);
   const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
 
@@ -92,6 +94,7 @@ function FindingCard({
         })
         .catch((err) => {
           console.error("Failed to fetch remediation suggestion", err);
+          showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
           setLoading(false);
         });
     } else {
@@ -114,6 +117,7 @@ function FindingCard({
       })
       .catch((err) => {
         console.error("Failed to fetch remediation suggestion", err);
+        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
         setLoading(false);
       });
   };
@@ -346,6 +350,7 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
+  const { showError } = useError();
   const [activeEnvelope, setActiveEnvelope] = useState<ReportEnvelope>(envelope);
   const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged" | string>(() => {
     if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
@@ -415,6 +420,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       setActions({});
     } catch (err) {
       console.error(err);
+      showError("리포트 조회 오류", "리포트를 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
