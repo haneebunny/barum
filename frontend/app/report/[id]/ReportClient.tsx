@@ -373,6 +373,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
   const [remediationCount, setRemediationCount] = useState<number>(0);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
+  const [flagFilter, setFlagFilter] = useState<"위반" | "검토필요" | null>(null);
 
   const d = activeEnvelope.report;
 
@@ -382,10 +383,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
   findByOrder.forEach((item, index) => {
     item.num = index + 1;
   });
+  const visibleFindByOrder = flagFilter ? findByOrder.filter((o) => o.f.flag === flagFilter) : findByOrder;
 
   useEffect(() => {
     setRemediationCount(0);
     setOpenOrderIndex(0);
+    setFlagFilter(null);
   }, [activeEnvelope]);
 
   const scrollToBox = (idx: number, isUj = false) => {
@@ -505,23 +508,42 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] ${
+          <button
+            type="button"
+            aria-pressed={flagFilter === "위반"}
+            onClick={() => setFlagFilter((prev) => (prev === "위반" ? null : "위반"))}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${
               nViol > 0
                 ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
                 : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
-            }`}
+            } ${flagFilter === "위반" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""}`}
           >
             <Warning size={14} weight="bold" />
             위반 <span className="font-mono">{nViol}</span> 건
-          </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]">
+          </button>
+          <button
+            type="button"
+            aria-pressed={flagFilter === "검토필요"}
+            onClick={() => setFlagFilter((prev) => (prev === "검토필요" ? null : "검토필요"))}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${
+              flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
+            }`}
+          >
             <MagnifyingGlass size={14} weight="bold" />
             검토필요 <span className="font-mono">{nReview}</span> 건
-          </span>
+          </button>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
             미판정 <span className="font-mono">{d.unjudged.length}</span> 건
           </span>
+          {flagFilter && (
+            <button
+              type="button"
+              onClick={() => setFlagFilter(null)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11.5px] font-mono text-[var(--ink-3)] border border-dashed border-[var(--line-2)] rounded-[3px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+            >
+              <X size={11} weight="bold" /> 전체 보기
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(typeCounts).map(([type, count]) => {
@@ -922,33 +944,53 @@ export function ReportClient({ envelope }: ReportClientProps) {
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">지적 카드</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]"><span className="font-mono">{d.findings.length}</span>건</span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
+              {flagFilter && <span className="font-mono">{visibleFindByOrder.length}/</span>}
+              <span className="font-mono">{d.findings.length}</span>건
+            </span>
           </div>
           <div className="flex flex-col gap-3">
-            {findByOrder.map((o, orderIndex) => (
-              <FindingCard
-                key={o.idx}
-                finding={o.f}
-                index={o.idx}
-                orderIndex={orderIndex}
-                num={o.num}
-                act={actions[o.idx] || null}
-                onAction={handleAction}
-                isHovered={hoveredIndex === o.idx}
-                onHover={(h) => setHoveredIndex(h ? o.idx : null)}
-                open={openOrderIndex === orderIndex}
-                onToggle={() => {
-                  const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
-                  setOpenOrderIndex(nextOpen);
-                  if (nextOpen !== null) {
-                    scrollToBox(o.idx, false);
-                  }
-                }}
-                tier={tier}
-                remediationCount={remediationCount}
-                onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
-              />
-            ))}
+            {findByOrder.map((o, orderIndex) => {
+              if (flagFilter && o.f.flag !== flagFilter) return null;
+              return (
+                <FindingCard
+                  key={o.idx}
+                  finding={o.f}
+                  index={o.idx}
+                  orderIndex={orderIndex}
+                  num={o.num}
+                  act={actions[o.idx] || null}
+                  onAction={handleAction}
+                  isHovered={hoveredIndex === o.idx}
+                  onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                  open={openOrderIndex === orderIndex}
+                  onToggle={() => {
+                    const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
+                    setOpenOrderIndex(nextOpen);
+                    if (nextOpen !== null) {
+                      scrollToBox(o.idx, false);
+                    }
+                  }}
+                  tier={tier}
+                  remediationCount={remediationCount}
+                  onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
+                />
+              );
+            })}
+            {flagFilter && visibleFindByOrder.length === 0 && (
+              <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
+                <p className="m-0 text-[12.5px] text-[var(--ink-3)]">
+                  {flagFilter} 항목이 없습니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFlagFilter(null)}
+                  className="text-[11.5px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
+                >
+                  전체 보기
+                </button>
+              </div>
+            )}
           </div>
           {d.unjudged.length > 0 && (
             <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
