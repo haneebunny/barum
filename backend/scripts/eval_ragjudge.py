@@ -171,6 +171,12 @@ def _report_repeats(runs: list[dict], n: int) -> None:
     if lo != hi:
         print(f"  ※ A/B 비교 시 다른 조건의 범위가 이 범위와 겹치면 효과 없음으로 본다.")
 
+    for label, k in (("미탐", "miss"), ("오탐", "fa_total"), ("검토필요 포착", "review_caught")):
+        vals = [r["fa_violation"] + r["fa_review"] if k == "fa_total" else r[k] for r in runs]
+        lo2, hi2 = min(vals), max(vals)
+        rng = f" (범위 {lo2}~{hi2})" if lo2 != hi2 else ""
+        print(f"  {label}: {', '.join(str(v) for v in vals)} | 평균 {sum(vals)/len(vals):.1f}{rng}")
+
     unstable = [
         i for i in runs[0]["verdicts"]
         if len({r["verdicts"].get(i) for r in runs}) > 1
