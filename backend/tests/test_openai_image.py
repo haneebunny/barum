@@ -62,15 +62,24 @@ def test_참고_이미지가_있으면_edit로_합성한다():
     assert all(f.name.endswith(".png") for f in sent["image"])
 
 
-def test_기본값은_최저가_조합이다():
-    # 실제로 청구되는 호출이라 기본값이 비싸면 안 된다.
+def test_기본값을_그대로_SDK_호출에_보낸다():
     gen = _generator()
     gen.generate_image("x", [])
     sent = gen.client.images.generate_calls[0]
-    assert sent["model"] == "gpt-image-1-mini"
+    assert sent["model"] == gen.model
     assert sent["quality"] == "low"
     assert sent["size"] == "1024x1024"
     assert sent["n"] == 1
+
+
+def test_실제_기본_모델은_gpt_image_1이다(monkeypatch):
+    # mini는 images.edit 합성에서 라벨을 못 지켜 상위 모델로 올림(2026-08-20).
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.delenv("OPENAI_IMAGE_MODEL", raising=False)
+    monkeypatch.setattr("barum.vlm.load_dotenv", lambda *a, **k: None)
+    gen = OpenAIImageGenerator()
+    assert gen.model == "gpt-image-1"
+    assert gen.quality == "low"
 
 
 def test_비용을_누적_추정한다():
