@@ -704,3 +704,31 @@ def test_bare_itching_word_does_not_match_legal_warning_text():
         "부어오름 또는 가려움증 등의 이상 증상이나 부작용이 있는 경우"
     )
     assert match_rule(warning) is None
+
+
+def test_pack_scope_violations_are_covered():
+    """T5 '화장품 범위 벗어남' 표현(팩 커버리지 감사 잔여분에서 추가 가능했던 3개)."""
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for s in ["명현현상이 나타날 수 있습니다", "지방볼륨생성 효과", "체내 노폐물 제거에 도움"]:
+        m = match_rule(s)
+        assert m is not None, s
+        assert m.outcome == RuleOutcome.violation, s
+
+
+def test_common_cosmetic_terms_are_not_rules():
+    """규칙으로 넣으면 안 되는 일반 용어들 — 넣었다가는 대량 오탐이 난다.
+
+    팩 커버리지 감사에서 후보로 나왔지만 **의도적으로 뺀** 것들이다. 이 테스트는
+    "왜 안 넣었는지"를 코드로 고정한다(다음 사람이 무심코 추가하는 걸 막는다).
+
+    - **리포좀**: 화장품 제형 기술 용어로 매우 흔하다. 팩은 "인체 유래 성분" 맥락에서
+      금지한 것이지 제형 설명을 금지한 게 아니다.
+    - **인증**: 정답셋에서 합법 7건·대상외 19건에 걸린다("CGMP 인증을 받은").
+      팩 표현은 "인증 받은 제품"이고 비고가 "해당 표현 제외"라 조건부다.
+    - **레이저**: 시술 맥락일 때만 T5다. 패키지 각인 같은 용례가 있다.
+    """
+    from barum.reference.rules import match_rule
+
+    for s in ["리포좀 캡슐 기술 적용", "CGMP 인증을 받은 시설", "레이저 각인 패키지"]:
+        assert match_rule(s) is None, s
