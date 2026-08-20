@@ -132,8 +132,8 @@ def _attach_bands(
 
 def _ocr_image(
     image_bytes: bytes, filename: str | None, vlm: VLM, verbose: bool = False
-) -> list[dict]:
-    """이미지 바이트를 타일 분할·OCR 해 문장 dict 리스트를 만든다.
+) -> tuple[list[dict], int]:
+    """이미지 바이트를 타일 분할·OCR 해 (문장 리스트, 실패 타일 수)를 낸다.
 
     OCR 재사용 코드는 `product_dir/tiles/*.png` 구조를 기대하므로, 임시 폴더에 그
     구조를 그대로 만든 뒤 기존 함수를 호출한다. 임시 폴더는 요청이 끝나면 지운다.
@@ -156,7 +156,11 @@ def _ocr_image(
 
         record = extract_product_sentences(product_dir, vlm, verbose=verbose)
 
-    return _attach_bands(record["sentences"], band_by_tile, source_w, source_h)
+    # 실패 타일 수를 같이 돌려준다. 삼키면 "아무것도 못 읽음"이 "문제없음"이 된다.
+    return (
+        _attach_bands(record["sentences"], band_by_tile, source_w, source_h),
+        len(record.get("tiles_failed") or []),
+    )
 
 
 def _verify_functional_evidence(
@@ -247,6 +251,7 @@ def run_check(
     명시된 성분만 함량기준 대조까지 더해진다. 안 주면 기존처럼 이름만 대조한다.
     """
     sentences: list[dict] = []
+    n_ocr_failed = 0  # 이미지가 없으면 OCR 자체를 안 한다
 
     if product_name and product_name.strip():
         sentences.append({
@@ -258,7 +263,10 @@ def run_check(
 
     if image_bytes:
         base = len(sentences)
-        for s in _ocr_image(image_bytes, image_filename, vlm, verbose=verbose):
+        _ocr_sentences, n_ocr_failed = _ocr_image(
+            image_bytes, image_filename, vlm, verbose=verbose
+        )
+        for s in _ocr_sentences:
             sentences.append({**s, "order": base + s.get("order", 0)})
 
     if ad_text:
@@ -278,6 +286,7 @@ def run_check(
             n_findings=0,
             product_out_of_scope=True,
             out_of_scope_reason=oos_reason,
+            n_ocr_failed_tiles=n_ocr_failed,
         )
         return CheckReport(
             findings=[],
@@ -309,6 +318,7 @@ def run_check(
         n_needs_review=n_needs_review,
         n_unjudged=len(result.unjudged),
         counts_by_type=counts,
+        n_ocr_failed_tiles=n_ocr_failed,
     )
     return CheckReport(
         findings=findings,
@@ -347,7 +357,10 @@ def run_us_sunscreen_check(
 
     if image_bytes:
         base = len(sentences)
-        for s in _ocr_image(image_bytes, image_filename, vlm, verbose=verbose):
+        _ocr_sentences, n_ocr_failed = _ocr_image(
+            image_bytes, image_filename, vlm, verbose=verbose
+        )
+        for s in _ocr_sentences:
             sentences.append({**s, "order": base + s.get("order", 0)})
 
     if ad_text:
