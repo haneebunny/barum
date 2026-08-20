@@ -540,7 +540,12 @@ function ContentGeneratorContent() {
       const [, headline, subcopy] = newline;
       return { headline: headline.trim(), subcopy: subcopy.trim() };
     }
-    const match = text.match(/^([\s\S]+?[.!?])\s*([\s\S]*)$/);
+    // 마침표 뒤에 숫자가 붙으면 문장 끝이 아니라 소수점이다. 이 예외가 없으면
+    // 실증자료 "23.5% 개선"이 헤드라인 "…23." + 서브카피 "5% 개선…"으로 쪼개져
+    // **사업자가 입력한 수치가 왜곡된다**(2026-08-20 실측). barum은 실증 수치를
+    // LLM에도 안 태우고 그대로 싣는 게 원칙인데 렌더 단계에서 깨지고 있었다.
+    // 헤드라인이 길던 때는 안 보이다가 짧아지면서 드러났다.
+    const match = text.match(/^([\s\S]+?[.!?](?!\d))\s*([\s\S]*)$/);
     if (!match) return { headline: text, subcopy: "" };
     const [, headline, subcopy] = match;
     return { headline: headline.trim(), subcopy: subcopy.trim() };
