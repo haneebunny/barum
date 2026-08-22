@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@phosphor-icons/react";
+import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -28,16 +28,21 @@ const TYPE_LABEL = {
 };
 
 interface FindingCardProps {
-  finding: Finding;
-  index: number;
+  finding: Finding; // 그룹 대표(첫 항목). span+violation_type이 같으면 근거·설명도 같다(결정론적 규칙 매칭)
+  index: number; // 대표 idx
+  // 이 카드가 묶고 있는 모든 occurrence의 원본 idx(원문 하이라이트와 짝짓는 키).
+  // 길이 1이면 그룹핑 안 된 단독 지적.
+  positionIdxs: number[];
   orderIndex: number;
   num: number;
   act: "accept" | "exclude" | null;
-  onAction: (idx: number, orderIndex: number, act: "accept" | "exclude") => void;
+  // 그룹 전체에 한 번에 적용된다(팀장 판단: 컴플라이언스 도구에서 부분 수용은 이상하다).
+  onAction: (idxs: number[], orderIndex: number, act: "accept" | "exclude") => void;
   isHovered: boolean;
   onHover: (hover: boolean) => void;
   open: boolean;
   onToggle: () => void;
+  onScrollToPosition: (idx: number) => void;
   tier: "FREE" | "BASIC" | "PRO";
   remediationCount: number;
   onFetchRemediation: () => void;
@@ -73,6 +78,7 @@ function getRemediationText(violationType: string, suggestionsNode: React.ReactN
 function FindingCard({
   finding,
   index,
+  positionIdxs,
   orderIndex,
   num,
   act,
@@ -81,6 +87,7 @@ function FindingCard({
   onHover,
   open,
   onToggle,
+  onScrollToPosition,
   tier,
   remediationCount,
   onFetchRemediation,
@@ -206,7 +213,12 @@ function FindingCard({
           <div className="flex-1 min-w-0">
             {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
             <div className="flex items-center justify-between gap-2">
-              <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>{finding.span}</span>
+              <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>
+                {finding.span}
+                {positionIdxs.length > 1 && (
+                  <span className="ml-1 font-mono font-normal text-[10px] opacity-75">({positionIdxs.length}곳)</span>
+                )}
+              </span>
 
               <div className="flex items-center gap-1.5 ml-auto">
                 {tier === "FREE" ? (
@@ -216,11 +228,14 @@ function FindingCard({
                 ) : (
                   <>
                     <button
+                      // 수용=채움, 제외=윤곽선으로 위계를 준다(새 심각도 색 없이, 팀장 지시).
+                      // 라이트는 --brand 배경이 대비 미달(3.39:1)이라 --brand-deep(9.36:1) 사용,
+                      // 다크는 --brand 그대로 통과(6.48:1) - 디디 검증 완료(DESIGN.md §4.1, PR #268)
                       className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
-                        ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                        ? "font-bold text-[var(--on-brand)] border-[var(--brand-deep)] bg-[var(--brand-deep)] dark:border-[var(--brand)] dark:bg-[var(--brand)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
-                      onClick={() => onAction(index, orderIndex, "accept")}
+                      onClick={() => onAction(positionIdxs, orderIndex, "accept")}
                     >
                       <Check size={11} weight="bold" />
                       수용
@@ -230,7 +245,7 @@ function FindingCard({
                         ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
-                      onClick={() => onAction(index, orderIndex, "exclude")}
+                      onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
                     >
                       <X size={11} weight="bold" />
                       제외
@@ -258,7 +273,24 @@ function FindingCard({
       {/* 아코디언 바디 wrapper */}
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
-          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex flex-col gap-3.5">
+          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] flex flex-col gap-3.5">
+
+            {/* 그룹으로 묶인 카드일 때만: 발견 위치별로 원문 하이라이트로 바로 이동 */}
+            {positionIdxs.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-[var(--ink-3)] font-semibold">발견 위치</span>
+                {positionIdxs.map((pidx, i) => (
+                  <button
+                    key={pidx}
+                    type="button"
+                    onClick={() => onScrollToPosition(pidx)}
+                    className="font-mono text-[10.5px] px-1.5 py-0.5 border border-[var(--line-2)] rounded-sm bg-[var(--surface-sub)] text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:border-[var(--ink-3)] cursor-pointer"
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
             {(tier !== "FREE" || num === 1) ? (
@@ -273,8 +305,26 @@ function FindingCard({
                 </div>
               )
             ) : (
-              <div className="text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] p-2.5 border border-[var(--line-2)] rounded-sm">
-                대체 표현 제안 조회를 더 이용하려면 유료 요금제로 업그레이드해주세요.
+              // 유료 페이월: 안내문 여러 줄을 겹쳐 쌓는 대신, 실제 제안 영역을 블러
+              // 처리해 "가려진 콘텐츠가 있다"는 걸 한 번에 보여준다(PM 지시 2026-08-22).
+              <div className="relative border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm overflow-hidden">
+                <div
+                  className="text-[13px] text-[var(--ink-2)] leading-1.6 blur-[4px] select-none"
+                  aria-hidden="true"
+                >
+                  {getRemediationText(
+                    finding.violation_type,
+                    <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                      안전한 대체 표현
+                    </span>
+                  )}
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--line-2)] rounded-full px-3 py-1 shadow-sm">
+                    <Lock size={12} weight="bold" className="text-[var(--ink-3)]" />
+                    <span className="text-[11px] font-bold text-[var(--ink-3)]">유료 요금제 전용</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -301,7 +351,9 @@ function FindingCard({
             )}
 
             <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
-              {finding.explanation}
+              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
+                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
+              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
             </p>
 
             {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
@@ -414,10 +466,40 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const findByOrder = d.findings
     .map((f, i) => ({ f, idx: i, num: 0 }))
     .sort((a, b) => a.f.location.order - b.f.location.order);
-  findByOrder.forEach((item, index) => {
-    item.num = index + 1;
+
+  // 지적 카드 그룹핑(팀장 확정 A안): span+violation_type이 완전히 같으면 카드
+  // 하나로 묶는다. 같은 span+유형은 규칙 매칭이라 결정론적이라 근거 문구
+  // (finding.explanation)가 항상 같다 - 그룹 대표(첫 항목)만 보여줘도 근거가 갈리지
+  // 않는다. 원문 하이라이트(원본 idx 기준)는 그대로 두고, 카드 번호만 그룹 단위로
+  // 매긴다 - 아래서 findByOrder의 num을 그룹 번호로 되쓰면 원문 하이라이트 배지도
+  // 자동으로 같은 그룹은 같은 번호를 쓰게 된다.
+  const groupItemsByKey = new Map<string, number[]>();
+  findByOrder.forEach((o) => {
+    const key = `${o.f.span} ${o.f.violation_type}`;
+    if (!groupItemsByKey.has(key)) groupItemsByKey.set(key, []);
+    groupItemsByKey.get(key)!.push(o.idx);
   });
-  const visibleFindByOrder = flagFilter ? findByOrder.filter((o) => o.f.flag === flagFilter) : findByOrder;
+  const findGroups = Array.from(groupItemsByKey.values()).map((positionIdxs, i) => ({
+    key: String(i),
+    positionIdxs,
+    repIdx: positionIdxs[0],
+    representative: d.findings[positionIdxs[0]],
+    num: i + 1,
+  }));
+  const groupNumByIdx = new Map<number, number>();
+  findGroups.forEach((g) => {
+    g.positionIdxs.forEach((idx) => groupNumByIdx.set(idx, g.num));
+  });
+  findByOrder.forEach((item) => {
+    item.num = groupNumByIdx.get(item.idx) ?? 0;
+  });
+
+  // 카드 패널은 그룹 단위로 그린다. 상단 요약(위반/검토필요 건수)은 그룹핑과
+  // 무관하게 원본 finding 개수 그대로 쓴다(표시만 묶고 실제 발견 건수를 줄여
+  // 보이면 안 된다, 팀장 지시) - nViol/nReview는 아래에서 d.findings 기준으로 계산.
+  const visibleFindGroups = flagFilter
+    ? findGroups.filter((g) => g.representative.flag === flagFilter)
+    : findGroups;
 
   // finding_index로 지적 카드와 짝짓는다(PR #265). original은 경로마다(조건표=단어,
   // LLM=문장) 값이 달라 키가 못 된다.
@@ -446,20 +528,27 @@ export function ReportClient({ envelope }: ReportClientProps) {
     }
   };
 
-  const handleAction = (idx: number, orderIndex: number, act: "accept" | "exclude") => {
+  // 그룹 전체에 한 번에 적용된다(팀장 판단: 컴플라이언스 도구에서 부분 수용은
+  // 이상하다). idxs[0]을 대표값으로 토글 여부를 판단한다 - 그룹은 항상 이
+  // 함수를 통해서만 값이 바뀌므로 idxs 전체가 항상 같은 값을 유지한다.
+  const handleAction = (idxs: number[], orderIndex: number, act: "accept" | "exclude") => {
     setActions((prev) => {
       const next = { ...prev };
-      if (next[idx] === act) {
-        next[idx] = null;
+      if (next[idxs[0]] === act) {
+        idxs.forEach((idx) => {
+          next[idx] = null;
+        });
       } else {
-        next[idx] = act;
+        idxs.forEach((idx) => {
+          next[idx] = act;
+        });
 
         const nextOrderIndex = orderIndex + 1;
-        if (nextOrderIndex < findByOrder.length) {
+        if (nextOrderIndex < findGroups.length) {
           setOpenOrderIndex(nextOrderIndex);
-          const nextFinding = findByOrder[nextOrderIndex];
+          const nextGroup = findGroups[nextOrderIndex];
           setTimeout(() => {
-            scrollToBox(nextFinding.idx, false);
+            scrollToBox(nextGroup.repIdx, false);
           }, 220);
         }
       }
@@ -492,12 +581,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     } else {
       nReview++;
     }
-  });
-
-  const typeCounts: Record<string, number> = {};
-  d.findings.forEach((f, i) => {
-    if (actions[i] === "exclude") return;
-    typeCounts[f.violation_type] = (typeCounts[f.violation_type] || 0) + 1;
   });
 
   const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
@@ -542,11 +625,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "위반"}
             onClick={() => setFlagFilter((prev) => (prev === "위반" ? null : "위반"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${
-              nViol > 0
-                ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-                : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
-            } ${flagFilter === "위반" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""}`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${nViol > 0
+              ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+              : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
+              } ${flagFilter === "위반" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""}`}
           >
             <Warning size={14} weight="bold" />
             위반 <span className="font-mono">{nViol}</span> 건
@@ -555,9 +637,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "검토필요"}
             onClick={() => setFlagFilter((prev) => (prev === "검토필요" ? null : "검토필요"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${
-              flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
-            }`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
+              }`}
           >
             <MagnifyingGlass size={14} weight="bold" />
             검토필요 <span className="font-mono">{nReview}</span> 건
@@ -575,65 +656,53 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </button>
           )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(typeCounts).map(([type, count]) => {
-            if (count === 0) return null;
-            const label = TYPE_LABEL[type as keyof typeof TYPE_LABEL] || type;
-            return (
-              <span key={type} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[3px_9px] inline-flex items-center gap-1.5">
-                {label} <span className="text-[var(--ink-3)] font-mono">{count}</span>
-              </span>
-            );
-          })}
-          {Object.keys(typeCounts).length === 0 && (
-            <span className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[3px_9px] inline-flex items-center gap-1.5">제외 처리 후 남은 지적 없음</span>
-          )}
-        </div>
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="grid grid-cols-[1.14fr_0.86fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
             <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검증 카드</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
             <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
-              {flagFilter && <span className="font-mono">{visibleFindByOrder.length}/</span>}
-              <span className="font-mono">{d.findings.length}</span>건
+              {flagFilter && <span className="font-mono">{visibleFindGroups.length}/</span>}
+              <span className="font-mono">{findGroups.length}</span>건
             </span>
           </div>
           <div className="flex flex-col gap-3">
-            {findByOrder.map((o, orderIndex) => {
-              if (flagFilter && o.f.flag !== flagFilter) return null;
+            {findGroups.map((g, orderIndex) => {
+              if (flagFilter && g.representative.flag !== flagFilter) return null;
               return (
                 <FindingCard
-                  key={o.idx}
-                  finding={o.f}
-                  index={o.idx}
+                  key={g.key}
+                  finding={g.representative}
+                  index={g.repIdx}
+                  positionIdxs={g.positionIdxs}
                   orderIndex={orderIndex}
-                  num={o.num}
-                  act={actions[o.idx] || null}
+                  num={g.num}
+                  act={actions[g.repIdx] || null}
                   onAction={handleAction}
-                  isHovered={hoveredIndex === o.idx}
-                  onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                  isHovered={g.positionIdxs.includes(hoveredIndex ?? -1)}
+                  onHover={(h) => setHoveredIndex(h ? g.repIdx : null)}
                   open={openOrderIndex === orderIndex}
                   onToggle={() => {
                     const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
                     setOpenOrderIndex(nextOpen);
                     if (nextOpen !== null) {
-                      scrollToBox(o.idx, false);
+                      scrollToBox(g.repIdx, false);
                     }
                   }}
+                  onScrollToPosition={(idx) => scrollToBox(idx, false)}
                   tier={tier}
                   remediationCount={remediationCount}
                   onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
-                  replacement={replacementByFindingIndex.get(o.idx)}
+                  replacement={replacementByFindingIndex.get(g.repIdx)}
                   hasReportReplacements={hasReportReplacements}
                 />
               );
             })}
-            {flagFilter && visibleFindByOrder.length === 0 && (
+            {flagFilter && visibleFindGroups.length === 0 && (
               <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
                 <p className="m-0 text-[12.5px] text-[var(--ink-3)]">
                   {flagFilter} 항목이 없습니다.
