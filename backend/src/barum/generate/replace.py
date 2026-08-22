@@ -22,6 +22,9 @@ from barum.models import Finding, JudgmentFlag, Replacement, ViolationType
 from barum.reference.remediation import get_remediation
 from barum.reference.rules import RuleOutcome, match_rule
 
+# 너무 짧은 설명은 안 쓴다. 한 단어짜리 응답이 오면 기존 템플릿이 낫다.
+_MIN_EXPLANATION_LEN = 15
+
 _BASIS = "합법 표기 틀(조건표) 기반 대체 표현"
 _BASIS_LLM = "합법 표기 틀(조건표) + 문장 다듬기"
 
@@ -132,12 +135,26 @@ _REWRITE_PROMPT = """너는 화장품 광고 문구를 화장품법에 맞게 �
   (예: "임상 시험 결과 4주 사용 시 콜라겐 밀도 38% 증가" →
         "4주 사용 시 콜라겐 밀도 38% 증가 (인체적용시험 결과)")
 
+**항목마다 `explanation`도 함께 써라 (can_suggest와 무관하게 항상).**
+왜 이 문구가 그 위반 유형에 해당하는지 **사업자에게 설명하는 두세 문장**이다.
+
+- 주어진 **위반 유형과 조항 취지를 벗어나지 마라.** 조항 취지가 주어지면 그것을 근거로
+  설명하고, **네가 짐작한 다른 이유를 지어내지 마라**
+- **조항 취지가 "그 밖에 …"처럼 포괄 조항이면, 구체적 사실관계를 단정하지 마라.**
+  "입점 사실이 확인되지 않으면", "임상 자료가 없으면" 같은 **우리가 모르는 전제를
+  붙이지 마라.** 그 표현이 왜 오인을 부를 수 있는지까지만 쓰고, 확인이 필요하다면
+  무엇을 확인해야 하는지만 밝혀라
+- 규정 용어를 그대로 옮기지 말고 사업자가 알아들을 말로 풀어라
+- 검토필요면 "왜 확정이 아니라 확인이 필요한지"를 밝혀라(실증자료가 있으면 쓸 수 있다는 뜻)
+- 없는 사실을 만들지 마라. 판정 자체는 이미 정해져 있고 너는 이유만 설명한다
+
 항목:
 {items}
 
 JSON으로만 답하라. 설명 문장을 덧붙이지 마라.
-{{"items": [{{"index": 0, "can_suggest": true, "suggestion": "다시 쓴 문장", "reason": "판단 근거"}}]}}
-can_suggest가 false면 suggestion은 넣지 마라."""
+{{"items": [{{"index": 0, "can_suggest": true, "suggestion": "다시 쓴 문장",
+  "explanation": "왜 이 문구가 위반인지 사업자에게 설명하는 두세 문장", "reason": "판단 근거"}}]}}
+can_suggest가 false면 suggestion은 넣지 마라. **explanation은 그 경우에도 반드시 쓴다.**"""
 
 
 def _build_prompt(entries: list[dict]) -> str:
@@ -148,12 +165,18 @@ def _build_prompt(entries: list[dict]) -> str:
             f"[{e['index']}] 원문: {e['sentence']}\n"
             f"     위반으로 지목된 부분: {e['span']}\n"
             f"     위반 유형: {e['violation_type']}\n"
+            f"     근거 조항: {e['legal_basis']}\n"
+            + (f"     조항 취지: {e['legal_basis_text'][:400]}\n" if e["legal_basis_text"] else "")
+            + 
+            f"     판정: {e['flag']}\n"
             f"     참고 표현: {e['reference'] or '(없음)'}"
         )
     return _REWRITE_PROMPT.format(items="\n".join(lines))
 
 
-def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replacement]:
+def build_replacements(
+    findings: list[Finding], *, rewriter=None, explain: bool = False
+) -> list[Replacement]:
     """위반 finding마다 대체표현을 만든다. 못 만들면 그 finding은 건너뛴다.
 
     `rewriter`(VLM 프로토콜)를 주면 조건표 후보를 방향으로 삼아 LLM이 문장을 다듬는다.
@@ -176,14 +199,26 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
                 "sentence": f.sentence,
                 "span": f.span or f.sentence,
                 "violation_type": _vtype_value(f.violation_type),
+                "legal_basis": f.legal_basis,
+                # 조항 원문까지 준다. 번호만 주면 모델이 그 조항의 취지를 모른 채
+                # 그럴듯한 이유를 지어낸다(2026-08-20 실측: '약국'을 "입점 사실이
+                # 확인 안 되면 오인" 으로 설명했는데, 팩 근거는 약국·병원 전용
+                # 표방이 의료기관 연계를 암시한다는 것이다). 컨텍스트에 없으면
+                # 모델은 모른다 — ⑥에서 인정문구로 겪은 것과 같다.
+                "legal_basis_text": f.legal_basis_text or "",
+                "flag": f.flag.value if hasattr(f.flag, "value") else str(f.flag),
                 "reference": first_safe(suggestions) if suggestions else None,
             }
         )
 
     rewritten: dict[int, str] = {}
     dropped: set[int] = set()
+    explanations: dict[int, str] = {}
     if rewriter is not None and entries:
-        rewritten, dropped = _rewrite(rewriter, entries)
+        rewritten, dropped, explanations = _rewrite(rewriter, entries)
+
+    if explain:
+        _apply_explanations(findings, explanations)
 
     reps: list[Replacement] = []
     for e in entries:
@@ -214,11 +249,30 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
     return reps
 
 
+def _apply_explanations(findings: list[Finding], explanations: dict[int, str]) -> None:
+    """규칙 경로 finding의 설명 문장을 LLM이 쓴 것으로 갈아끼운다(제자리 수정).
+
+    **규칙 경로만 대상이다.** VLM 경로는 이미 모델이 직접 쓴 설명이고, 2호 성분 대조
+    안내처럼 코드가 덧붙인 내용도 들어 있어서 덮어쓰면 그걸 잃는다.
+
+    **LLM이 설명을 못 냈으면 기존 템플릿을 그대로 둔다**(팀장·PM 지시). 리포트가 빈
+    설명으로 나가면 안 된다. 호출 실패·누락·너무 짧은 응답이 전부 여기로 떨어진다.
+
+    판정 자체(위반 여부·유형·근거 조항)는 안 건드린다. 규칙집이 정한 그대로다.
+    """
+    for i, f in enumerate(findings):
+        if f.source != "rule":
+            continue
+        text = explanations.get(i)
+        if text:
+            f.explanation = text
+
+
 def _vtype_value(vtype) -> str:
     return vtype.value if isinstance(vtype, ViolationType) else str(vtype)
 
 
-def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int]]:
+def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int], dict[int, str]]:
     """LLM에 배치로 한 번 물어 (다듬은 문구, 제안 불가 인덱스)를 낸다.
 
     **실패하면 조건표 결과로 돌아간다.** 과금 호출이라 재시도하지 않는다(CLAUDE.md §E).
@@ -229,14 +283,21 @@ def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int]]:
         res = rewriter.generate_json(_build_prompt(entries), [])
     except Exception as exc:  # 과금 호출이라 재시도 없이 조건표로 폴백
         print(f"[replace] 문장 다듬기 실패, 조건표 결과로 진행: {exc}")
-        return {}, set()
+        return {}, set(), {}
 
     rewritten: dict[int, str] = {}
     dropped: set[int] = set()
+    explanations: dict[int, str] = {}
     for item in (res or {}).get("items", []):
         idx = item.get("index")
         if not isinstance(idx, int):
             continue
+        # 설명은 can_suggest와 무관하게 받는다. 대체표현을 못 내는 문구(제품명·유통
+        # 채널)도 "왜 걸렸는지"는 알려줘야 한다. 빈 값이면 안 담는다 — 호출자가
+        # 기존 템플릿을 그대로 쓰게 해서 리포트가 빈 설명으로 나가지 않게 한다.
+        expl = (item.get("explanation") or "").strip()
+        if len(expl) >= _MIN_EXPLANATION_LEN:
+            explanations[idx] = expl
         if not item.get("can_suggest"):
             dropped.add(idx)
             continue
@@ -250,7 +311,7 @@ def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int]]:
             dropped.add(idx)
             continue
         rewritten[idx] = text
-    return rewritten, dropped
+    return rewritten, dropped, explanations
 
 
 def apply_replacements(content: str, reps: list[Replacement]) -> str:
