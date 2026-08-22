@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
+import { PageContent } from "@/components/PageContent/PageContent";
+import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { Modal } from "@/components/Modal/Modal";
-import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
+import { TabSwitch } from "@/components/TabSwitch/TabSwitch";
 import { useTier, type Tier } from "@/lib/tier";
-
-const TIER_OPTIONS: TabOption<Tier>[] = [
-  { value: "Free", label: "Free" },
-  { value: "Basic", label: "Basic" },
-  { value: "Pro", label: "Pro" },
-];
+import { recentHistory, rowProps } from "@/lib/mockHistory";
 
 interface FeatItem {
   text: string;
@@ -81,6 +78,14 @@ const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
   },
 };
 
+const TIER_OPTIONS: { value: Tier; label: string }[] = [
+  { value: "Free", label: "Free" },
+  { value: "Basic", label: "Basic" },
+  { value: "Pro", label: "Pro" },
+];
+
+const RECENT_HISTORY = recentHistory(5);
+
 export default function MyPage() {
   const { tier, setTier } = useTier();
   const [is_compare_modal_open, set_is_compare_modal_open] = useState(false);
@@ -92,31 +97,19 @@ export default function MyPage() {
 
   return (
     <>
-      {/* 메타스트립: 브레드크럼 + 목업 전용 등급 스위처 */}
-      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
-        <span className="text-[var(--ink-2)]">
-          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
-            홈
-          </Link>{" "}
-          <span className="text-[var(--ink-3)]">›</span> 마이페이지
-        </span>
-        <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
-          <TabSwitch
-            label="티어 미리보기"
-            options={TIER_OPTIONS}
-            value={tier}
-            onChange={setTier}
-          />
-        </div>
-      </div>
+      <PageContent>
+      <PageHeader
+        title="마이페이지"
+        right={<TabSwitch label="목업 전용 · 실제 화면엔 없음" options={TIER_OPTIONS} value={tier} onChange={setTier} />}
+      />
 
       {/* 요금제 + 사용량 */}
-      <div className="p-[18px_20px] border-b border-[var(--line)]">
+      <div className="py-[18px] border-b border-[var(--line)]">
         <div className="flex items-center gap-[11px] m-[0_0_13px]">
           <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
           <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">요금제 · 사용량</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">glowskin 계정</span>
+          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">yourberry 계정</span>
         </div>
         <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
           <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
@@ -195,12 +188,12 @@ export default function MyPage() {
                     <b className="text-[16px] font-bold">{active_tier.used}</b> / {active_tier.limit}건
                   </span>
                 </div>
-                <div 
-                  className="h-2 bg-[var(--line-2)] border border-[var(--line-2)] overflow-hidden" 
+                <div
+                  className="h-2 bg-[var(--line-2)] border border-[var(--line-2)] overflow-hidden"
                   aria-label={`검사 사용량 ${Math.round((active_tier.used / active_tier.limit) * 100)}% 사용함`}
                 >
-                  <div 
-                    className="h-full bg-[var(--ink-3)]" 
+                  <div
+                    className="h-full bg-[var(--ink-3)]"
                     style={{ width: `${Math.round((active_tier.used / active_tier.limit) * 100)}%` }}
                   ></div>
                 </div>
@@ -214,10 +207,10 @@ export default function MyPage() {
             <b className="text-[var(--ink)] font-bold">{active_tier.up.title}</b>
             <p className="m-[2px_0_0] text-[12px] text-[var(--ink-3)]">{active_tier.up.desc}</p>
           </div>
-          <button 
+          <button
             id="openCompare"
             ref={compare_btn_ref}
-            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]" 
+            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
             onClick={() => set_is_compare_modal_open(true)}
           >
             요금제 비교 <span className="font-mono">→</span>
@@ -227,7 +220,7 @@ export default function MyPage() {
 
       {/* Pro 전용: 이력 통합 대시보드 */}
       {tier === "Pro" && (
-        <div className="p-[18px_20px] border-b border-[var(--line)]">
+        <div className="py-[18px] border-b border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">이력 통합 대시보드</h2>
@@ -297,123 +290,20 @@ export default function MyPage() {
       )}
 
       {/* 검사 이력 */}
-      <div className="p-[18px_20px] border-b-0">
+      <div className="py-[18px] border-b-0">
         <div className="flex items-center gap-[11px] m-[0_0_13px]">
           <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">{tier === "Pro" ? "03" : "02"}</span>
           <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 이력</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
           <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="histHint">최근 5건</span>
         </div>
-        <div className="flex flex-col gap-1.75">
-          <Link href="/report/demo-id-1" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-            <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">글로우 세럼 · 미국 상세페이지</span>
-            <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] font-semibold">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                aria-hidden="true"
-                className="w-[13px] h-[13px]"
-              >
-                <path d="M12 3 2 20h20L12 3z" />
-                <path d="M12 10v4M12 17v.5" />
-              </svg>
-              검토 필요
-            </span>
-            <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">방금</span>
-          </Link>
-
-          <Link href="/report/demo-id-2" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-            <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">수분 크림 리뉴얼 상세페이지</span>
-            <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">국내</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] border-[var(--line-2)]">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                aria-hidden="true"
-                className="w-[13px] h-[13px]"
-              >
-                <path d="M4 12l5 5L20 6" />
-              </svg>
-              검사 완료
-            </span>
-            <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">2일 전</span>
-          </Link>
-
-          <Link href="/report/demo-id-3" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-            <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">선크림 SPF50 신제품</span>
-            <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">국내</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--crit)] border-[var(--crit-bd)] bg-[var(--crit-bg)] font-semibold">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                aria-hidden="true"
-                className="w-[13px] h-[13px]"
-              >
-                <path d="M12 3 2 20h20L12 3z" />
-                <path d="M12 10v4M12 17v.5" />
-              </svg>
-              위반 3건
-            </span>
-            <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">3일 전</span>
-          </Link>
-
-          <Link href="/report/demo-id-4" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-            <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">아이크림 재론칭 상세페이지</span>
-            <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">국내</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] border-[var(--line-2)]">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                aria-hidden="true"
-                className="w-[13px] h-[13px]"
-              >
-                <path d="M4 12l5 5L20 6" />
-              </svg>
-              검사 완료
-            </span>
-            <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">1주 전</span>
-          </Link>
-
-          <Link href="/report/demo-id-5" className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3.25 border border-[var(--line)] bg-[var(--surface)] p-[11px_14px] cursor-pointer no-underline transition-all duration-150 hover:border-[var(--brand)]">
-            <span className="text-[var(--ink)] font-semibold text-[13.5px] truncate min-w-0">클렌징폼 성분 개편</span>
-            <span className="font-mono text-[10.5px] border border-[var(--line-2)] p-[2px_7px] text-[var(--ink-3)] whitespace-nowrap">해외 · 미국</span>
-            <span className="inline-flex items-center gap-[5px] text-[11.5px] p-[2px_9px] border border-[var(--line-2)] whitespace-nowrap text-[var(--ink-2)] font-semibold">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                aria-hidden="true"
-                className="w-[13px] h-[13px]"
-              >
-                <path d="M12 3 2 20h20L12 3z" />
-                <path d="M12 10v4M12 17v.5" />
-              </svg>
-              검토 필요
-            </span>
-            <span className="font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">리포트 다시 보기</span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px] whitespace-nowrap">2주 전</span>
-          </Link>
-        </div>
+        <HistoryRowList>
+          {RECENT_HISTORY.map(row => (
+            <HistoryRow key={row.result_id} href={`/report/${row.result_id}`} {...rowProps(row)} />
+          ))}
+        </HistoryRowList>
       </div>
+      </PageContent>
 
       <PageFooter />
 
