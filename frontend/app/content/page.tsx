@@ -564,7 +564,12 @@ function ContentGeneratorContent() {
     opts: { inlineImages: boolean }
   ): Promise<{ detailPageHtml: string; styleTag: string }> => {
     const productName = displayProductName;
-    const hasAnyGeneratedImage = result.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url);
+    const hasAnyGeneratedImage = result.image_plan.module_images.some((mi) => mi.status === "generated" && mi.image_url)
+      || result.cards.some((c) => c.image_status === "generated" && c.image_url);
+    // 카드형 산출물(PR #272, 팀장 확정 2026-08-22). 백엔드가 sections·module_images·
+    // layout_plan을 module_kind로 이미 짝지어 카드로 낸다 - 있으면 이쪽을 쓰고, 없는
+    // (길이 0) 옛 응답만 아래 sections 매칭 경로로 폴백한다(하위호환).
+    const useCards = result.cards.length > 0;
     const layoutModulesByKind: Record<string, string | null | undefined> = {};
     for (const m of result.layout_plan?.modules || []) {
       layoutModulesByKind[m.kind] = m.layout_type;
@@ -574,10 +579,13 @@ function ContentGeneratorContent() {
       opts.inlineImages ? toDataUri(url) : resolveImageUrl(url);
 
     // 섹션별로 매칭되는 module_image를 이미지 URL(또는 다운로드용 data URI)로 매핑
+    // (카드 경로에선 안 쓴다 - 쓸모없는 이미지까지 굽는 걸 피한다)
     const moduleImageUrls: Record<string, string | null> = {};
-    for (const mi of result.image_plan.module_images) {
-      if (mi.status === "generated" && mi.image_url) {
-        moduleImageUrls[mi.module_kind] = await resolveOrInline(mi.image_url);
+    if (!useCards) {
+      for (const mi of result.image_plan.module_images) {
+        if (mi.status === "generated" && mi.image_url) {
+          moduleImageUrls[mi.module_kind] = await resolveOrInline(mi.image_url);
+        }
       }
     }
 
@@ -588,7 +596,9 @@ function ContentGeneratorContent() {
 
     // 히어로(첫 섹션)는 이미지 하단 화이트 카드로, 나머지는 layout_type이 있으면 그 유형대로,
     // 없으면(백엔드 미배선 구버전) 무드컷(이미지)+카피(텍스트) 분리 블록으로 폴백.
-    const sectionsHtml = result.sections.map((s, idx) => {
+    // (카드형 응답이면 이 블록 자체를 건너뛴다 - result.sections는 카드 경로에서도
+    // 여전히 오지만 화면엔 안 쓴다)
+    const sectionsHtml = useCards ? "" : result.sections.map((s, idx) => {
       // 이미지·layout_type은 module_kind로 먼저 찾는다. 위반소지 모듈(hero_intro 등)의
       // 내용은 인정문구·실증자료가 채워서 s.kind가 "광고문구"·"실증자료"로 나오는데,
       // s.kind로만 찾으면 그 모듈들의 이미지가 통째로 버려진다(2026-08-20 실측:
@@ -676,6 +686,94 @@ function ContentGeneratorContent() {
       return `<div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
     }).join("\n    ");
 
+    // 카드형 산출물 렌더링(useCards는 위에서 이미 계산). 백엔드가 sections·
+    // module_images·layout_plan을 module_kind로 이미 짝지어 카드로 낸다 - 프론트는
+    // 더 이상 매칭하지 않는다.
+    let cardsHtml = "";
+    if (useCards) {
+      const cardBlocks = await Promise.all(
+        [...result.cards].sort((a, b) => a.order - b.order).map(async (card) => {
+          const dataUri = card.image_status === "generated" && card.image_url
+            ? await resolveOrInline(card.image_url)
+            : null;
+          const finePrintCard = isFinePrintKind(card.module_kind) ? " dp-fine" : "";
+          const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(card.module_kind)}" -->`;
+          // 실증자료 필요 고지. 있으면 카드 유형과 무관하게 항상 같이 낸다(빠뜨리면
+          // 사용자가 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
+          const noteHtml = card.note ? `<div class="dp-block dp-fine"><p>${escapeHtml(card.note)}</p></div>` : "";
+
+          if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
+            return `${swapComment}
+    <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span><p>${escapeHtml(card.headline)}</p></div>
+    </div>
+    ${aiImageCaption}
+    ${noteHtml}`;
+          }
+
+          if (card.layout_type === "image_text_split" && dataUri) {
+            const side = statementAltIndex % 2 === 0 ? "left" : "right";
+            statementAltIndex++;
+            return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
+      <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+    </div>
+    ${noteHtml}`;
+          }
+
+          if (card.layout_type === "step_list" && dataUri) {
+            const side = statementAltIndex % 2 === 0 ? "left" : "right";
+            statementAltIndex++;
+            return `${swapComment}
+    <div class="dp-split dp-split-${side}">
+      <div class="dp-split-media-wrap">
+        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
+        ${aiImageCaption}
+      </div>
+      <div class="dp-split-copy"><p class="dp-step-text">${escapeHtml(card.headline)}</p></div>
+    </div>
+    ${noteHtml}`;
+          }
+
+          if (card.layout_type === "section_statement") {
+            const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
+            statementAltIndex++;
+            return `<div class="dp-statement${tone}${finePrintCard}"><p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+    ${noteHtml}`;
+          }
+
+          if (card.layout_type === "mood_macro" && dataUri) {
+            return `${swapComment}
+    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
+    ${card.headline ? `<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
+    ${noteHtml}`;
+          }
+
+          if (card.layout_type === "banner_strip") {
+            return `<div class="dp-banner"><p>${escapeHtml(card.headline)}</p></div>
+    ${noteHtml}`;
+          }
+
+          if (dataUri) {
+            // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
+            return `${swapComment}
+    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
+    ${aiImageCaption}
+    <div class="dp-block${finePrintCard}"><p>${escapeHtml(card.headline)}</p></div>
+    ${noteHtml}`;
+          }
+          return `<div class="dp-block${finePrintCard}"><p>${escapeHtml(card.headline)}</p></div>
+    ${noteHtml}`;
+        })
+      );
+      cardsHtml = cardBlocks.join("\n    ");
+    }
+
     const placedImages = await Promise.all(
       result.image_plan.placed.map(async (img) => {
         const dataUri = await resolveOrInline(img.image_url);
@@ -747,7 +845,7 @@ function ContentGeneratorContent() {
   </style>`;
 
     const detailPageHtml = `<div class="detailpage">
-    ${sectionsHtml}
+    ${useCards ? cardsHtml : sectionsHtml}
     ${imagesHtml}
     ${aiPageNotice}
     <div class="dp-close">${escapeHtml(result.disclaimer)}</div>
