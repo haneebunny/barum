@@ -9,6 +9,7 @@ import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-i
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { useError } from "@/lib/error/ErrorContext";
+import { takeDraft } from "@/lib/draftHandoff";
 
 interface FileItem {
   id: string;
@@ -48,6 +49,25 @@ function InspectContent() {
 
   const [isDragging, setIsDragging] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+
+  // 홈 화면에서 붙여넣거나 끌어다 놓은 초안을 그대로 이어받는다 (1단계 입력 UI 자체는 그대로).
+  useEffect(() => {
+    const draft = takeDraft();
+    if (!draft) return;
+    if (draft.ad_text) setAdText(draft.ad_text);
+    if (draft.files?.length) {
+      setAdFiles(draft.files.map((file, i) => {
+        const lastDot = file.name.lastIndexOf(".");
+        return {
+          id: `ad-file-draft-${Date.now()}-${i}`,
+          name: lastDot === -1 ? file.name : file.name.substring(0, lastDot),
+          ext: lastDot === -1 ? "" : file.name.substring(lastDot),
+          file,
+        };
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   interface TaskStep {
     id: number;
