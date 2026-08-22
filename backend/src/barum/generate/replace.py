@@ -153,6 +153,32 @@ def _build_prompt(entries: list[dict]) -> str:
     return _REWRITE_PROMPT.format(items="\n".join(lines))
 
 
+def rewrite_one(sentence: str, *, violation_type, span: str | None, rewriter) -> str | None:
+    """문구 하나에 대한 대체표현을 LLM으로 다듬어 낸다. 못 만들면 None.
+
+    `/remediate`(리포트 화면 카드)용 단건 경로다. `build_replacements`가 배치로 하는 일을
+    한 건만 한다.
+
+    **조건표 문구를 그대로 내면 같은 입력에 늘 같은 답이 나온다**(팀장 지적, 2026-08-20).
+    `자극 완화`·`피부 생기 부여`처럼 좁고 뻔한 문구가 반복된다. LLM에 문장을 다시
+    쓰게 하되, **나온 결과를 규칙집에 다시 태워 위반이면 버린다**(`_accept`). 만드는
+    쪽이 누구든 검증 없이 내보내면 위반을 위반으로 바꿔주게 된다.
+
+    조건표 후보는 버리지 않고 `reference`로 넘겨 방향으로만 쓴다. LLM이 실패하거나
+    제안 불가로 판단하면 호출자가 조건표 결과로 폴백한다(응답은 항상 나가게).
+    """
+    suggestions, _ = get_remediation(sentence=sentence, violation_type=violation_type, span=span)
+    entry = {
+        "index": 0,
+        "sentence": sentence,
+        "span": span or sentence,
+        "violation_type": _vtype_value(violation_type),
+        "reference": first_safe(suggestions) if suggestions else None,
+    }
+    rewritten, _dropped = _rewrite(rewriter, [entry])
+    return rewritten.get(0)
+
+
 def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replacement]:
     """위반 finding마다 대체표현을 만든다. 못 만들면 그 finding은 건너뛴다.
 

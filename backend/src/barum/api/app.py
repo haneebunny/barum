@@ -25,7 +25,7 @@ from barum.models import (
     USPreflightReport,
 )
 from barum.generate.content import generate_content
-from barum.generate.replace import first_safe
+from barum.generate.replace import first_safe, rewrite_one
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check, run_us_sunscreen_check
@@ -371,9 +371,14 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
     `first_safe()`는 위반 후보를 버리고 검토필요 후보를 뒤로 미룬다(`generate/replace.py`).
     조건표에는 1순위가 검토필요인데 2순위가 깨끗한 규칙이 실제로 있다.
 
-    **LLM 재작성(PR #257)은 일부러 안 건다.** 이 엔드포인트는 카드를 펼칠 때마다
-    실시간 호출이라 지연·비용이 붙는다. 안전 우선 선택만으로 위 모순은 사라지고
-    API 비용은 0이다(도입 여부는 별도 판단, PM8과 정리).
+    **LLM으로 문장을 다시 쓴다**(팀장 지시, 2026-08-20). 조건표 문구만 내면 같은
+    입력에 늘 같은 답이 나온다 — `자극 완화`·`피부 생기 부여`처럼 좁고 뻔한 문구가
+    반복된다. LLM에 자유롭게 쓰게 하되 **나온 결과를 규칙집에 다시 태워 위반이면
+    버린다**(`replace._accept`). 그래서 창의성은 늘고 안전선은 그대로다.
+
+    카드를 펼칠 때마다 실시간 호출이라 지연이 붙는다. `REMEDIATE_REWRITE=0`으로 끄면
+    조건표 기반 안전 선택만 남는다(시연 중 지연이 문제되면 이 스위치로 즉시 되돌린다).
+    실패·타임아웃이면 조건표 결과로 폴백해서 응답은 항상 나간다.
     """
     span = req.span if req.span is not None else req.sentence
     suggestions, disclaimer = get_remediation(
@@ -382,6 +387,21 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
         span=req.span,
     )
     safe = first_safe(suggestions) if suggestions else None
+
+    # LLM으로 문장을 다시 쓴다. 실패하면 조건표 결과로 폴백해서 응답은 항상 나간다.
+    if os.environ.get("REMEDIATE_REWRITE", "1") == "1":
+        try:
+            rewritten = rewrite_one(
+                req.sentence,
+                violation_type=req.violation_type,
+                span=req.span,
+                rewriter=_remediate_rewriter(),
+            )
+            if rewritten:
+                safe = rewritten
+        except Exception as e:  # 과금 호출이라 재시도하지 않는다(CLAUDE.md §E)
+            print(f"[remediate] 문장 다듬기 실패, 조건표 결과로 응답: {type(e).__name__}: {e}")
+
     return RemediationResponse(
         sentence=req.sentence,
         violation_type=req.violation_type,
@@ -389,6 +409,11 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
         suggestions=[safe] if safe else [],
         disclaimer=disclaimer,
     )
+
+
+def _remediate_rewriter():
+    """대체표현 다듬기용 LLM. 테스트는 이걸 가짜로 갈아낀다."""
+    return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
 
 
 def _section_vlm():
