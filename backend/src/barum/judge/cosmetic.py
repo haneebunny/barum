@@ -206,7 +206,26 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 문장:
 {items}
 
-JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "flag": "위반|검토필요", "reason": "..."}}]}}"""
+확신도(confidence, 0~100 정수):
+- 이 판정이 맞을 가능성을 스스로 매겨라. 근거가 분명하면 높게, 애매하면 낮게.
+- 습관적으로 높은 값을 쓰지 마라. 낮은 확신도는 잘못이 아니라 정보다.
+
+JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "flag": "위반|검토필요", "confidence": 0, "reason": "..."}}]}}"""
+
+
+def _parse_confidence(value) -> int | None:
+    """모델이 답한 확신도를 0~100 정수로. 못 읽거나 범위 밖이면 None.
+
+    **없는 값을 만들지 않는다.** 파싱 실패를 50이나 100 같은 기본값으로 채우면
+    화면에는 모델이 답한 숫자와 구분이 안 되게 뜬다. 모르면 모른다고 둔다.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if 0 <= n <= 100 else None
 
 
 def _functional_evidence(
@@ -380,6 +399,8 @@ class PromptJudge:
                         legal_basis_text=legal_basis_text_for(vtype),
                         flag=flag,
                         explanation=explanation,
+                        # VLM 경로만 채운다. 규칙 경로는 None으로 남는다(Finding 주석 참고).
+                        confidence=_parse_confidence(item.get("confidence")),
                         source="vlm",
                         location=_loc(s),
                     )
