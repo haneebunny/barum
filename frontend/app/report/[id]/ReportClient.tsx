@@ -473,21 +473,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   return (
     <>
-      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
-        <span className="text-[var(--ink-2)]">
-          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
-            홈
-          </Link>{" "}
-          <span className="text-[var(--ink-3)]">›</span>{" "}
-          {activeEnvelope.region === "US" ? (
-            <>
-              해외 수출 검증 <span className="text-[var(--ink-3)]">›</span> 미국{" "}
-            </>
-          ) : (
-            <>국내 광고 검증</>
-          )}
-          <span className="text-[var(--ink-3)]">›</span> 리포트
-        </span>
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
         <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
           <TabSwitch
             label="목업 전용 · 실제 화면엔 없음:"
@@ -562,10 +548,89 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-[1.14fr_0.86fr] max-[900px]:grid-cols-1">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검증 카드</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
+              {flagFilter && <span className="font-mono">{visibleFindByOrder.length}/</span>}
+              <span className="font-mono">{d.findings.length}</span>건
+            </span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {findByOrder.map((o, orderIndex) => {
+              if (flagFilter && o.f.flag !== flagFilter) return null;
+              return (
+                <FindingCard
+                  key={o.idx}
+                  finding={o.f}
+                  index={o.idx}
+                  orderIndex={orderIndex}
+                  num={o.num}
+                  act={actions[o.idx] || null}
+                  onAction={handleAction}
+                  isHovered={hoveredIndex === o.idx}
+                  onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                  open={openOrderIndex === orderIndex}
+                  onToggle={() => {
+                    const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
+                    setOpenOrderIndex(nextOpen);
+                    if (nextOpen !== null) {
+                      scrollToBox(o.idx, false);
+                    }
+                  }}
+                  tier={tier}
+                  remediationCount={remediationCount}
+                  onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
+                />
+              );
+            })}
+            {flagFilter && visibleFindByOrder.length === 0 && (
+              <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
+                <p className="m-0 text-[12.5px] text-[var(--ink-3)]">
+                  {flagFilter} 항목이 없습니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFlagFilter(null)}
+                  className="text-[11.5px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
+                >
+                  전체 보기
+                </button>
+              </div>
+            )}
+          </div>
+          {d.unjudged.length > 0 && (
+            <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
+              <div className="flex items-center gap-[11px] m-[0_0_13px]">
+                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">?</span>
+                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
+                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">판정 실패 · 미판정</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {ujByOrder.map((u, i) => (
+                  <div
+                    className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px] cursor-pointer hover:bg-[var(--surface)] transition-all duration-[120ms]"
+                    onClick={() => scrollToBox(i, true)}
+                    key={i}
+                  >
+                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
+                    <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
+                      {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-[18px_20px_22px]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
             <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
@@ -938,85 +1003,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
               })()
             )}
           </div>
-        </div>
-        <div className="p-[18px_20px_22px]">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">지적 카드</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
-              {flagFilter && <span className="font-mono">{visibleFindByOrder.length}/</span>}
-              <span className="font-mono">{d.findings.length}</span>건
-            </span>
-          </div>
-          <div className="flex flex-col gap-3">
-            {findByOrder.map((o, orderIndex) => {
-              if (flagFilter && o.f.flag !== flagFilter) return null;
-              return (
-                <FindingCard
-                  key={o.idx}
-                  finding={o.f}
-                  index={o.idx}
-                  orderIndex={orderIndex}
-                  num={o.num}
-                  act={actions[o.idx] || null}
-                  onAction={handleAction}
-                  isHovered={hoveredIndex === o.idx}
-                  onHover={(h) => setHoveredIndex(h ? o.idx : null)}
-                  open={openOrderIndex === orderIndex}
-                  onToggle={() => {
-                    const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
-                    setOpenOrderIndex(nextOpen);
-                    if (nextOpen !== null) {
-                      scrollToBox(o.idx, false);
-                    }
-                  }}
-                  tier={tier}
-                  remediationCount={remediationCount}
-                  onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
-                />
-              );
-            })}
-            {flagFilter && visibleFindByOrder.length === 0 && (
-              <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
-                <p className="m-0 text-[12.5px] text-[var(--ink-3)]">
-                  {flagFilter} 항목이 없습니다.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFlagFilter(null)}
-                  className="text-[11.5px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
-                >
-                  전체 보기
-                </button>
-              </div>
-            )}
-          </div>
-          {d.unjudged.length > 0 && (
-            <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
-              <div className="flex items-center gap-[11px] m-[0_0_13px]">
-                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">?</span>
-                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
-                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">판정 실패 · 미판정</span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {ujByOrder.map((u, i) => (
-                  <div
-                    className="flex items-start gap-2.25 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_10px] cursor-pointer hover:bg-[var(--surface)] transition-all duration-[120ms]"
-                    onClick={() => scrollToBox(i, true)}
-                    key={i}
-                  >
-                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
-                    <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
-                      {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
