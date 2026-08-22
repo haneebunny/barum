@@ -134,6 +134,26 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       },
     },
     result_id: "demo-image-id",
+    // PR #265 데모: 판정할 때 배치로 만들어진 대체표현. finding_index=2(거짓·과장)는
+    // 일부러 안 넣어 "제안할 수 없으면 제안하지 않는다" 케이스를 같이 보여준다.
+    replacements: [
+      {
+        original: "멜라닌 생성을 억제해 미백에 도움",
+        replaced: "피부 톤 정돈에 도움",
+        violation_type: "2호_기능성오인",
+        basis: "합법 표기 틀(조건표) 기반 대체 표현",
+        finding_index: 0,
+        note: null,
+      },
+      {
+        original: "아토피 피부염을 완화하고 손상된 피부를 재생합니다.",
+        replaced: "건조하고 예민한 피부에 진정 케어를 더합니다.",
+        violation_type: "1호_의약품오인",
+        basis: "합법 표기 틀(조건표) + 문장 다듬기",
+        finding_index: 1,
+        note: null,
+      },
+    ] as any,
   },
   text: {
     findings: [
@@ -189,6 +209,9 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       },
     },
     result_id: "demo-text-id",
+    // 이 필드 이전에 저장된 옛 리포트/생성 실패 케이스 데모: 비워두면 /remediate
+    // 실시간 조회로 폴백한다.
+    replacements: [],
   },
   unjudged: {
     findings: [
@@ -250,6 +273,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       },
     },
     result_id: "demo-unjudged-id",
+    replacements: [],
   },
 };
 
