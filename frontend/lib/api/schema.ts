@@ -56,6 +56,10 @@ export const SummarySchema = z.object({
   n_violation: z.number(),
   n_needs_review: z.number(),
   n_unjudged: z.number(),
+  // OCR이 못 읽은 타일 수(백엔드 PR #259). 0보다 크면 이 리포트는 이미지 일부를
+  // 못 본 상태다 - "읽었는데 문제없음"과 구분해서 화면에 알려야 한다. 이 필드
+  // 이전에 저장된 옛 리포트엔 없을 수 있어 default(0).
+  n_ocr_failed_tiles: z.number().default(0),
   counts_by_type: z.record(ViolationTypeSchema, z.number()),
 });
 export type Summary = z.infer<typeof SummarySchema>;

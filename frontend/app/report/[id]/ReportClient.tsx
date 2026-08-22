@@ -273,7 +273,11 @@ function FindingCard({
       {/* 아코디언 바디 wrapper */}
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
-          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] flex flex-col gap-3.5">
+          {/* 라이트는 --surface(흰색)가 더 밝지만, 다크는 순서가 반대다
+              (canvas < surface < surface-sub) - 다크에서 --surface-sub를 써야
+              "펼치면 더 밝게 튀어 보이는" 의도가 다크에서도 유지된다(디디 실측치,
+              PM 8대 루루 지시 2026-08-22). */}
+          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] dark:bg-[var(--surface-sub)] flex flex-col gap-3.5">
 
             {/* 그룹으로 묶인 카드일 때만: 발견 위치별로 원문 하이라이트로 바로 이동 */}
             {positionIdxs.length > 1 && (
@@ -463,8 +467,34 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   const d = activeEnvelope.report;
 
+  // 판정 로직 중복 제거(화면 워크어라운드, 근본 원인은 발표 후 과제 - PM 8대
+  // 루루 지시 2026-08-22). 같은 문장이 규칙 경로(span=문구 일부)와 VLM 경로
+  // (span=문장 전체)에서 둘 다 finding으로 나오면 sentence+violation_type이
+  // 같은 두 finding이 생긴다. 이건 1번의 span 그룹핑(§ 아래)으로는 안 걸린다
+  // (span 값 자체가 다르다) - 별도 단계로 먼저 걸러야 한다. 규칙 경로 쪽 span이
+  // 더 좁고 구체적이라 사용자에게 더 유용하므로 그쪽을 남긴다(span이 sentence
+  // 전체와 다르면 규칙 경로로 본다). 이 중복은 같은 지적을 두 번 센 것이므로
+  // (1번과 달리) 상단 요약 건수에서도 함께 뺀다.
+  const sentenceDedupBestIdx = new Map<string, number>();
+  d.findings.forEach((f, i) => {
+    const key = `${f.sentence} ${f.violation_type}`;
+    const currentIdx = sentenceDedupBestIdx.get(key);
+    if (currentIdx === undefined) {
+      sentenceDedupBestIdx.set(key, i);
+      return;
+    }
+    const current = d.findings[currentIdx];
+    const currentIsWholeSentence = current.span === current.sentence;
+    const candidateIsWholeSentence = f.span === f.sentence;
+    if (currentIsWholeSentence && !candidateIsWholeSentence) {
+      sentenceDedupBestIdx.set(key, i); // 후보가 규칙 경로(좁은 span)로 보임 - 교체
+    }
+  });
+  const visibleFindingIdx = new Set(sentenceDedupBestIdx.values());
+
   const findByOrder = d.findings
     .map((f, i) => ({ f, idx: i, num: 0 }))
+    .filter((o) => visibleFindingIdx.has(o.idx))
     .sort((a, b) => a.f.location.order - b.f.location.order);
 
   // 지적 카드 그룹핑(팀장 확정 A안): span+violation_type이 완전히 같으면 카드
@@ -575,6 +605,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   let nReview = 0;
 
   d.findings.forEach((f, i) => {
+    if (!visibleFindingIdx.has(i)) return; // sentence 중복 제거된 finding은 건수에서도 뺀다
     if (actions[i] === "exclude") return;
     if (f.flag === "위반") {
       nViol++;
@@ -583,7 +614,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
     }
   });
 
-  const isImageMode = d.findings.some((f) => f.location.tile) || d.unjudged.some((u) => u.location.tile);
+  const isImageMode = findByOrder.some((o) => o.f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
 
@@ -594,7 +625,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       .map(([i]) => i)
       .join(",")
     : d.findings
-      .map((f, i) => (f.flag === "위반" ? i : -1))
+      .map((f, i) => (visibleFindingIdx.has(i) && f.flag === "위반" ? i : -1))
       .filter((idx) => idx !== -1)
       .join(",");
 
@@ -656,6 +687,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </button>
           )}
         </div>
+        {d.summary.n_ocr_failed_tiles > 0 && (
+          // 위반 신호가 아니라 "우리가 못 읽었다"는 안내라 경보색을 쓰지 않는다
+          // (§F, PM 8대 루루 지시 2026-08-22). 글자로만 알린다.
+          <p className="m-0 mt-2.5 text-[11.5px] text-[var(--ink-3)]">
+            이미지 일부를 못 읽었습니다. 다시 시도해 주세요.
+          </p>
+        )}
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
