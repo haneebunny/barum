@@ -331,3 +331,93 @@ def test_needs_review_note_uses_original_finding_flag_not_rematch():
     reps = build_replacements([f], rewriter=rewriter)
     assert len(reps) == 1
     assert reps[0].note, "원본이 검토필요인데 고지가 안 붙었다"
+
+
+# ── 판정 설명을 LLM 문장으로 갈아끼우기 (2026-08-20 팀장 지시) ────────────────
+
+def _rule_finding(span, sentence, vtype, flag=JudgmentFlag.violation):
+    """규칙 경로가 만든 finding(설명이 고정 템플릿이고 source='rule')."""
+    return Finding(
+        span=span, sentence=sentence, violation_type=vtype,
+        legal_basis="화장품법 제13조", flag=flag,
+        explanation=f"규칙집 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정).",
+        location=Location(order=0), source="rule",
+    )
+
+
+def test_규칙_경로_설명이_llm_문장으로_바뀐다():
+    f = _rule_finding("줄기세포", "줄기세포 배양 기술 안티에이징",
+                      ViolationType.type_5_deception)
+    rewriter = _FakeRewriter({"items": [{
+        "index": 0, "can_suggest": True, "suggestion": "최신 기술로 완성한 세럼",
+        "explanation": "줄기세포는 인체 유래 성분을 연상시켜 화장품 범위를 벗어난 표현으로 봅니다.",
+    }]})
+
+    build_replacements([f], rewriter=rewriter, explain=True)
+
+    assert not f.explanation.startswith("규칙집 대조:")
+    assert "인체 유래" in f.explanation
+
+
+def test_vlm_경로_설명은_안_건드린다():
+    """모델이 이미 직접 쓴 설명이다. 덮어쓰면 2호 성분 대조 안내 같은 걸 잃는다."""
+    f = Finding(
+        span="미백 기능성", sentence="미백 기능성", violation_type=ViolationType.type_2_functional_misperception,
+        legal_basis="화장품법 제13조", flag=JudgmentFlag.needs_review,
+        explanation="기능성 표방 (전성분 대조: 나이아신아마이드 확인됨, 기준 2~5%)",
+        location=Location(order=0), source="vlm",
+    )
+    rewriter = _FakeRewriter({"items": [{
+        "index": 0, "can_suggest": True, "suggestion": "피부 톤 케어",
+        "explanation": "엉뚱한 설명으로 덮어쓰면 안 된다",
+    }]})
+
+    build_replacements([f], rewriter=rewriter, explain=True)
+
+    assert "전성분 대조" in f.explanation
+
+
+def test_llm이_설명을_못_내면_템플릿을_유지한다():
+    """리포트가 빈 설명으로 나가면 안 된다(팀장·PM 지시)."""
+    f = _rule_finding("재생", "세포재생의 시작", ViolationType.type_1_drug_misperception)
+    before = f.explanation
+
+    class _Broken:
+        def generate_json(self, prompt, images):
+            raise RuntimeError("LLM 호출 실패")
+
+    # 호출 자체가 깨진 경우
+    build_replacements([f], rewriter=_Broken(), explain=True)
+    assert f.explanation == before
+
+    # 응답은 왔는데 설명이 비었거나 너무 짧은 경우
+    rewriter = _FakeRewriter({"items": [{"index": 0, "can_suggest": True,
+                                         "suggestion": "생기 부여", "explanation": "위반임"}]})
+    build_replacements([f], rewriter=rewriter, explain=True)
+    assert f.explanation == before
+
+
+def test_대체표현을_못_내도_설명은_받는다():
+    """제품명·유통 채널은 바꿀 수 없지만 왜 걸렸는지는 알려줘야 한다."""
+    f = _rule_finding("약국", "전국 약국 오프라인매장 입점!", ViolationType.type_5_deception)
+    rewriter = _FakeRewriter({"items": [{
+        "index": 0, "can_suggest": False,
+        "explanation": "약국 판매를 내세우면 의약품처럼 오인될 수 있어 제한됩니다.",
+    }]})
+
+    reps = build_replacements([f], rewriter=rewriter, explain=True)
+
+    assert reps == []  # 대체표현은 안 만든다
+    assert "의약품처럼" in f.explanation  # 설명은 갱신된다
+
+
+def test_explain을_안_켜면_설명이_그대로다():
+    """개선 모드(/generate)는 설명을 안 바꾼다. 리포트 경로만 켠다."""
+    f = _rule_finding("재생", "세포재생의 시작", ViolationType.type_1_drug_misperception)
+    before = f.explanation
+    rewriter = _FakeRewriter({"items": [{"index": 0, "can_suggest": True, "suggestion": "생기 부여",
+                                         "explanation": "충분히 긴 설명 문장입니다 여기에."}]})
+
+    build_replacements([f], rewriter=rewriter)
+
+    assert f.explanation == before

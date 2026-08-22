@@ -359,7 +359,9 @@ def _build_replacements_for_report(findings: list[Finding], rewriter: VLM | None
     if os.environ.get("CHECK_REPLACEMENTS", "1") != "1":
         return []
     try:
-        return build_replacements(findings, rewriter=rewriter)
+        # explain=True: 규칙 경로 finding의 템플릿 설명을 LLM 문장으로 갈아끼운다.
+        # 같은 배치 호출에 얹으므로 추가 호출은 없다(팀장 지시, 2026-08-20).
+        return build_replacements(findings, rewriter=rewriter, explain=True)
     except Exception as e:
         print(f"[check] 대체표현 생성 실패, 리포트는 그대로 나간다: {type(e).__name__}: {e}")
         return []

@@ -85,6 +85,10 @@ class Finding(BaseModel):
     flag: JudgmentFlag  # 위반(근거 확인) | 검토필요(근거 약함·불명)
     explanation: str  # 왜 위반인지 사람이 읽는 설명
     location: Location
+    # 어느 층이 이 판정을 냈는지. "rule"=규칙집 확정, "vlm"=모델 판정.
+    # 설명 문장을 LLM으로 다시 쓸 대상을 고르는 데 쓴다(규칙 경로만 템플릿이라서).
+    # 판정 자체와는 무관하다. 예전 저장 리포트엔 없으므로 None을 허용한다.
+    source: str | None = None
 
 
 class UnjudgedSentence(BaseModel):

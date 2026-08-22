@@ -380,6 +380,7 @@ class PromptJudge:
                         legal_basis_text=legal_basis_text_for(vtype),
                         flag=flag,
                         explanation=explanation,
+                        source="vlm",
                         location=_loc(s),
                     )
                 )
@@ -593,6 +594,7 @@ class RagJudge:
                         match.outcome, match.span, match.violation_type
                     ),
                     location=_loc(s),
+                    source="rule",
                 )
             )
             # 규칙이 실증대상(검토필요)으로 확정했는데 같은 문장에 2호 표방까지
