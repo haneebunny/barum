@@ -206,7 +206,7 @@ function FindingCard({
       >
         <div className="flex gap-2.5">
           {/* 사각형 번호 배지 */}
-          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11px] font-bold border rounded-none bg-[var(--surface)] ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
+          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11.5px] font-bold border rounded-none bg-[var(--surface)] ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
             }`}>{num}</span>
 
           {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
@@ -216,13 +216,13 @@ function FindingCard({
               <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>
                 {finding.span}
                 {positionIdxs.length > 1 && (
-                  <span className="ml-1 font-mono font-normal text-[10px] opacity-75">({positionIdxs.length}곳)</span>
+                  <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
                 )}
               </span>
 
               <div className="flex items-center gap-1.5 ml-auto">
                 {tier === "FREE" ? (
-                  <span className="text-[10px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
+                  <span className="text-[10.5px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
                     유료 요금제 전용
                   </span>
                 ) : (
@@ -231,7 +231,7 @@ function FindingCard({
                       // 수용=채움, 제외=윤곽선으로 위계를 준다(새 심각도 색 없이, 팀장 지시).
                       // 라이트는 --brand 배경이 대비 미달(3.39:1)이라 --brand-deep(9.36:1) 사용,
                       // 다크는 --brand 그대로 통과(6.48:1) - 디디 검증 완료(DESIGN.md §4.1, PR #268)
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
+                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
                         ? "font-bold text-[var(--on-brand)] border-[var(--brand-deep)] bg-[var(--brand-deep)] dark:border-[var(--brand)] dark:bg-[var(--brand)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
@@ -241,7 +241,7 @@ function FindingCard({
                       수용
                     </button>
                     <button
-                      className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "exclude"
+                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "exclude"
                         ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
@@ -263,7 +263,7 @@ function FindingCard({
             </div>
 
             {/* 2행: 위반/검토필요 유형. flag가 검토필요인데 "위반"이라고 적으면 확정 위반과 헷갈린다 */}
-            <div className="text-[11px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
+            <div className="text-[11.5px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
               {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
             </div>
           </div>
@@ -282,13 +282,13 @@ function FindingCard({
             {/* 그룹으로 묶인 카드일 때만: 발견 위치별로 원문 하이라이트로 바로 이동 */}
             {positionIdxs.length > 1 && (
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-[var(--ink-3)] font-semibold">발견 위치</span>
+                <span className="text-[11.5px] text-[var(--ink-3)] font-semibold">발견 위치</span>
                 {positionIdxs.map((pidx, i) => (
                   <button
                     key={pidx}
                     type="button"
                     onClick={() => onScrollToPosition(pidx)}
-                    className="font-mono text-[10.5px] px-1.5 py-0.5 border border-[var(--line-2)] rounded-sm bg-[var(--surface-sub)] text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:border-[var(--ink-3)] cursor-pointer"
+                    className="font-mono text-[11px] px-1.5 py-0.5 border border-[var(--line-2)] rounded-sm bg-[var(--surface-sub)] text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:border-[var(--ink-3)] cursor-pointer"
                   >
                     {i + 1}
                   </button>
@@ -302,7 +302,7 @@ function FindingCard({
                 <div className="flex justify-end">
                   <button
                     onClick={handleShowAndFetchSuggestions}
-                    className="font-sans text-[11.5px] font-bold p-[6px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm shadow-sm"
+                    className="font-sans text-[12px] font-bold p-[6px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm shadow-sm"
                   >
                     대체 표현 제안 보기 {tier === "FREE" ? "(체험 1회)" : ""}
                   </button>
@@ -313,12 +313,12 @@ function FindingCard({
               // 처리해 "가려진 콘텐츠가 있다"는 걸 한 번에 보여준다(PM 지시 2026-08-22).
               <div className="relative border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm overflow-hidden">
                 <div
-                  className="text-[13px] text-[var(--ink-2)] leading-1.6 blur-[4px] select-none"
+                  className="text-[14px] text-[var(--ink-2)] leading-1.6 blur-[4px] select-none"
                   aria-hidden="true"
                 >
                   {getRemediationText(
                     finding.violation_type,
-                    <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                    <span className="font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] px-1.5 py-0.5 rounded-[3px] mx-1">
                       안전한 대체 표현
                     </span>
                   )}
@@ -326,7 +326,7 @@ function FindingCard({
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--line-2)] rounded-full px-3 py-1 shadow-sm">
                     <Lock size={12} weight="bold" className="text-[var(--ink-3)]" />
-                    <span className="text-[11px] font-bold text-[var(--ink-3)]">유료 요금제 전용</span>
+                    <span className="text-[11.5px] font-bold text-[var(--ink-3)]">유료 요금제 전용</span>
                   </div>
                 </div>
               </div>
@@ -336,16 +336,16 @@ function FindingCard({
             {(finding.legal_basis || finding.legal_basis_text) && (
               <blockquote className="m-0 border border-[var(--line-2)] bg-[var(--surface)] p-[8px_12px] rounded-sm">
                 {tier === "FREE" && num > 1 ? (
-                  <span className="text-[12px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
+                  <span className="text-[12.5px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
                 ) : (
                   <>
                     {finding.legal_basis && (
-                      <div className="font-mono text-[11px] text-[var(--brand-ink)] font-semibold mb-1">
+                      <div className="font-mono text-[11.5px] text-[var(--brand-ink)] font-semibold mb-1">
                         {finding.legal_basis}
                       </div>
                     )}
                     {finding.legal_basis_text && (
-                      <div className="text-[12px] text-[var(--ink-2)] leading-[1.7] break-keep">
+                      <div className="text-[12.5px] text-[var(--ink-2)] leading-[1.7] break-keep">
                         {finding.legal_basis_text}
                       </div>
                     )}
@@ -354,7 +354,7 @@ function FindingCard({
               </blockquote>
             )}
 
-            <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
+            <p className="text-[13px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
               {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
                   LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
               <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
@@ -364,30 +364,33 @@ function FindingCard({
             {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
               <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm transition-all duration-300">
                 <div className="flex items-center gap-1.75 mb-2">
-                  <b className="text-[11.5px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
+                  <b className="text-[12px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
                   {tier === "FREE" && (
-                    <span className="font-mono text-[9.5px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px] ml-2">
+                    <span className="font-mono text-[10px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px] ml-2">
                       FREE 요금제 체험 (1/1)
                     </span>
                   )}
                 </div>
-                <div className="text-[13px] text-[var(--ink-2)] leading-1.6">
+                <div className="text-[14px] text-[var(--ink-2)] leading-1.6">
                   {loading ? (
-                    <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12px]">
+                    <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12.5px]">
                       <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
                       대체 표현 제안을 불러오는 중...
                     </div>
                   ) : hasFetched ? (
                     suggestions.length > 0 ? (
                       <>
+                        {/* 옅은 연두(--nav-active-bg)+그린 텍스트(--brand-ink) 조합이 가독성
+                            지적을 받아, 수용 버튼과 같은 채움 조합(--brand-deep/--brand +
+                            --on-brand, 디디 검증 9.36:1 라이트/6.48:1 다크)으로 교체했다. */}
                         {getRemediationText(
                           finding.violation_type,
-                          <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                          <span className="font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] px-1.5 py-0.5 rounded-[3px] mx-1">
                             {suggestions.join(", ")}
                           </span>
                         )}
                         {replacement?.note && (
-                          <div className="mt-2 text-[11.5px] text-[var(--ink-3)] border-t border-dashed border-[var(--line-2)] pt-2">
+                          <div className="mt-2 text-[12px] text-[var(--ink-3)] border-t border-dashed border-[var(--line-2)] pt-2">
                             ⓘ {replacement.note}
                           </div>
                         )}
@@ -442,7 +445,7 @@ function markSentence(
 
     out = out.replace(
       needle,
-      `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
+      `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9.5px] font-bold color-inherit">${it.badge}</span>${needle}</span>`
     );
   });
   return out;
@@ -631,7 +634,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   return (
     <>
-      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
+      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface)] font-mono text-[11.5px] text-[var(--ink-3)] flex-wrap">
         <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
           <TabSwitch
             label="목업 전용 · 실제 화면엔 없음:"
@@ -656,7 +659,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "위반"}
             onClick={() => setFlagFilter((prev) => (prev === "위반" ? null : "위반"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${nViol > 0
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${nViol > 0
               ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
               : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
               } ${flagFilter === "위반" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""}`}
@@ -668,20 +671,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "검토필요"}
             onClick={() => setFlagFilter((prev) => (prev === "검토필요" ? null : "검토필요"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
               }`}
           >
             <MagnifyingGlass size={14} weight="bold" />
             검토필요 <span className="font-mono">{nReview}</span> 건
           </button>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
             미판정 <span className="font-mono">{d.unjudged.length}</span> 건
           </span>
           {flagFilter && (
             <button
               type="button"
               onClick={() => setFlagFilter(null)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[11.5px] font-mono text-[var(--ink-3)] border border-dashed border-[var(--line-2)] rounded-[3px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[12px] font-mono text-[var(--ink-3)] border border-dashed border-[var(--line-2)] rounded-[3px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
             >
               <X size={11} weight="bold" /> 전체 보기
             </button>
@@ -690,7 +693,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
         {d.summary.n_ocr_failed_tiles > 0 && (
           // 위반 신호가 아니라 "우리가 못 읽었다"는 안내라 경보색을 쓰지 않는다
           // (§F, PM 8대 루루 지시 2026-08-22). 글자로만 알린다.
-          <p className="m-0 mt-2.5 text-[11.5px] text-[var(--ink-3)]">
+          <p className="m-0 mt-2.5 text-[12px] text-[var(--ink-3)]">
             이미지 일부를 못 읽었습니다. 다시 시도해 주세요.
           </p>
         )}
@@ -700,10 +703,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
       <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검증 카드</h2>
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">검증 카드</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
+            <span className="text-[var(--ink-3)] font-mono text-[11px]">
               {flagFilter && <span className="font-mono">{visibleFindGroups.length}/</span>}
               <span className="font-mono">{findGroups.length}</span>건
             </span>
@@ -742,13 +745,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
             })}
             {flagFilter && visibleFindGroups.length === 0 && (
               <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
-                <p className="m-0 text-[12.5px] text-[var(--ink-3)]">
+                <p className="m-0 text-[13px] text-[var(--ink-3)]">
                   {flagFilter} 항목이 없습니다.
                 </p>
                 <button
                   type="button"
                   onClick={() => setFlagFilter(null)}
-                  className="text-[11.5px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
+                  className="text-[12px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
                 >
                   전체 보기
                 </button>
@@ -758,10 +761,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
           {d.unjudged.length > 0 && (
             <div className="mt-4 pt-3.5 border-t border-dashed border-[var(--line-2)]">
               <div className="flex items-center gap-[11px] m-[0_0_13px]">
-                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">?</span>
-                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
+                <span className="text-[var(--ink-3)] bg-[var(--surface-sub)] border border-[var(--line-2)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">?</span>
+                <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">재검사 필요</h2>
                 <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">판정 실패 · 미판정</span>
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">판정 실패 · 미판정</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 {ujByOrder.map((u, i) => (
@@ -770,9 +773,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
                     onClick={() => scrollToBox(i, true)}
                     key={i}
                   >
-                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
-                    <span className="flex-1 text-[12.5px] text-[var(--ink-2)]">{u.sentence}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-[var(--ink-3)]">
+                    <span className="shrink-0 w-[18px] h-[18px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold text-[var(--ink-3)] border border-dashed border-[var(--ink-3)] rounded-full">{String.fromCharCode(65 + i)}</span>
+                    <span className="flex-1 text-[13px] text-[var(--ink-2)]">{u.sentence}</span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-[var(--ink-3)]">
                       {u.location.tile ? u.location.tile : `문구 #${u.location.order}`}
                     </span>
                   </div>
@@ -783,10 +786,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
         </div>
         <div className="p-[18px_20px_22px]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
+            <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">
+            <span className="text-[var(--ink-3)] font-mono text-[11px]">
               {isImageMode ? "이미지 모드 · 타일 오버레이" : "텍스트 모드 · 스팬 밑줄"}
             </span>
           </div>
@@ -846,7 +849,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 if (showRealImage) {
                   return (
                     <div className="border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
-                      <div className="font-mono text-[10.5px] text-[var(--ink-3)] mb-1">
+                      <div className="font-mono text-[11px] text-[var(--ink-3)] mb-1">
                         원본 광고 검증 이미지 ({srcW}x{srcH} px)
                       </div>
                       <div
@@ -1028,7 +1031,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                       );
                       return (
                         <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
-                          <div className="font-mono text-[10.5px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
+                          <div className="font-mono text-[11px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
                           <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
                             {rows.map((r, ri) => {
                               if (r.type === "find") {
@@ -1037,7 +1040,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                 const isRowHovered = hoveredIndex === r.idx;
                                 return (
                                   <div
-                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12px] border transition-all duration-[120ms] ${isExcluded
+                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border transition-all duration-[120ms] ${isExcluded
                                       ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
                                       : cls === "violation"
                                         ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
@@ -1047,7 +1050,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                     onMouseLeave={() => setHoveredIndex(null)}
                                     key={ri}
                                   >
-                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
+                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
                                       ? "text-[var(--ink-3)] border-[var(--ink-3)]"
                                       : cls === "violation"
                                         ? "text-[var(--crit)] border-[var(--crit)]"
@@ -1059,8 +1062,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
                                 );
                               } else {
                                 return (
-                                  <div className="relative flex items-center gap-2 p-[7px_9px] text-[12px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
-                                    <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[10.5px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
+                                  <div className="relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
+                                    <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
                                     <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
                                   </div>
                                 );
@@ -1070,7 +1073,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                         </div>
                       );
                     })}
-                    <p className="text-[var(--ink-3)] text-[10px] mt-2">
+                    <p className="text-[var(--ink-3)] text-[10.5px] mt-2">
                       실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
                     </p>
                   </>
@@ -1139,7 +1142,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                     if (node.type === "find" && node.hlItems) {
                       return markSentence(node.sentence, node.hlItems, actions);
                     } else if (node.type === "uj" && node.letter) {
-                      return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
+                      return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9.5px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
                         node.sentence
                       )}</span>`;
                     }
@@ -1149,7 +1152,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
                 return (
                   <div
-                    className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[14px] text-[var(--ink)] leading-[2]"
+                    className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[15px] text-[var(--ink)] leading-[2]"
                     dangerouslySetInnerHTML={{ __html: htmlContent }}
                   />
                 );
@@ -1161,7 +1164,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
-        <p className="m-0 text-[12px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
         {tier === "PRO" ? (
           <div className="flex items-center gap-2 flex-wrap">
             <Link
@@ -1176,23 +1179,23 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   }
                 }
               }}
-              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+              className="font-sans text-[14px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
             >
               이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
             </Link>
             <Link
               href="/content?mode=create"
-              className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+              className="font-sans text-[14px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
             >
               처음부터 새로 만들기 <span className="font-mono">→</span>
             </Link>
           </div>
         ) : (
           <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
-            <span className="text-[11px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
+            <span className="text-[11.5px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
             <button
               disabled
-              className="font-sans text-[12.5px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center justify-center gap-1.5 rounded-sm"
+              className="font-sans text-[13px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center justify-center gap-1.5 rounded-sm"
             >
               상세페이지 만들기 잠김 🔒
             </button>
