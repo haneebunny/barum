@@ -64,9 +64,12 @@ def _resolve_tone(req: GenerateRequest, product_type: str | None) -> str:
     2026-08-19 팀장 지적).
     """
     parts = [p for p in (req.color_tone, req.mood) if p]
-    if parts:
-        return ", ".join(parts)
-    return _TONE_DEFAULTS.get(product_type, _TONE_DEFAULTS[None])
+    tone = ", ".join(parts) if parts else _TONE_DEFAULTS.get(product_type, _TONE_DEFAULTS[None])
+    # 프리셋의 레이아웃 방향을 아트 디렉션에 함께 싣는다. 텍스트 프롬프트가 받는
+    # 것과 같은 값이라 카드 전체가 한 방향으로 묶인다. 이 함수가 (req, product_type)에
+    # 대해 항상 같은 문자열을 낸다는 성질은 그대로다.
+    direction = getattr(req, "layout_direction", None)
+    return f"{tone}. {direction}" if direction else tone
 
 
 _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어라.

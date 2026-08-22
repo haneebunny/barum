@@ -7,16 +7,21 @@ create: 원본 없이 인증서-인정문구 매칭으로 광고문구 조립(�
 judge·vlm을 주입받아 유닛테스트는 오프라인.
 """
 
+import re
+
 from barum.generate.images import generate_canvas_background, generate_module_images
+from barum.reference.presets import apply_preset, audience_hint
 from barum.generate.layout import (
     PRODUCT_SPEC_KIND,
     clinical_sections_text,
     ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
+    select_top_modules,
 )
 from barum.generate.replace import apply_replacements, build_replacements
 from barum.models import (
+    ContentCard,
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
@@ -75,9 +80,14 @@ _MODULE_PROMPT = """너는 화장품 상세페이지의 '저위험 서술'만 �
 제품명: {product_name}
 전성분: {ingredients}
 추가정보: {notes}
+{audience}
 
 아래 모듈마다 써라. kind는 그대로 돌려줘라.
 {modules}
+
+**모듈 설명은 무엇을 다루는지 알려줄 뿐이다. 배치·이미지 구성을 문장으로 옮기지 마라.**
+고객이 읽을 카피만 써라. "비주얼:", "이미지:", "설명:", "아이콘 그리드:", "좌우 배치"
+같은 말은 쓰지 않는다. 그건 화면이 알아서 하고, 여기 쓰면 고객에게 그대로 보인다.
 
 **문장 구조를 반드시 지켜라. 프론트가 첫 문장을 헤드라인으로 크게 키워 쓴다.**
 - **첫 문장은 20자 이내의 짧은 한 마디**여야 한다. 설명하지 말고 던져라.
@@ -144,6 +154,9 @@ def generate_module_sections(
         product_name=req.product_name or "(미상)",
         ingredients=req.ingredients or "(미상)",
         notes=req.notes or "(없음)",
+        # 프리셋의 타겟팅만. 레이아웃 방향은 여기 넣으면 안 된다 — 지시문이 그대로
+        # 카피로 새어나온다(presets.audience_hint docstring에 실측 결과).
+        audience=audience_hint(req),
         modules=listed,
     )
     try:
@@ -444,6 +457,72 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
     )
 
 
+# 첫 문장을 헤드라인으로 떼는 규칙. 프론트 `splitHeadline`과 같은 규칙이라
+# 백엔드·프론트가 다르게 쪼개지 않는다.
+# **마침표 뒤 숫자는 문장 끝이 아니라 소수점이다.** 이 예외가 없으면 실증자료
+# "23.5% 개선"이 "…23." + "5% 개선…"으로 쪼개져 사업자 입력 수치가 왜곡된다
+# (2026-08-20 실측). barum은 실증 수치를 LLM에도 안 태우고 그대로 싣는 게 원칙인데
+# 렌더 단계에서 깨지고 있었다.
+_HEADLINE_SPLIT = re.compile(r"^([\s\S]+?[.!?](?!\d))\s*([\s\S]*)$")
+
+
+def split_headline(text: str) -> tuple[str, str]:
+    """카드 문구를 (헤드라인, 본문)으로 쪼갠다. 줄바꿈이 있으면 그게 우선."""
+    text = (text or "").strip()
+    if "\n" in text:
+        head, _, rest = text.partition("\n")
+        return head.strip(), rest.strip()
+    m = _HEADLINE_SPLIT.match(text)
+    if not m:
+        return text, ""
+    return m.group(1).strip(), m.group(2).strip()
+
+
+def build_cards(
+    sections: list[Section], plan: LayoutPlan, image_plan: ImagePlan
+) -> list[ContentCard]:
+    """모듈 순서대로 카드를 만든다. **카드 한 장 = 이미지 1 + 문장 1**(팀장 확정 2026-08-22).
+
+    전에는 프론트가 sections·module_images·layout_plan 세 곳을 module_kind로 짝지어
+    긴 HTML 한 장으로 이어붙였다. 그 짝짓기를 여기서 한다.
+
+    **짝짓기 키는 `module_kind or kind`다.** 위반소지 모듈의 내용은 LLM이 아니라
+    인정문구·실증자료가 채우므로 그 섹션의 `kind`는 '광고문구'·'실증자료'가 되고
+    모듈 kind와 달라진다(`Section.module_kind` 주석 참고).
+
+    문장이 없는 모듈은 카드로 안 낸다. 이미지만 있고 글이 없는 카드는 빈 칸으로 보인다.
+    반대로 이미지가 없는데 문장은 있으면 카드로 낸다(이미지 생성이 꺼져 있거나 실패한
+    경우인데, 글은 여전히 쓸모가 있다).
+    """
+    by_kind: dict[str, Section] = {}
+    for sec in sections:
+        key = sec.module_kind or sec.kind
+        by_kind.setdefault(key, sec)  # 같은 모듈에 여러 섹션이면 첫 번째만
+    images = {img.module_kind: img for img in image_plan.module_images}
+
+    cards: list[ContentCard] = []
+    for module in plan.modules:
+        sec = by_kind.get(module.kind)
+        if sec is None or not (sec.text or "").strip():
+            continue
+        img = images.get(module.kind)
+        head, body = split_headline(sec.text)
+        cards.append(
+            ContentCard(
+                order=len(cards),
+                module_kind=module.kind,
+                layout_type=module.layout_type,
+                headline=head,
+                body=body,
+                text=sec.text,
+                text_source=sec.source,
+                image_url=img.image_url if img else None,
+                image_status=img.status if img else "skipped",
+            )
+        )
+    return cards
+
+
 def _generate_create_content(
     req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
@@ -452,6 +531,9 @@ def _generate_create_content(
     레이아웃 레퍼런스를 퓨샷으로 모듈 구성을 계획한 뒤, 모듈 종류에 따라 내용을 채운다.
     효능·수치는 LLM이 쓰지 않는다. 검증된 인정문구나 사업자 입력 실증자료를 그대로 쓴다.
     """
+    # 0. 프리셋을 요청에 펼친다. 아래 코드는 color_tone·mood·targeting을 그냥 읽으면 된다.
+    req, _preset = apply_preset(req)
+
     # 1. 광고문구: 인증서-인정문구 매칭(자유창작 없음)
     claim_sections, skipped = build_approved_claim_sections(req)
     evidence = req.clinical_evidence or []
@@ -494,6 +576,16 @@ def _generate_create_content(
     _link_risky_module_sections(sections, plan)
     plan, unfilled_skipped = _drop_unfilled_risky_modules(plan, sections)
     skipped += unfilled_skipped
+    # 카드 5~6장으로 추린다. **위험 모듈 필터 뒤, 이미지 생성 앞**이어야 한다
+    # (select_top_modules docstring 참고: 순서가 어긋나면 카드가 4장으로 줄거나
+    # 버릴 모듈의 배경 이미지까지 과금해서 만든다).
+    # 이미 내용이 붙은 모듈은 우선순위가 낮아도 보호한다. 버리면 섹션이 갈 곳을 잃는다.
+    filled_kinds = tuple(s.module_kind for s in sections if s.module_kind)
+    plan, over_limit_skipped = select_top_modules(plan, protected=filled_kinds)
+    skipped += over_limit_skipped
+    # 추린 뒤에 다시 계산한다. 위에서 잡은 safe_modules에는 버린 모듈이 남아 있어,
+    # 그대로 쓰면 카드로 안 나갈 모듈의 문장까지 LLM에 시킨다.
+    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     sections += generate_module_sections(req, safe_modules, vlm)
     if product_spec_planned:
         sections.append(build_product_spec_section(req))
@@ -529,6 +621,7 @@ def _generate_create_content(
 
     return GenerateResponse(
         sections=cleaned,
+        cards=build_cards(cleaned, plan, image_plan),
         replacements=[],
         image_plan=image_plan,
         pii_removed=sorted(pii_kinds),

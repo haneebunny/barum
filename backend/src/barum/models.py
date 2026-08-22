@@ -539,6 +539,20 @@ class GenerateRequest(BaseModel):
         "**실증자료가 아니다** — 임상 모듈을 열지 못하고, 피부 변화(효능) 주장은 거부된다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
+    preset: str | None = Field(
+        None,
+        description="콘텐츠 프리셋 id(create 모드). 타겟팅·레이아웃 방향·색/무드·폰트단을 "
+        "한 세트로 먹인다(`reference/data/content_presets.json`). 없는 id면 무시하고 "
+        "기존 경로로 생성한다. color_tone·mood를 함께 보내면 그쪽이 프리셋보다 우선한다.",
+    )
+    targeting: str | None = Field(
+        None,
+        description="이 상세페이지가 겨냥하는 층. 프리셋이 채우지만 직접 줄 수도 있다"
+        "(그러면 프리셋보다 우선). 텍스트·이미지 프롬프트 양쪽에 들어간다.",
+    )
+    layout_direction: str | None = Field(
+        None, description="레이아웃 방향. targeting과 같은 규칙(프리셋이 채우고 명시값이 우선)."
+    )
     color_tone: str | None = Field(
         None, description="인터뷰에서 받은 컬러톤(create 모드, 이미지 생성용). 예: '베이지·아이보리 톤'"
     )
@@ -572,10 +586,41 @@ class SkippedClaim(BaseModel):
     reason: str
 
 
+class ContentCard(BaseModel):
+    """산출물 카드 한 장. **이미지 1장 + 문장 1개**, 그 이상 안 넣는다(팀장 확정 2026-08-22).
+
+    전에는 프론트가 sections·module_images·layout_plan 세 곳을 module_kind로 짝지어
+    긴 HTML 한 장으로 이어붙였다. 짝짓기를 백엔드가 해서 카드로 내려준다.
+
+    sections·image_plan은 그대로 둔다. 지금 프론트가 그걸로 도는 중이라, 카드만 더해
+    두면 백엔드를 먼저 머지해도 화면이 안 깨진다. 프론트가 갈아탄 뒤 정리한다.
+    """
+
+    order: int
+    module_kind: str
+    layout_type: str = "section_statement"  # 프론트 템플릿 선택용(어휘집 12종)
+    # headline/body는 text를 첫 문장 기준으로 쪼갠 것이다. text도 그대로 남긴다.
+    # **"카드 한 장에 문장 1개"를 어디까지 지킬지 아직 안 정했다**(헤드라인만 낼지,
+    # 설명까지 붙일지). 쪼개서 둘 다 주면 프론트가 고를 수 있고, 정해지면 그때
+    # 프롬프트를 손대면 된다. 쪼개는 규칙은 프론트 splitHeadline과 같다(소수점 예외 포함).
+    headline: str
+    body: str = ""
+    text: str
+    text_source: str  # remediation | llm | template | approved_claim 등 Section.source 그대로
+    image_url: str | None = None
+    image_status: str = "skipped"  # generated | skipped
+    # 대체표현이 실증대상일 때 붙는 고지. 카드에 같이 안 실으면 사용자가 위반에서
+    # 벗어난 줄 알고 그대로 쓴다(2026-08-20 팀장 지시와 같은 이유).
+    note: str | None = None
+
+
 class GenerateResponse(BaseModel):
     """`POST /generate` 응답. 구조화 콘텐츠 + 치환내역 + 이미지계획 + 재검증."""
 
     sections: list[Section]
+    # 모듈 기준 카드 5~6장(이미지 1 + 문장 1). sections·image_plan을 짝지은 결과다.
+    # 둘 다 남겨두는 이유는 ContentCard docstring 참고(하위호환).
+    cards: list[ContentCard] = Field(default_factory=list)
     replacements: list[Replacement]
     image_plan: ImagePlan
     pii_removed: list[str] = Field(default_factory=list)
