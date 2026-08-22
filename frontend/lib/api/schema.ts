@@ -248,6 +248,12 @@ export const GenerateRequestSchema = z.object({
   mood: z.string().nullable().optional(),
   // /uploads/product-photo로 먼저 올려 받은 photo_id들(AI 합성 참조용)
   product_photo_ids: z.array(z.string()).nullable().optional(),
+  // 콘텐츠 프리셋 id(create 모드). 타겟팅·레이아웃 방향·색/무드·폰트단을 한 세트로
+  // 먹인다(백엔드 content_presets.json). targeting·layout_direction을 같이 보내면
+  // 그쪽이 프리셋보다 우선한다.
+  preset: z.string().nullable().optional(),
+  targeting: z.string().nullable().optional(),
+  layout_direction: z.string().nullable().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
@@ -276,8 +282,28 @@ export const LayoutPlanSchema = z.object({
 });
 export type LayoutPlan = z.infer<typeof LayoutPlanSchema>;
 
+// 산출물 카드 한 장. 이미지 1장 + 문장 1개(팀장 확정 2026-08-22, PR #272).
+// sections·image_plan·layout_plan을 module_kind로 짝짓던 걸 백엔드가 대신 해서
+// 이걸로 준다. 이 필드가 없는(길이 0) 옛 응답은 프론트가 기존 매칭 경로로 폴백한다.
+export const ContentCardSchema = z.object({
+  order: z.number(),
+  module_kind: z.string(),
+  layout_type: z.string().default("section_statement"),
+  headline: z.string(),
+  body: z.string().default(""),
+  text: z.string(),
+  text_source: z.string(),
+  image_url: z.string().nullable().default(null),
+  image_status: z.string().default("skipped"),
+  // 실증자료 필요 고지. 있으면 화면에 반드시 같이 노출한다(빠뜨리면 사용자가
+  // 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
+  note: z.string().nullable().default(null),
+});
+export type ContentCard = z.infer<typeof ContentCardSchema>;
+
 export const GenerateResponseSchema = z.object({
   sections: z.array(SectionSchema),
+  cards: z.array(ContentCardSchema).default([]),
   replacements: z.array(ReplacementSchema),
   image_plan: ImagePlanSchema,
   pii_removed: z.array(z.string()).default([]),
