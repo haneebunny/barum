@@ -273,7 +273,11 @@ function FindingCard({
       {/* 아코디언 바디 wrapper */}
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
-          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] flex flex-col gap-3.5">
+          {/* 라이트는 --surface(흰색)가 더 밝지만, 다크는 순서가 반대다
+              (canvas < surface < surface-sub) - 다크에서 --surface-sub를 써야
+              "펼치면 더 밝게 튀어 보이는" 의도가 다크에서도 유지된다(디디 실측치,
+              PM 8대 루루 지시 2026-08-22). */}
+          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] dark:bg-[var(--surface-sub)] flex flex-col gap-3.5">
 
             {/* 그룹으로 묶인 카드일 때만: 발견 위치별로 원문 하이라이트로 바로 이동 */}
             {positionIdxs.length > 1 && (
