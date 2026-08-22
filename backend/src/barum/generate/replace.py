@@ -37,8 +37,12 @@ _EVIDENCE_NOTE_WITH_NUMBER = (
 _NUMBER_PATTERN = re.compile(r"\d")
 
 
-def _first_safe(suggestions: list[str]) -> str | None:
+def first_safe(suggestions: list[str]) -> str | None:
     """조건표 후보 중 규칙집에서 위반으로 안 걸리는 첫 번째를 고른다.
+
+    **공개 함수다.** `/remediate` 엔드포인트(리포트 화면 대체표현 카드)도 이걸 쓴다.
+    예전엔 그 경로가 조건표 원본 배열을 그대로 내려줘서, 판정기가 검토필요로 잡은
+    표현(`피부 진정`)을 대체표현으로 추천하는 모순이 화면에 보였다(2026-08-20 팀장 발견).
 
     **검토필요(needs_review)는 막지 않고 뒤로 미룬다.** 그 표현들은 팩이 §3 실증대상으로
     명시한 것이라(`피부 진정` → §3 "진정", `피부 저자극 테스트 완료` → §3 "시험·검사 표현"),
@@ -172,7 +176,7 @@ def build_replacements(findings: list[Finding], *, rewriter=None) -> list[Replac
                 "sentence": f.sentence,
                 "span": f.span or f.sentence,
                 "violation_type": _vtype_value(f.violation_type),
-                "reference": _first_safe(suggestions) if suggestions else None,
+                "reference": first_safe(suggestions) if suggestions else None,
             }
         )
 

@@ -117,10 +117,41 @@ def test_remediate_endpoint():
     assert body["violation_type"] == "1호_의약품오인"
     assert body["span"] == "피부 재생"
     assert isinstance(body["suggestions"], list)
-    assert len(body["suggestions"]) > 0
-    assert "극건성 피부용 보습" not in body["suggestions"] # 재생 매칭 suggestions
-    assert "피부 장벽 강화" in body["suggestions"]
+    # 조건표 후보를 전부 내려주지 않고 안전한 것 하나만 고른다(2026-08-20).
+    assert len(body["suggestions"]) == 1
+    assert "극건성 피부용 보습" not in body["suggestions"]  # 재생 매칭 suggestions
+    # **이 단정은 예전엔 "피부 장벽 강화"였다.** 그게 조건표 1순위인데, 같은 세션의
+    # 판정기가 검토필요로 잡는 표현이라 화면에 모순이 보였다(카드 하나는 문제 삼고
+    # 다른 카드는 추천). first_safe가 규칙에 안 걸리는 뒤 후보를 고르게 바뀌었다.
+    assert body["suggestions"] == ["피부 생기 부여"]
     assert "disclaimer" in body
+
+
+def test_remediate가_검토필요_표현을_추천하지_않는다():
+    """리포트 화면 모순 회귀방지(2026-08-20 팀장 발견).
+
+    같은 화면에서 `진정`을 검토필요로 잡아놓고 대체표현으로 `피부 진정`을 추천했다.
+    조건표 1순위가 검토필요여도 뒤에 깨끗한 후보가 있으면 그쪽을 골라야 한다.
+    """
+    import sys
+
+    sys.path.insert(0, "src")
+    from barum.reference.rules import RuleOutcome, match_rule
+
+    for sentence, span in [("항염 효과가 뛰어납니다.", "항염"), ("염증을 완화합니다.", "염증")]:
+        r = client.post(
+            "/remediate",
+            json={"sentence": sentence, "violation_type": "1호_의약품오인", "span": span},
+        )
+        assert r.status_code == 200
+        for suggestion in r.json()["suggestions"]:
+            m = match_rule(suggestion)
+            assert m is None or m.outcome is not RuleOutcome.violation, (
+                f"위반 표현을 추천했다: {suggestion}"
+            )
+            assert m is None or m.outcome is not RuleOutcome.needs_review, (
+                f"검토필요 표현을 추천했다: {suggestion} (더 안전한 후보가 있는데도)"
+            )
 
 
 def test_remediate_endpoint_validation():

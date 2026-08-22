@@ -25,6 +25,7 @@ from barum.models import (
     USPreflightReport,
 )
 from barum.generate.content import generate_content
+from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check, run_us_sunscreen_check
@@ -358,18 +359,34 @@ async def check_us_sunscreen(
 
 @app.post("/remediate", response_model=RemediationResponse)
 def remediate(req: RemediationRequest) -> RemediationResponse:
-    """위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다."""
+    """위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다.
+
+    **조건표 후보를 그대로 내려주지 않고 안전한 것 하나만 고른다.**
+
+    예전엔 `get_remediation()`이 낸 배열을 그대로 돌려줬고 프론트가 그걸 쉼표로
+    이어 붙여 보여줬다. 그래서 리포트 화면에 모순이 보였다(2026-08-20 팀장 발견):
+    같은 화면 카드 #3에서 `진정`이 검토필요로 걸리는데, 카드 #9의 대체표현 제안이
+    "피부 진정, 자극 완화"였다. 우리가 방금 문제 삼은 표현을 우리가 추천한 것이다.
+
+    `first_safe()`는 위반 후보를 버리고 검토필요 후보를 뒤로 미룬다(`generate/replace.py`).
+    조건표에는 1순위가 검토필요인데 2순위가 깨끗한 규칙이 실제로 있다.
+
+    **LLM 재작성(PR #257)은 일부러 안 건다.** 이 엔드포인트는 카드를 펼칠 때마다
+    실시간 호출이라 지연·비용이 붙는다. 안전 우선 선택만으로 위 모순은 사라지고
+    API 비용은 0이다(도입 여부는 별도 판단, PM8과 정리).
+    """
     span = req.span if req.span is not None else req.sentence
     suggestions, disclaimer = get_remediation(
         sentence=req.sentence,
         violation_type=req.violation_type,
         span=req.span,
     )
+    safe = first_safe(suggestions) if suggestions else None
     return RemediationResponse(
         sentence=req.sentence,
         violation_type=req.violation_type,
         span=span,
-        suggestions=suggestions,
+        suggestions=[safe] if safe else [],
         disclaimer=disclaimer,
     )
 
