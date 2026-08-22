@@ -56,7 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <TierProvider>
-      <div className={`w-full transition-all duration-200 ${isLandingPage ? "max-w-none" : "flex flex-col max-w-[1240px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]"}`}>
+      <div className={`w-full transition-all duration-200 ${isLandingPage ? "max-w-none" : "flex flex-col max-w-[1480px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_1px_3px_rgba(20,35,27,0.05),0_10px_34px_rgba(20,35,27,0.045)]"}`}>
         {!isLandingPage && (
           <div className="flex items-center gap-3 p-[11px_15px] border-b border-[var(--line-2)] bg-[var(--surface-sub)]">
             <Link href="/home" className="flex items-center gap-3 no-underline cursor-pointer">

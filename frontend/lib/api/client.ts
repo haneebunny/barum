@@ -116,24 +116,46 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
           source_w: 1000,
         } as any,
       },
+      {
+        span: "아토피 피부염을 완화하고 손상된 피부를 재생",
+        sentence: "매일 사용으로 아토피 피부염을 완화하고 손상된 피부를 재생해보세요.",
+        violation_type: "1호_의약품오인",
+        legal_basis: "화장품법 제13조 제1항 제1호 (의약품 오인)",
+        legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
+        flag: "위반",
+        explanation: "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
+        location: {
+          tile: "detail_000_t02.png",
+          order: 4,
+          x_start: 80,
+          x_end: 920,
+          y_start: 500,
+          y_end: 650,
+          source_h: 9000,
+          source_w: 1000,
+        } as any,
+      },
     ],
     unjudged: [],
     summary: {
       region: "KR",
       n_sentences: 5,
-      n_findings: 3,
-      n_violation: 2,
+      n_findings: 4,
+      n_violation: 3,
       n_needs_review: 1,
       n_unjudged: 0,
       counts_by_type: {
         "2호_기능성오인": 1,
-        "1호_의약품오인": 1,
+        "1호_의약품오인": 2,
         "5호_거짓과장기만": 1,
         "합법": 0,
         "대상외": 0,
       },
     },
     result_id: "demo-image-id",
+    // 지적 카드 그룹핑(팀장 확정 A안) 데모: 마지막 finding은 위 아토피 finding과
+    // span+violation_type이 같다. 왼쪽 카드는 하나로 묶이고("2곳") 상단 요약(위반
+    // 건수)은 원본 finding 개수(4개) 그대로 나와야 한다.
     // PR #265 데모: 판정할 때 배치로 만들어진 대체표현. finding_index=2(거짓·과장)는
     // 일부러 안 넣어 "제안할 수 없으면 제안하지 않는다" 케이스를 같이 보여준다.
     replacements: [
