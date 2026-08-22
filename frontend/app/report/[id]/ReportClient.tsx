@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@phosphor-icons/react";
+import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -228,8 +228,11 @@ function FindingCard({
                 ) : (
                   <>
                     <button
+                      // 수용=채움, 제외=윤곽선으로 위계를 준다(새 심각도 색 없이, 팀장 지시).
+                      // 라이트는 --brand 배경이 대비 미달(3.39:1)이라 --brand-deep(9.36:1) 사용,
+                      // 다크는 --brand 그대로 통과(6.48:1) - 디디 검증 완료(DESIGN.md §4.1, PR #268)
                       className={`font-sans text-[11px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
-                        ? "font-bold text-[var(--ink)] border-[var(--ink-2)] bg-[var(--nav-active-bg)]"
+                        ? "font-bold text-[var(--on-brand)] border-[var(--brand-deep)] bg-[var(--brand-deep)] dark:border-[var(--brand)] dark:bg-[var(--brand)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
                       onClick={() => onAction(positionIdxs, orderIndex, "accept")}
@@ -302,8 +305,26 @@ function FindingCard({
                 </div>
               )
             ) : (
-              <div className="text-[11.5px] text-[var(--ink-3)] bg-[var(--surface)] p-2.5 border border-[var(--line-2)] rounded-sm">
-                대체 표현 제안 조회를 더 이용하려면 유료 요금제로 업그레이드해주세요.
+              // 유료 페이월: 안내문 여러 줄을 겹쳐 쌓는 대신, 실제 제안 영역을 블러
+              // 처리해 "가려진 콘텐츠가 있다"는 걸 한 번에 보여준다(PM 지시 2026-08-22).
+              <div className="relative border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm overflow-hidden">
+                <div
+                  className="text-[13px] text-[var(--ink-2)] leading-1.6 blur-[4px] select-none"
+                  aria-hidden="true"
+                >
+                  {getRemediationText(
+                    finding.violation_type,
+                    <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                      안전한 대체 표현
+                    </span>
+                  )}
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--line-2)] rounded-full px-3 py-1 shadow-sm">
+                    <Lock size={12} weight="bold" className="text-[var(--ink-3)]" />
+                    <span className="text-[11px] font-bold text-[var(--ink-3)]">유료 요금제 전용</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -330,7 +351,9 @@ function FindingCard({
             )}
 
             <p className="text-[12.5px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
-              {finding.explanation}
+              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
+                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
+              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
             </p>
 
             {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
