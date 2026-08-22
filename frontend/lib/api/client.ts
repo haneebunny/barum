@@ -185,6 +185,8 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       n_violation: 3,
       n_needs_review: 2,
       n_unjudged: 0,
+      // 9번 데모: 이미지 예시는 OCR 실패 타일 1개가 있었던 것으로 표시(문구 확인용)
+      n_ocr_failed_tiles: 1,
       counts_by_type: {
         "2호_기능성오인": 2,
         "1호_의약품오인": 2,
@@ -263,6 +265,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       n_violation: 1,
       n_needs_review: 1,
       n_unjudged: 0,
+      n_ocr_failed_tiles: 0,
       counts_by_type: {
         "2호_기능성오인": 1,
         "1호_의약품오인": 1,
@@ -327,6 +330,7 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
       n_violation: 1,
       n_needs_review: 0,
       n_unjudged: 2,
+      n_ocr_failed_tiles: 0,
       counts_by_type: {
         "5호_거짓과장기만": 1,
         "합법": 0,

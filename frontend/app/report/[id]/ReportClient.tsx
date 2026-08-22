@@ -687,6 +687,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </button>
           )}
         </div>
+        {d.summary.n_ocr_failed_tiles > 0 && (
+          // 위반 신호가 아니라 "우리가 못 읽었다"는 안내라 경보색을 쓰지 않는다
+          // (§F, PM 8대 루루 지시 2026-08-22). 글자로만 알린다.
+          <p className="m-0 mt-2.5 text-[11.5px] text-[var(--ink-3)]">
+            이미지 일부를 못 읽었습니다. 다시 시도해 주세요.
+          </p>
+        )}
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
