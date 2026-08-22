@@ -262,9 +262,20 @@ function FindingCard({
               </div>
             </div>
 
-            {/* 2행: 위반/검토필요 유형. flag가 검토필요인데 "위반"이라고 적으면 확정 위반과 헷갈린다 */}
-            <div className="text-[11.5px] text-[var(--ink-3)] mt-1.5 font-medium leading-none">
-              {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+            {/* 2행: 위반/검토필요 유형 + 확신도/규칙확정 배지. flag가 검토필요인데 "위반"이라고
+                적으면 확정 위반과 헷갈린다 */}
+            <div className="flex items-center justify-between gap-2 mt-1.5">
+              <span className="text-[11.5px] text-[var(--ink-3)] font-medium leading-none">
+                {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+              </span>
+              {/* 규칙 경로(confidence=null, 지적 다수)와 VLM 경로를 같은 자리·같은
+                  스타일로 표시한다(디디 A안, 2026-08-22). 규칙 경로에 배지를 생략하면
+                  가장 단단한 위반이 오히려 제일 약해 보인다(OCR 실패 무표시 사건과 같은
+                  패턴). 숫자는 등급이 아니라 원값 그대로 - 색으로 고/저를 나누지 않는다
+                  (낮은 확신도가 "안전"으로 읽히면 안 된다, 실측상 60%대도 1/3은 실제 위반). */}
+              <span className="shrink-0 font-mono text-[10.5px] text-[var(--ink-3)] border border-[var(--line-2)] rounded-sm px-1.5 py-0.5">
+                {typeof finding.confidence === "number" ? `확신도 ${finding.confidence}%` : "규칙 확정"}
+              </span>
             </div>
           </div>
         </div>
