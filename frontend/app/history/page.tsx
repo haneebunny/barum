@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { TabSwitch } from "@/components/TabSwitch/TabSwitch";
 import { useTier, type Tier } from "@/lib/tier";
 import { MOCK_HISTORY, REGION_LABEL, STATUS_META, daysAgo, dateLabel, rowProps, type MockHistoryItem } from "@/lib/mockHistory";
+import { FilterDropdown } from "@/components/Dropdown/FilterDropdown";
 
 const MOCK_STATS = [
   { value: "24", unit: "건", label: "이번 달 검사", sub: "지난달 대비 +6건" },
@@ -41,13 +42,19 @@ const TIER_OPTIONS: { value: Tier; label: string }[] = [
   { value: "Pro", label: "Pro" },
 ];
 
-const REGION_FILTERS = ["전체", "국내", "해외"] as const;
+const REGION_OPTIONS = [
+  { key: "전체", label: "전체" },
+  { key: "국내", label: "국내" },
+  { key: "해외", label: "해외" },
+] as const;
+
 const STATUS_FILTERS = [
   { key: "all", label: "전체" },
   { key: "review", label: "검토 필요" },
   { key: "done", label: "검사 완료" },
   { key: "draft", label: "작성중" },
 ] as const;
+
 const PERIOD_FILTERS = [
   { key: 9999, label: "전체 기간" },
   { key: 7, label: "최근 7일" },
@@ -57,7 +64,7 @@ const PERIOD_FILTERS = [
 export default function HistoryPage() {
   const { tier, setTier } = useTier();
   const [query, setQuery] = useState("");
-  const [region, setRegion] = useState<(typeof REGION_FILTERS)[number]>("전체");
+  const [region, setRegion] = useState<(typeof REGION_OPTIONS)[number]["key"]>("전체");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
   const [period, setPeriod] = useState<number>(9999);
 
@@ -71,12 +78,6 @@ export default function HistoryPage() {
   });
 
   const isLockedRow = (row: MockHistoryItem) => tier === "Free" && daysAgo(row.created_at) > 7;
-  const filterPill = (active: boolean) =>
-    `font-mono text-[11px] p-[4px_9px] border cursor-pointer transition-all duration-[120ms] ${
-      active
-        ? "border-[var(--ink-3)] text-[var(--ink)] bg-[var(--nav-active-bg)] font-bold"
-        : "border-[var(--line-2)] text-[var(--ink-3)] bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
-    }`;
 
   const rowHref = (row: MockHistoryItem) =>
     row.status === "draft" ? `/inspect?id=${row.result_id}` : `/report/${row.result_id}`;
@@ -133,21 +134,24 @@ export default function HistoryPage() {
             aria-label="제품명 검색"
           />
         </div>
-        <span className="inline-flex gap-[5px]">
-          {REGION_FILTERS.map(r => (
-            <button key={r} type="button" onClick={() => setRegion(r)} className={filterPill(region === r)}>{r}</button>
-          ))}
-        </span>
-        <span className="inline-flex gap-[5px]">
-          {STATUS_FILTERS.map(s => (
-            <button key={s.key} type="button" onClick={() => setStatus(s.key)} className={filterPill(status === s.key)}>{s.label}</button>
-          ))}
-        </span>
-        <span className="inline-flex gap-[5px]">
-          {PERIOD_FILTERS.map(p => (
-            <button key={p.key} type="button" onClick={() => setPeriod(p.key)} className={filterPill(period === p.key)}>{p.label}</button>
-          ))}
-        </span>
+        <FilterDropdown
+          label="국가"
+          options={REGION_OPTIONS}
+          selectedValue={region}
+          onSelect={setRegion}
+        />
+        <FilterDropdown
+          label="상태"
+          options={STATUS_FILTERS}
+          selectedValue={status}
+          onSelect={setStatus}
+        />
+        <FilterDropdown
+          label="기간"
+          options={PERIOD_FILTERS}
+          selectedValue={period}
+          onSelect={setPeriod}
+        />
       </div>
 
       {/* 이력 목록 */}
