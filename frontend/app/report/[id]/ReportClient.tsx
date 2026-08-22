@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch } from "@phosphor-icons/react";
-import type { ReportEnvelope, Finding } from "@/lib/api/schema";
+import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
 import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
@@ -41,6 +41,11 @@ interface FindingCardProps {
   tier: "FREE" | "BASIC" | "PRO";
   remediationCount: number;
   onFetchRemediation: () => void;
+  // 판정할 때 배치로 만들어져 리포트에 실려온 대체표현(PR #265). 있으면 그대로 쓰고
+  // 새로 호출하지 않는다. hasReportReplacements가 false일 때만(옛 리포트·생성 실패)
+  // /remediate 실시간 조회로 폴백한다.
+  replacement: Replacement | undefined;
+  hasReportReplacements: boolean;
 }
 
 function getRemediationText(violationType: string, suggestionsNode: React.ReactNode) {
@@ -79,6 +84,8 @@ function FindingCard({
   tier,
   remediationCount,
   onFetchRemediation,
+  replacement,
+  hasReportReplacements,
 }: FindingCardProps) {
   const { showError } = useError();
   const [loading, setLoading] = useState(false);
@@ -91,29 +98,43 @@ function FindingCard({
     setLoading(false);
     setHasFetched(false);
 
-    if (tier !== "FREE") {
-      setShowSuggestionsArea(true);
-      setLoading(true);
-      getRemediation({
-        sentence: finding.sentence,
-        violation_type: finding.violation_type,
-        span: finding.span,
-      })
-        .then((res) => {
-          setSuggestions(res.suggestions);
-          setHasFetched(true);
-          setLoading(false);
-          onFetchRemediation();
-        })
-        .catch((err) => {
-          console.error("Failed to fetch remediation suggestion", err);
-          showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
-          setLoading(false);
-        });
-    } else {
+    if (tier === "FREE") {
       setShowSuggestionsArea(false);
+      return;
     }
-  }, [finding, tier]);
+
+    if (hasReportReplacements) {
+      // 판정할 때 배치로 이미 만들어져 리포트에 실려왔다(PR #265). 호출 0회.
+      // replacement가 없으면 이 finding엔 제안할 수 없었다는 뜻(제안 불가 시
+      // 제안하지 않는다, 2026-08-20 팀장 지시) - 재조회 대상이 아니다.
+      setShowSuggestionsArea(true);
+      setSuggestions(replacement ? [replacement.replaced] : []);
+      setHasFetched(true);
+      onFetchRemediation();
+      return;
+    }
+
+    // 폴백: 이 필드가 생기기 전에 저장된 옛 리포트이거나 생성 자체가 실패한 경우만
+    // 기존처럼 /remediate를 실시간으로 부른다.
+    setShowSuggestionsArea(true);
+    setLoading(true);
+    getRemediation({
+      sentence: finding.sentence,
+      violation_type: finding.violation_type,
+      span: finding.span,
+    })
+      .then((res) => {
+        setSuggestions(res.suggestions);
+        setHasFetched(true);
+        setLoading(false);
+        onFetchRemediation();
+      })
+      .catch((err) => {
+        console.error("Failed to fetch remediation suggestion", err);
+        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
+        setLoading(false);
+      });
+  }, [finding, tier, hasReportReplacements, replacement]);
 
   const handleFetchSuggestions = () => {
     setLoading(true);
@@ -137,6 +158,12 @@ function FindingCard({
 
   const handleShowAndFetchSuggestions = () => {
     setShowSuggestionsArea(true);
+    if (hasReportReplacements) {
+      setSuggestions(replacement ? [replacement.replaced] : []);
+      setHasFetched(true);
+      onFetchRemediation();
+      return;
+    }
     handleFetchSuggestions();
   };
 
@@ -296,12 +323,19 @@ function FindingCard({
                     </div>
                   ) : hasFetched ? (
                     suggestions.length > 0 ? (
-                      getRemediationText(
-                        finding.violation_type,
-                        <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
-                          {suggestions.join(", ")}
-                        </span>
-                      )
+                      <>
+                        {getRemediationText(
+                          finding.violation_type,
+                          <span className="font-bold text-[var(--brand-ink)] bg-[var(--nav-active-bg)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                            {suggestions.join(", ")}
+                          </span>
+                        )}
+                        {replacement?.note && (
+                          <div className="mt-2 text-[11.5px] text-[var(--ink-3)] border-t border-dashed border-[var(--line-2)] pt-2">
+                            ⓘ {replacement.note}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <span className="text-[var(--ink-3)]">대체 표현 없음</span>
                     )
@@ -384,6 +418,16 @@ export function ReportClient({ envelope }: ReportClientProps) {
     item.num = index + 1;
   });
   const visibleFindByOrder = flagFilter ? findByOrder.filter((o) => o.f.flag === flagFilter) : findByOrder;
+
+  // finding_index로 지적 카드와 짝짓는다(PR #265). original은 경로마다(조건표=단어,
+  // LLM=문장) 값이 달라 키가 못 된다.
+  const hasReportReplacements = d.replacements.length > 0;
+  const replacementByFindingIndex = new Map<number, (typeof d.replacements)[number]>();
+  d.replacements.forEach((r) => {
+    if (typeof r.finding_index === "number") {
+      replacementByFindingIndex.set(r.finding_index, r);
+    }
+  });
 
   useEffect(() => {
     setRemediationCount(0);
@@ -584,6 +628,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   tier={tier}
                   remediationCount={remediationCount}
                   onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
+                  replacement={replacementByFindingIndex.get(o.idx)}
+                  hasReportReplacements={hasReportReplacements}
                 />
               );
             })}

@@ -76,6 +76,20 @@ export const RegulatoryBasisSchema = z.object({
 });
 export type RegulatoryBasis = z.infer<typeof RegulatoryBasisSchema>;
 
+export const ReplacementSchema = z.object({
+  original: z.string(),
+  replaced: z.string(),
+  violation_type: ViolationTypeSchema,
+  basis: z.string(),
+  // 이 대체표현이 어느 finding에서 나왔는지(findings 배열 인덱스). 리포트 화면이
+  // 카드와 짝지을 때 쓴다. original만으로는 못 짝짓는다 - 조건표 경로는 span(단어),
+  // LLM 경로는 문장 전체가 들어가 키가 경로마다 달라진다. /generate 응답엔 없어 optional.
+  finding_index: z.number().nullable().optional(),
+  // 대체표현 자체가 실증대상일 때 붙는 고지. 없으면 null.
+  note: z.string().nullable().optional(),
+});
+export type Replacement = z.infer<typeof ReplacementSchema>;
+
 export const CheckReportSchema = z.object({
   findings: z.array(FindingSchema),
   unjudged: z.array(UnjudgedSchema),
@@ -83,6 +97,9 @@ export const CheckReportSchema = z.object({
   result_id: z.string().nullable(),
   // 검사 시점에 적용된 기준 스냅샷. 구버전 저장 리포트엔 없을 수 있어 optional
   basis: RegulatoryBasisSchema.nullable().optional(),
+  // 지적별 대체표현. 판정할 때 배치로 같이 만들어 실려온다(PR #265). 이 필드
+  // 이전에 저장된 옛 리포트엔 없을 수 있어 default([])로 받는다.
+  replacements: z.array(ReplacementSchema).default([]),
 });
 export type CheckReport = z.infer<typeof CheckReportSchema>;
 
@@ -125,13 +142,6 @@ export const SectionSchema = z.object({
 });
 export type Section = z.infer<typeof SectionSchema>;
 
-export const ReplacementSchema = z.object({
-  original: z.string(),
-  replaced: z.string(),
-  violation_type: ViolationTypeSchema,
-  basis: z.string(),
-});
-export type Replacement = z.infer<typeof ReplacementSchema>;
 
 export const PlacedImageSchema = z.object({
   slot: z.string(),
