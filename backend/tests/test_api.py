@@ -165,3 +165,28 @@ def test_remediate_endpoint_validation():
     )
     assert r.status_code == 422
 
+
+
+def test_stub_판정기면_대체표현_재작성기를_안_만든다(monkeypatch):
+    """stub은 "외부 호출 없이 돈다"는 뜻이다. 유닛테스트가 과금 호출을 내면 안 된다.
+
+    2026-08-22 회귀: /check에 재작성기를 무조건 물렸더니 테스트 4건이 28초를
+    실제 LLM 호출에 썼다.
+    """
+    from barum.api.app import _replacement_rewriter
+
+    monkeypatch.setenv("JUDGE_KIND", "stub")
+    assert _replacement_rewriter() is None
+
+
+def test_대체표현_재작성기는_OCR용_VLM과_별개다(monkeypatch):
+    """이미지 없이 글로만 검사해도 재작성기는 있어야 한다.
+
+    2026-08-22 스모크: OCR용 VLM을 재사용했더니 글 검사에서 rewriter가 None이 돼
+    대체표현이 조용히 조건표 문구(`피부 생기 부여`)로 떨어졌다.
+    """
+    from barum.api.app import _replacement_rewriter
+
+    monkeypatch.setenv("JUDGE_KIND", "rag")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    assert _replacement_rewriter() is not None

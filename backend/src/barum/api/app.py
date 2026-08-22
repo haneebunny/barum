@@ -25,7 +25,7 @@ from barum.models import (
     USPreflightReport,
 )
 from barum.generate.content import generate_content
-from barum.generate.replace import first_safe, rewrite_one
+from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check, run_us_sunscreen_check
@@ -275,6 +275,7 @@ async def check(
         ingredients=ingredients,
         ingredient_amounts=ingredient_amounts,
         product_name=product_name,
+        rewriter=_replacement_rewriter(),
     )
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.
     report.result_id = _persist_check(
@@ -371,14 +372,13 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
     `first_safe()`는 위반 후보를 버리고 검토필요 후보를 뒤로 미룬다(`generate/replace.py`).
     조건표에는 1순위가 검토필요인데 2순위가 깨끗한 규칙이 실제로 있다.
 
-    **LLM으로 문장을 다시 쓴다**(팀장 지시, 2026-08-20). 조건표 문구만 내면 같은
-    입력에 늘 같은 답이 나온다 — `자극 완화`·`피부 생기 부여`처럼 좁고 뻔한 문구가
-    반복된다. LLM에 자유롭게 쓰게 하되 **나온 결과를 규칙집에 다시 태워 위반이면
-    버린다**(`replace._accept`). 그래서 창의성은 늘고 안전선은 그대로다.
+    **LLM 재작성은 여기서 안 한다.** 카드를 펼칠 때마다 실시간 호출이라 건당 5~8초가
+    붙었다. 다듬은 대체표현은 이제 판정할 때 배치로 한 번에 만들어 `CheckReport.
+    replacements`에 실려 온다(`pipeline._build_replacements_for_report`, 2026-08-22
+    팀장 지시). 리포트 화면은 그걸 읽으므로 이 엔드포인트를 부를 일이 없다.
 
-    카드를 펼칠 때마다 실시간 호출이라 지연이 붙는다. `REMEDIATE_REWRITE=0`으로 끄면
-    조건표 기반 안전 선택만 남는다(시연 중 지연이 문제되면 이 스위치로 즉시 되돌린다).
-    실패·타임아웃이면 조건표 결과로 폴백해서 응답은 항상 나간다.
+    그래도 남겨둔다. replacements가 비어 있는 경우(생성 실패, 이 필드 이전에 저장된
+    옛 리포트)에 즉시 답할 폴백이 필요하고, 조건표 경로는 과금도 지연도 0이다.
     """
     span = req.span if req.span is not None else req.sentence
     suggestions, disclaimer = get_remediation(
@@ -387,21 +387,6 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
         span=req.span,
     )
     safe = first_safe(suggestions) if suggestions else None
-
-    # LLM으로 문장을 다시 쓴다. 실패하면 조건표 결과로 폴백해서 응답은 항상 나간다.
-    if os.environ.get("REMEDIATE_REWRITE", "1") == "1":
-        try:
-            rewritten = rewrite_one(
-                req.sentence,
-                violation_type=req.violation_type,
-                span=req.span,
-                rewriter=_remediate_rewriter(),
-            )
-            if rewritten:
-                safe = rewritten
-        except Exception as e:  # 과금 호출이라 재시도하지 않는다(CLAUDE.md §E)
-            print(f"[remediate] 문장 다듬기 실패, 조건표 결과로 응답: {type(e).__name__}: {e}")
-
     return RemediationResponse(
         sentence=req.sentence,
         violation_type=req.violation_type,
@@ -411,17 +396,27 @@ def remediate(req: RemediationRequest) -> RemediationResponse:
     )
 
 
-def _remediate_rewriter():
-    """대체표현 다듬기용 LLM. 테스트는 이걸 가짜로 갈아낀다."""
-    return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
-
-
 def _section_vlm():
     """저위험 서술 생성용 LLM. 테스트는 이걸 가짜로 갈아낀다.
 
     GENERATE_PROVIDER로 따로 지정 가능, 없으면 판정 provider(gpt-5-mini) 재사용.
     """
     return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
+
+
+def _replacement_rewriter():
+    """대체표현 문장 다듬기용 LLM. 저위험 서술과 같은 provider를 쓴다.
+
+    OCR용 VLM을 재사용하면 안 된다. 그건 이미지가 있을 때만 만들어져서, 글로만
+    검사하면 None이 되고 대체표현이 조용히 조건표 문구로 떨어진다.
+
+    **JUDGE_KIND=stub이면 None.** stub은 "외부 호출 없이 돈다"는 뜻이고 유닛테스트가
+    그 모드로 /check를 부른다. 여기서 재작성기를 쥐여주면 테스트가 과금 호출을 낸다
+    (실제로 그랬다, 2026-08-22: 테스트 4건이 28초를 실호출에 썼다).
+    """
+    if os.environ.get("JUDGE_KIND", "rag") == "stub":
+        return None
+    return _section_vlm()
 
 
 def _image_generator():
