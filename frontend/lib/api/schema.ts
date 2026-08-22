@@ -39,6 +39,12 @@ export const FindingSchema = z.object({
   legal_basis_text: z.string().nullable().optional(),
   flag: FlagSchema,
   explanation: z.string(),
+  // 모델이 스스로 답한 확신도(0~100). VLM 경로에서만 채워진다. 규칙 경로(source=
+  // "rule")는 확률 개념이 없어 null - "규칙 확정" 배지로 대신 표시한다(디디 A안,
+  // 2026-08-22). 실제 판정 정확도와는 별개 값이니 색으로 등급을 매기지 않는다.
+  confidence: z.number().nullable().optional(),
+  // 어느 층이 이 판정을 냈는지(rule|vlm). 예전 저장 리포트엔 없어 optional.
+  source: z.string().nullable().optional(),
   location: LocationSchema,
 });
 export type Finding = z.infer<typeof FindingSchema>;

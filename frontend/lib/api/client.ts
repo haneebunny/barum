@@ -67,6 +67,9 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
+        // 확신도 배지 데모: 규칙 경로(confidence 없음) - "규칙 확정" 배지 확인용
+        confidence: null,
+        source: "rule",
         location: {
           tile: "detail_000_t00.png",
           order: 0,
@@ -86,6 +89,9 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
+        // 확신도 배지 데모: VLM 경로 - "확신도 87%" 배지 확인용
+        confidence: 87,
+        source: "vlm",
         location: {
           tile: "detail_000_t01.png",
           order: 2,
