@@ -1,0 +1,50 @@
+{
+  "_note": "콘텐츠 생성 프리셋. 타겟팅·레이아웃 방향·색/무드·폰트단을 한 세트로 묶는다. targeting과 layout_direction은 텍스트·이미지 프롬프트 양쪽에 들어가고, font_tier는 프론트가 해석할 id만 전달한다(폰트는 백엔드 개념이 아니다).",
+  "presets": [
+    {
+      "id": "minimal_white",
+      "label": "미니멀 화이트",
+      "targeting": "20대 후반~30대 초반, 자극 없는 기본 관리를 찾는 층",
+      "layout_direction": "여백을 넓게 두고 제품을 중앙에 두는 미니멀 구성. 요소를 적게 쓴다",
+      "color_tone": "화이트·아이보리·연회색 톤",
+      "mood": "차분하고 정갈한",
+      "font_tier": "tier_a"
+    },
+    {
+      "id": "clinical_neutral",
+      "label": "클리니컬 뉴트럴",
+      "targeting": "30대~40대, 성분과 시험 결과를 따져보는 층",
+      "layout_direction": "정보를 좌우로 정렬해 읽기 쉽게. 도표·수치를 놓을 자리를 비워둔다",
+      "color_tone": "화이트·라이트그레이에 청량한 블루 포인트",
+      "mood": "정확하고 신뢰감 있는",
+      "font_tier": "tier_b"
+    },
+    {
+      "id": "botanical_natural",
+      "label": "내추럴 보태니컬",
+      "targeting": "20대~30대, 순한 성분과 자연 유래를 중시하는 층",
+      "layout_direction": "자연광과 식물 소재를 배경에 두고 제품을 비스듬히 배치",
+      "color_tone": "베이지·세이지그린·크림 톤",
+      "mood": "부드럽고 편안한",
+      "font_tier": "tier_a"
+    },
+    {
+      "id": "vivid_pop",
+      "label": "비비드 팝",
+      "targeting": "10대 후반~20대 초반, 사용감과 분위기를 먼저 보는 층",
+      "layout_direction": "색면을 크게 쓰고 제품을 과감하게 크롭. 대비를 강하게",
+      "color_tone": "선명한 원색 대비",
+      "mood": "밝고 경쾌한",
+      "font_tier": "tier_c"
+    },
+    {
+      "id": "quiet_luxury",
+      "label": "콰이어트 럭셔리",
+      "targeting": "40대 이상, 고가 라인에 익숙하고 절제된 표현을 선호하는 층",
+      "layout_direction": "어두운 바탕에 제품 하나만 놓고 조명을 낮게. 여백을 아주 넓게",
+      "color_tone": "딥 브라운·차콜에 골드 포인트",
+      "mood": "묵직하고 절제된",
+      "font_tier": "tier_b"
+    }
+  ]
+}

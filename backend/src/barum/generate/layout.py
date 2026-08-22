@@ -7,6 +7,8 @@ LLM이 계획하게 한다. 계획은 **구조만** 정한다. 실제 문구는 
 없으면 계획에서 빼고 사유를 남긴다(조용히 빠지지 않게).
 """
 
+import re
+
 from barum.models import ClinicalEvidence, GenerateRequest, LayoutModule, LayoutPlan, SkippedClaim
 from barum.reference.layout_references import load_layout_vocabulary
 
@@ -281,3 +283,76 @@ def clinical_sections_text(evidence: list[ClinicalEvidence]) -> str:
             text += f". {e.note}"
         parts.append(text)
     return " / ".join(parts)
+
+
+# 카드로 낼 모듈 우선순위. 레퍼런스 팩 8종을 실측해 정했다(2026-08-22).
+#   kind                  등장   평균위치
+#   hero_intro            5/8    0.06
+#   ingredient_highlight  5/8    0.31
+#   clinical_result       10회   0.50
+#   how_to_use            3/8    0.70
+#   caution               3/8    1.00
+#   texture_visual        2/8    0.00
+# 레퍼런스 모듈 수 평균이 7.2개라 5~6장으로 줄이는 건 무리한 축소가 아니다.
+_CARD_PRIORITY: tuple[str, ...] = (
+    "hero_intro",
+    "texture_visual",
+    "ingredient_highlight",
+    "clinical_result",
+    "how_to_use",
+    "caution",
+)
+CARD_LIMIT = 6
+
+
+def _priority_rank(kind: str) -> int:
+    """우선순위 순번. 목록에 없으면 맨 뒤(같은 값이면 계획 순서가 tiebreak)."""
+    # `_uniquify_kinds`가 붙인 순번(clinical_result_2)을 떼고 본다.
+    base = re.sub(r"_\d+$", "", kind)
+    for i, k in enumerate(_CARD_PRIORITY):
+        if base == k or base.startswith(k):
+            return i
+    return len(_CARD_PRIORITY)
+
+
+def select_top_modules(
+    plan: LayoutPlan, limit: int = CARD_LIMIT, *, protected: tuple[str, ...] = ()
+) -> tuple[LayoutPlan, list[SkippedClaim]]:
+    """카드 수만큼 모듈을 추린다. **무엇을 남길지만 고르고 계획 순서는 안 건드린다.**
+
+    플래너는 보통 6~12개를 낸다. 카드는 이미지 1장 + 문장 1개라 그대로 다 내면
+    화면이 늘어진다(팀장 확정 2026-08-22, 5~6장).
+
+    **반드시 위험 모듈 필터(`filter_risky_modules`·`_drop_unfilled_risky_modules`)
+    뒤에 부른다.** 먼저 6개를 고른 뒤에 거르면 근거 없는 임상 모듈이 빠지면서
+    카드가 4장으로 줄어든다.
+
+    **이미지 생성 앞에서도 불러야 한다.** 뒤에서 부르면 버릴 모듈의 배경 이미지까지
+    과금해서 만든 뒤 버리게 된다.
+
+    protected: 이미 내용이 붙은 모듈 kind(인정문구·실증자료가 연결된 것). 우선순위가
+    낮아도 안 버린다. 버리면 만들어둔 섹션이 갈 곳을 잃는다.
+    """
+    if len(plan.modules) <= limit:
+        return plan, []
+
+    protected_set = set(protected)
+    ordered = sorted(
+        enumerate(plan.modules),
+        key=lambda pair: (
+            0 if pair[1].kind in protected_set else 1,
+            _priority_rank(pair[1].kind),
+            pair[0],  # 동점이면 계획 순서가 이긴다
+        ),
+    )
+    keep_idx = {i for i, _ in ordered[:limit]}
+    kept = [m for i, m in enumerate(plan.modules) if i in keep_idx]
+    dropped = [m for i, m in enumerate(plan.modules) if i not in keep_idx]
+    skipped = [
+        SkippedClaim(category=m.kind, reason=f"카드 {limit}장으로 추리면서 제외했습니다.")
+        for m in dropped
+    ]
+    return (
+        LayoutPlan(modules=kept, product_type=plan.product_type, source=plan.source),
+        skipped,
+    )
