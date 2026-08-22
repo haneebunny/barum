@@ -356,3 +356,120 @@ def test_글만_검사하면_ocr_실패는_0이다():
 
     report = pl.run_check("KR", "수분 공급에 도움을 줍니다", None, None, vlm=None, judge=StubJudge())
     assert report.summary.n_ocr_failed_tiles == 0
+
+
+# ── 대체표현을 판정할 때 같이 만든다 (2026-08-22 팀장 지시) ──────────────────
+# 전에는 리포트 화면이 카드를 펼칠 때마다 /remediate를 1건씩 불러 카드당 5~8초가
+# 걸렸고, 다시 보기로 열면 또 불렀다. 판정에 이미 LLM이 붙으니 거기서 같이 만든다.
+
+
+class FakeRewriter:
+    """대체표현 다듬기 호출을 가로채는 가짜 어댑터. 준 문구를 그대로 돌려준다.
+
+    suggestion=None이면 빈 응답을 줘서 조건표 폴백 경로를 태운다.
+    """
+
+    def __init__(self, suggestion: str | None):
+        self._suggestion = suggestion
+        self.calls = 0
+
+    def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        self.calls += 1
+        if self._suggestion is None:
+            return {}
+        return {"items": [{"index": 0, "can_suggest": True, "suggestion": self._suggestion}]}
+
+
+def test_리포트에_대체표현이_실린다():
+    """판정 결과에 지적별 대체표현이 같이 담긴다. 화면이 따로 부를 필요가 없다."""
+    report = run_check(
+        region="KR",
+        ad_text="멜라닌을 막아 미백에 도움.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+        rewriter=FakeRewriter(None),  # LLM이 빈 응답 = 조건표 폴백
+    )
+    assert len(report.findings) == 1
+    assert len(report.replacements) == 1
+    rep = report.replacements[0]
+    # finding_index로 카드와 짝짓는다. original은 경로에 따라 문장/단어로 갈려 키가 못 된다.
+    assert rep.finding_index == 0
+    assert rep.violation_type == report.findings[0].violation_type
+    assert rep.replaced
+
+
+def test_대체표현은_LLM이_다듬은_문구를_쓴다():
+    """rewriter를 주면 조건표 문구가 아니라 다듬은 문장이 실린다.
+
+    조건표 문구만 내면 같은 입력에 늘 같은 답이 나온다(`자극 완화` 반복 문제).
+    """
+    fake = FakeRewriter("건조한 피부에 수분을 채워 촉촉하게 가꿔줍니다.")
+    report = run_check(
+        region="KR",
+        ad_text="멜라닌을 막아 미백에 도움.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+        rewriter=fake,
+    )
+    assert fake.calls == 1  # 지적이 몇 건이든 배치로 한 번만 부른다
+    assert report.replacements[0].replaced == "건조한 피부에 수분을 채워 촉촉하게 가꿔줍니다."
+
+
+def test_대체표현_생성이_실패해도_리포트는_나간다():
+    """과금 호출이라 재시도하지 않는다. 대체표현이 없어도 위반 문구와 근거는 쓸모가 있다."""
+
+    class BrokenRewriter:
+        def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+            raise RuntimeError("boom")
+
+    report = run_check(
+        region="KR",
+        ad_text="멜라닌을 막아 미백에 도움.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+        rewriter=BrokenRewriter(),
+    )
+    assert len(report.findings) == 1  # 판정 결과는 그대로
+    # _rewrite가 조건표로 폴백하므로 대체표현 자체는 남는다.
+    assert report.replacements
+
+
+def test_지적이_없으면_대체표현을_만들지_않는다():
+    """LLM을 헛되이 부르지 않는다."""
+    fake = FakeRewriter("아무거나")
+    report = run_check(
+        region="KR",
+        ad_text="순한 보습감.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+        rewriter=fake,
+    )
+    assert report.findings == []
+    assert report.replacements == []
+    assert fake.calls == 0
+
+
+def test_CHECK_REPLACEMENTS_0이면_대체표현을_끈다(monkeypatch):
+    """시연 중 지연·비용이 문제되면 이 스위치로 즉시 되돌린다."""
+    monkeypatch.setenv("CHECK_REPLACEMENTS", "0")
+    fake = FakeRewriter("건조한 피부에 수분을 채워 촉촉하게 가꿔줍니다.")
+    report = run_check(
+        region="KR",
+        ad_text="멜라닌을 막아 미백에 도움.",
+        image_bytes=None,
+        image_filename=None,
+        vlm=None,
+        judge=StubJudge(),
+        rewriter=fake,
+    )
+    assert report.findings  # 판정은 그대로
+    assert report.replacements == []
+    assert fake.calls == 0

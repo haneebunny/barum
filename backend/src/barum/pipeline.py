@@ -5,6 +5,7 @@
 규칙집이 없어도 OCR까지는 실동작한다. 판정만 stub이다.
 """
 
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -14,6 +15,7 @@ from PIL import Image
 from barum.judge.cosmetic import CosmeticJudge
 from barum.judge.evidence_verify import crop_band, verify_evidence
 from barum.judge.us_sunscreen import DISCLAIMER, USSunscreenJudge
+from barum.generate.replace import build_replacements
 from barum.models import (
     CheckReport,
     Finding,
@@ -239,6 +241,7 @@ def run_check(
     ingredient_amounts: str | None = None,
     product_name: str | None = None,
     verbose: bool = False,
+    rewriter: VLM | None = None,
 ) -> CheckReport:
     """한 번의 검사 요청을 처리해 CheckReport를 만든다.
 
@@ -249,6 +252,10 @@ def run_check(
     성분 정합 대조가 붙는다(judge가 지원하는 경우).
     ingredient_amounts: 선택적 "성분:함량" 콤마구분 문자열(예: "나이아신아마이드:3%").
     명시된 성분만 함량기준 대조까지 더해진다. 안 주면 기존처럼 이름만 대조한다.
+    rewriter: 대체표현 다듬기용 LLM. 주면 지적별 대체표현을 배치로 만들어 리포트에
+    싣는다. 안 주면 안 만든다. **vlm(OCR용)과 따로 받는다** - vlm은 이미지가 없으면
+    None이라, 그걸 재사용하면 글로만 검사할 때 대체표현이 조용히 조건표 문구로
+    떨어진다(2026-08-22 스모크에서 실제로 관측).
     """
     sentences: list[dict] = []
     n_ocr_failed = 0  # 이미지가 없으면 OCR 자체를 안 한다
@@ -325,7 +332,37 @@ def run_check(
         unjudged=result.unjudged,
         summary=summary,
         basis=build_regulatory_basis(region),
+        replacements=_build_replacements_for_report(findings, rewriter),
     )
+
+
+def _build_replacements_for_report(findings: list[Finding], rewriter: VLM | None):
+    """지적 전체의 대체표현을 배치로 한 번에 만든다. 실패하면 빈 리스트.
+
+    **판정할 때 같이 만든다**(팀장 지시, 2026-08-22). 판정은 어차피 LLM이 붙는
+    구간이라 여기서 같이 만들면 호출이 지적 N건당 1회로 줄고, 결과가 리포트에 실려
+    저장되므로 다시 보기는 호출 0회가 된다. 전에는 리포트 화면이 카드를 펼칠 때마다
+    `/remediate`를 1건씩 불러 카드당 5~8초가 붙었다.
+
+    티어와 무관하게 만든다. FREE도 판정 LLM은 어차피 쓰므로 여기서 같이 받아온다.
+    보여줄지 말지는 화면이 정한다(FR-14).
+
+    실패는 리포트를 막지 않는다. 대체표현이 없어도 위반 문구와 근거는 그대로 쓸모가
+    있다. 과금 호출이라 재시도하지 않는다(CLAUDE.md §E).
+    """
+    if not findings:
+        return []
+    if rewriter is None:
+        # 내부 호출(/generate 개선 모드)은 자기 경로에서 따로 만든다. 여기서 또 만들면
+        # 같은 일을 두 번 한다.
+        return []
+    if os.environ.get("CHECK_REPLACEMENTS", "1") != "1":
+        return []
+    try:
+        return build_replacements(findings, rewriter=rewriter)
+    except Exception as e:
+        print(f"[check] 대체표현 생성 실패, 리포트는 그대로 나간다: {type(e).__name__}: {e}")
+        return []
 
 
 def run_us_sunscreen_check(

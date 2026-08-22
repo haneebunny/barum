@@ -129,3 +129,39 @@ def test_summary_defaults_violation_and_review_counts_to_zero():
     assert s.n_violation == 0
     assert s.n_needs_review == 0
     assert s.n_unjudged == 0
+
+
+def test_저장된_리포트를_다시_읽어도_대체표현이_남는다():
+    """다시 보기 경로 계약. 리포트가 JSON으로 저장됐다 다시 뜨므로 대체표현도 같이 산다.
+
+    이게 성립해야 "다시 보기는 LLM 호출 0회"가 참이 된다(2026-08-22).
+    """
+    from barum.models import CheckReport, Region, Replacement, Summary, ViolationType
+
+    report = CheckReport(
+        findings=[],
+        summary=Summary(region=Region("KR"), n_sentences=1, n_findings=1),
+        replacements=[
+            Replacement(
+                original="미백",
+                replaced="피부 톤을 환하게 가꿔줍니다.",
+                violation_type=ViolationType.type_2_functional_misperception,
+                basis="합법 표기 틀(조건표) 기반 대체 표현",
+                finding_index=0,
+            )
+        ],
+    )
+    revived = CheckReport(**report.model_dump())
+    assert revived.replacements[0].finding_index == 0
+    assert revived.replacements[0].replaced == "피부 톤을 환하게 가꿔줍니다."
+
+
+def test_대체표현_필드_이전에_저장된_리포트도_읽힌다():
+    """옛 리포트에는 replacements 키가 없다. 그것도 그대로 열려야 한다."""
+    from barum.models import CheckReport
+
+    old = {
+        "findings": [],
+        "summary": {"region": "KR", "n_sentences": 1, "n_findings": 0},
+    }
+    assert CheckReport(**old).replacements == []

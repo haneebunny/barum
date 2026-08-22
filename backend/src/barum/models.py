@@ -159,6 +159,13 @@ class CheckReport(BaseModel):
     summary: Summary
     result_id: str | None = None
     basis: RegulatoryBasis | None = None
+    # 지적별 대체표현. **판정할 때 배치로 한 번에 만들어 여기 싣는다**(팀장 지시,
+    # 2026-08-22). 전에는 리포트 화면이 카드를 펼칠 때마다 /remediate를 1건씩
+    # 불러서 카드당 5~8초가 걸렸고, 다시 보기로 열면 또 불렀다. 판정에 이미 LLM이
+    # 붙는 구간이라 거기서 같이 만들면 호출이 지적 N건당 1회로 줄고, 리포트에
+    # 실려 저장되니 다시 보기는 호출 0회다.
+    # 만들다 실패하면 빈 리스트로 둔다(리포트 자체는 나가야 한다).
+    replacements: list["Replacement"] = Field(default_factory=list)
 
 
 # ── 미국 프리플라이트 (자외선차단 최소보장, 기획서 v1.6) ──────────────────────
@@ -276,9 +283,18 @@ class Replacement(BaseModel):
     replaced: str
     violation_type: ViolationType
     basis: str  # 합법 표기 틀 근거
+    # 어느 finding에서 나온 대체표현인지. 리포트 화면이 카드와 짝지을 때 쓴다.
+    # original만으로는 못 짝짓는다 - 조건표 경로는 span(단어), LLM 경로는 문장 전체가
+    # 들어가서 키가 경로마다 달라진다. /generate 경로는 안 쓰므로 None 허용.
+    finding_index: int | None = None
     # 대체표현 자체가 실증대상일 때 붙이는 고지. 안 붙이면 사용자가 위반에서 벗어난
     # 줄 알고 그대로 써서, 우리가 검토필요를 만들어주는 셈이 된다(2026-08-20 팀장 지시).
     note: str | None = None
+
+
+# CheckReport가 Replacement를 앞선 위치에서 문자열로 참조한다(정의 순서 때문).
+# 여기서 한 번 굳혀둔다.
+CheckReport.model_rebuild()
 
 
 class PlacedImage(BaseModel):
