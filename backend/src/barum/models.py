@@ -84,6 +84,15 @@ class Finding(BaseModel):
     legal_basis_text: str | None = None  # 그 조항의 원문 전체(없으면 None, 지어내지 않음)
     flag: JudgmentFlag  # 위반(근거 확인) | 검토필요(근거 약함·불명)
     explanation: str  # 왜 위반인지 사람이 읽는 설명
+    # 모델이 스스로 답한 확신도(0~100). **VLM 경로에서만 채운다.**
+    #
+    # 규칙 경로(source="rule")는 키워드 일치라 확률 개념이 없어 None으로 둔다.
+    # 100으로 채우면 규칙이 "AI가 아주 확신했다"로 읽혀 성격이 뒤바뀐다.
+    #
+    # **이 값은 잰 확률이 아니라 모델이 생성한 숫자다.** 실제 정답률과 맞는지는
+    # 별개 문제라, 화면에 쓰기 전에 캘리브레이션을 확인해야 한다
+    # (2026-08-22 실측 결과는 docs/result 참고). 파싱 실패·범위 밖이면 None.
+    confidence: int | None = None
     location: Location
     # 어느 층이 이 판정을 냈는지. "rule"=규칙집 확정, "vlm"=모델 판정.
     # 설명 문장을 LLM으로 다시 쓸 대상을 고르는 데 쓴다(규칙 경로만 템플릿이라서).
