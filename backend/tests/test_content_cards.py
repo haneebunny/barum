@@ -535,3 +535,72 @@ def test_improve_전성분이_판정에서도_우선한다():
         ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
     )
     assert _ingredients_for_judge(req) == "정제수, 글리세린"
+
+
+# ── 헤드라인만 길고 본문이 비는 것을 막는다 (2026-08-23) ────────────────────
+
+def test_긴_한_덩어리는_본문으로_돌린다():
+    """**프롬프트 지시만으론 100%가 안 된다.**
+
+    #311로 줄바꿈을 요구했는데도 모델이 가끔 안 지킨다. 그러면 긴 한 문장이 통째로
+    헤드라인이 되고 본문이 빈다. 화면에서는 그 칸이 짧아지면서 **옆 이미지까지
+    26px로 찌그러진다**(실측).
+    """
+    from barum.generate.content import split_headline
+
+    long_one = "주요 성분인 나이아신아마이드와 히알루론산을 균형 있게 담아 데일리 루틴에 어울립니다."
+    head, body = split_headline(long_one)
+    assert head == ""
+    assert body == long_one
+
+
+def test_짧은_한_마디는_헤드라인으로_둔다():
+    """라벨 같은 짧은 문구는 헤드라인만 있는 게 맞다."""
+    from barum.generate.content import split_headline
+
+    head, body = split_headline("주요 성분")
+    assert head == "주요 성분"
+    assert body == ""
+
+
+def test_인정문구는_길어도_헤드라인_자리를_지킨다():
+    """**법으로 정해진 문구다.** 자외선차단 인정문구는 39자라 길이로는 LLM 카피와
+    못 가른다. 부르는 쪽이 출처를 보고 정해준다."""
+    from barum.generate.content import split_headline
+
+    claim = "피부를 곱게 태워주거나 자외선으로부터 피부를 보호하는 데 도움을 준다."
+    head, body = split_headline(claim, allow_long_headline=True)
+    assert head == claim
+    assert body == ""
+
+
+def test_줄바꿈이_있으면_그대로_쪼갠다():
+    from barum.generate.content import split_headline
+
+    head, body = split_headline("발림성부터 다릅니다\n젤-세럼 타입입니다. 끈적임이 없습니다.")
+    assert head == "발림성부터 다릅니다"
+    assert body.startswith("젤-세럼")
+
+
+def test_카드가_인정문구만_헤드라인_예외를_준다():
+    """LLM 카피에까지 예외를 주면 원래 문제로 돌아간다."""
+    from barum.generate.content import build_cards
+    from barum.models import ImagePlan, LayoutModule, LayoutPlan, Section
+
+    long_one = "주요 성분인 나이아신아마이드와 히알루론산을 균형 있게 담아 데일리 루틴에 어울립니다."
+    plan = LayoutPlan(
+        modules=[
+            LayoutModule(kind="hero_intro", purpose="소개", layout_type="hero_fullbleed"),
+            LayoutModule(kind="ingredient_highlight", purpose="성분", layout_type="image_text_split"),
+        ]
+    )
+    sections = [
+        Section(kind="광고문구", text="피부를 곱게 태워주거나 자외선으로부터 피부를 보호하는 데 도움을 준다.",
+                source="approved_claim", module_kind="hero_intro"),
+        Section(kind="ingredient_highlight", text=long_one, source="llm",
+                module_kind="ingredient_highlight"),
+    ]
+    cards = {c.module_kind: c for c in build_cards(sections, plan, ImagePlan())}
+    assert cards["hero_intro"].headline  # 인정문구는 헤드라인 유지
+    assert cards["ingredient_highlight"].headline == ""  # LLM 카피는 본문으로
+    assert cards["ingredient_highlight"].body == long_one
