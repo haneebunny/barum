@@ -151,7 +151,6 @@ function ContentGeneratorContent() {
   const [generating, setGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [checks, setChecks] = useState({ ck1: false, ck2: false });
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [exportingType, setExportingType] = useState<"html" | "png" | "pdf" | null>(null);
@@ -415,8 +414,12 @@ function ContentGeneratorContent() {
     };
   }, [dropdownOpen]);
 
-  const handleConfirm = async () => {
-    setIsModalOpen(false);
+  // 순서를 뒤집는다(팀장 지시, 2026-08-23): 예전엔 "생성 전 확인" 모달을
+  // 하드코딩된 문구로 채워서 무엇을 지울지 정해지지도 않은 시점에 "지웠다"고
+  // 확언하고 있었다. 이제 생성 API를 먼저 부르고, 응답의 pii_removed·
+  // risk_confirmations로 모달을 채운 뒤 사용자가 확인해야 결과를 확정
+  // 표시한다("생성 전"이 아니라 "결과 확정 전" 확인).
+  const handleGenerate = async () => {
     setGenerating(true);
     try {
       let res: GenerateResponse;
@@ -482,13 +485,22 @@ function ContentGeneratorContent() {
       }
       if (mode === "improve" && tier === "Free") consume();
       setGenResult(res);
-      setIsGenerated(true);
+      setConfirmedRisks({});
+      setIsModalOpen(true);
     } catch (err) {
       console.error(err);
       showError("콘텐츠 생성 오류", "콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setGenerating(false);
     }
+  };
+
+  // 모달에서 확인 항목을 다 체크한 뒤에만 결과를 확정 표시한다.
+  const allRisksConfirmed = !genResult || genResult.risk_confirmations.every((rc) => confirmedRisks[rc.id]);
+
+  const handleConfirmResult = () => {
+    setIsModalOpen(false);
+    setIsGenerated(true);
   };
 
   const handleCopy = () => {
@@ -1472,8 +1484,8 @@ function ContentGeneratorContent() {
           <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
             <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">
               {mode === "create"
-                ? "입력한 제품 정보로 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요."
-                : "입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 전 확인이 필요한 항목이 있어요."}
+                ? "입력한 제품 정보로 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."
+                : "입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."}
             </p>
             {mode === "create" && !createProductName.trim() && (
               <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
@@ -1494,9 +1506,9 @@ function ContentGeneratorContent() {
                 (mode === "create" && !createProductName.trim()) ||
                 createProductPhotos.some((p) => p.uploading)
               }
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleGenerate}
             >
-              확인 후 생성하기 <span className="font-mono">→</span>
+              생성하기 <span className="font-mono">→</span>
             </button>
           </div>
         )}
@@ -1691,10 +1703,14 @@ function ContentGeneratorContent() {
 
       <PageFooter />
 
-      {/* 생성 전 확인 모달 (터미널 다이얼로그) */}
+      {/* 결과 확정 전 확인 모달 (터미널 다이얼로그). 예전엔 "생성 전 확인"
+          이름으로 생성 API 호출 전에 하드코딩된 문구를 보여줬다 - 뭘 지울지
+          정해지지도 않은 시점에 "지웠다"고 확언하는 구조였다(팀장 실측,
+          2026-08-23). 이제 생성이 끝난 뒤 실제 pii_removed·risk_confirmations로
+          채우고, 사용자가 확인해야 결과 화면을 연다. */}
       <Modal
         isOpen={isModalOpen}
-        title="생성 전 확인"
+        title="생성 결과 확인"
         size="md"
         onClose={() => setIsModalOpen(false)}
         ref={closeBtnRef}
@@ -1709,76 +1725,67 @@ function ContentGeneratorContent() {
             </button>
             <button
               className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                !checks.ck1 || !checks.ck2
+                !allRisksConfirmed
                   ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
                   : "bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
               }`}
               id="cmConfirm"
-              disabled={!checks.ck1 || !checks.ck2}
-              onClick={handleConfirm}
+              disabled={!allRisksConfirmed}
+              onClick={handleConfirmResult}
             >
-              확인하고 생성
+              확인하고 결과 보기
             </button>
           </>
         }
       >
         <p className="mt-5 mb-3 text-[14.5px] text-[var(--ink)] font-mono font-bold tracking-[0.2px] first:mt-1">
-          [ 제거된 개인정보 · 2건 ]
+          [ 제거된 개인정보 · {genResult?.pii_removed.length ?? 0}건 ]
         </p>
-        <ul className="list-none m-0 mb-4 p-0 flex flex-col gap-2">
-          <li className="flex items-center gap-2 p-1.5 px-2.5 text-[13.5px] text-[var(--ink-2)]">
-            <span className="font-mono text-[12px] font-bold text-[var(--ink-3)] shrink-0 mt-0.5 leading-none">[system]</span>
-            <span>이미지 배경 속 매장 명판 텍스트를 자동으로 지웠어요.</span>
-          </li>
-          <li className="flex items-center gap-2 p-1.5 px-2.5 text-[13.5px] text-[var(--ink-2)]">
-            <span className="font-mono text-[12px] font-bold text-[var(--ink-3)] shrink-0 mt-0.5 leading-none">[system]</span>
-            <span>고객 후기 캡처에 있던 개인 아이디를 자동으로 지웠어요.</span>
-          </li>
-        </ul>
+        {genResult && genResult.pii_removed.length > 0 ? (
+          <ul className="list-none m-0 mb-4 p-0 flex flex-col gap-2">
+            {genResult.pii_removed.map((item, i) => (
+              <li key={i} className="flex items-center gap-2 p-1.5 px-2.5 text-[13.5px] text-[var(--ink-2)]">
+                <span className="font-mono text-[12px] font-bold text-[var(--ink-3)] shrink-0 mt-0.5 leading-none">[system]</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="m-0 mb-4 px-2.5 text-[13px] text-[var(--ink-3)]">제거된 개인정보가 없습니다.</p>
+        )}
         <div className="h-0 border-t border-dashed border-[var(--line-2)] my-4" />
         <p className="mt-5 mb-3 text-[14.5px] text-[var(--ink)] font-mono font-bold tracking-[0.2px] first:mt-1">
-          [ 생성 전 확인 필요 · 2건 ]
+          [ 확인 필요 · {genResult?.risk_confirmations.length ?? 0}건 ]
         </p>
-        <ul className="list-none m-0 mb-1.5 p-0 flex flex-col gap-2">
-          <li
-            className="flex items-center justify-between gap-4 p-3 px-2.5 border-b border-dashed border-[var(--line)] cursor-pointer transition-colors duration-[120ms] hover:bg-[var(--nav-hover)] last:border-b-0"
-            onClick={() => setChecks((prev) => ({ ...prev, ck1: !prev.ck1 }))}
-          >
-            <div className="flex items-center gap-2 grow">
-              <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
-              <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
-                효능 표현이 조건표 허용 범위 안에서만 순화되었는지 확인했어요.
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              checked={checks.ck1}
-              onChange={(e) => setChecks((prev) => ({ ...prev, ck1: e.target.checked }))}
-              onClick={(e) => e.stopPropagation()}
-              className="appearance-none -webkit-appearance-none w-4 h-4 border border-[var(--line-2)] bg-[var(--surface-sub)] inline-flex items-center justify-center cursor-pointer outline-none shrink-0 relative transition-all duration-[120ms] m-0 checked:border-[var(--brand-ink)] checked:bg-[var(--nav-active-bg)] checked:after:content-['✓'] checked:after:font-mono checked:after:text-[11px] checked:after:font-bold checked:after:text-[var(--brand-ink)] checked:after:absolute checked:after:top-1/2 checked:after:left-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:leading-none hover:border-[var(--brand-ink)]"
-              tabIndex={-1}
-            />
-          </li>
-          <li
-            className="flex items-center justify-between gap-4 p-3 px-2.5 border-b border-dashed border-[var(--line)] cursor-pointer transition-colors duration-[120ms] hover:bg-[var(--nav-hover)] last:border-b-0"
-            onClick={() => setChecks((prev) => ({ ...prev, ck2: !prev.ck2 }))}
-          >
-            <div className="flex items-center gap-2 grow">
-              <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
-              <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
-                생성된 문구에 원문에 없던 새로운 효능 주장이 없는지 확인했어요.
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              checked={checks.ck2}
-              onChange={(e) => setChecks((prev) => ({ ...prev, ck2: e.target.checked }))}
-              onClick={(e) => e.stopPropagation()}
-              className="appearance-none -webkit-appearance-none w-4 h-4 border border-[var(--line-2)] bg-[var(--surface-sub)] inline-flex items-center justify-center cursor-pointer outline-none shrink-0 relative transition-all duration-[120ms] m-0 checked:border-[var(--brand-ink)] checked:bg-[var(--nav-active-bg)] checked:after:content-['✓'] checked:after:font-mono checked:after:text-[11px] checked:after:font-bold checked:after:text-[var(--brand-ink)] checked:after:absolute checked:after:top-1/2 checked:after:left-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:leading-none hover:border-[var(--brand-ink)]"
-              tabIndex={-1}
-            />
-          </li>
-        </ul>
+        {genResult && genResult.risk_confirmations.length > 0 ? (
+          <ul className="list-none m-0 mb-1.5 p-0 flex flex-col gap-2">
+            {genResult.risk_confirmations.map((rc) => (
+              <li
+                key={rc.id}
+                className="flex items-center justify-between gap-4 p-3 px-2.5 border-b border-dashed border-[var(--line)] cursor-pointer transition-colors duration-[120ms] hover:bg-[var(--nav-hover)] last:border-b-0"
+                onClick={() => setConfirmedRisks((prev) => ({ ...prev, [rc.id]: !prev[rc.id] }))}
+              >
+                <div className="flex items-center gap-2 grow">
+                  <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
+                  <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
+                    <span className="font-bold">{rc.text}</span>
+                    <span className="block text-[11.5px] text-[var(--ink-3)] mt-0.5">{rc.reason}</span>
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={!!confirmedRisks[rc.id]}
+                  onChange={(e) => setConfirmedRisks((prev) => ({ ...prev, [rc.id]: e.target.checked }))}
+                  onClick={(e) => e.stopPropagation()}
+                  className="appearance-none -webkit-appearance-none w-4 h-4 border border-[var(--line-2)] bg-[var(--surface-sub)] inline-flex items-center justify-center cursor-pointer outline-none shrink-0 relative transition-all duration-[120ms] m-0 checked:border-[var(--brand-ink)] checked:bg-[var(--nav-active-bg)] checked:after:content-['✓'] checked:after:font-mono checked:after:text-[11px] checked:after:font-bold checked:after:text-[var(--brand-ink)] checked:after:absolute checked:after:top-1/2 checked:after:left-1/2 checked:after:-translate-x-1/2 checked:after:-translate-y-1/2 checked:after:leading-none hover:border-[var(--brand-ink)]"
+                  tabIndex={-1}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="m-0 mb-1.5 px-2.5 text-[13px] text-[var(--ink-3)]">확인이 필요한 항목이 없습니다.</p>
+        )}
       </Modal>
     </>
   );
