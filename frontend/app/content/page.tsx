@@ -905,7 +905,10 @@ function ContentGeneratorContent() {
     .dp-split-right { flex-direction: row-reverse; }
     .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
     .dp-split-right .dp-split-media-wrap { margin: 24px 24px 24px 0; }
-    .dp-split-media { flex: 1; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
+    /* .dp-split이 align-items: stretch라 본문(copy)이 아주 짧거나 없으면 그
+       칸 높이에 맞춰 이미지가 14~26px로 찌그러든다(실측, 2026-08-23). 최소
+       높이로 방지 - 본문이 길면 원래대로 늘어난다(min-height라 위쪽만 막음). */
+    .dp-split-media { flex: 1; min-height: 200px; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
     .dp-split-media-wrap .dp-ai-caption { margin: 5px 0 0; }
     .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
     .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
