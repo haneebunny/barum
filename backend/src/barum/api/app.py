@@ -7,6 +7,8 @@
 import os
 import re
 from datetime import datetime, timezone
+
+from dotenv import load_dotenv
 from pathlib import Path
 from uuid import uuid4
 
@@ -54,6 +56,19 @@ from barum.vlm import get_image_generator, get_vlm, role_model
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
 _CT_TO_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 _EXT_TO_CT = {v: k for k, v in _CT_TO_EXT.items()}
+
+# **여기서 .env를 읽는다.** 지금까지는 VLM 어댑터들이 각자 `load_dotenv()`를 불렀는데,
+# 그러면 어댑터가 하나라도 만들어지기 전까지 이 파일의 env 읽기가 전부 빈손이 된다.
+#
+# 갓 뜬 프로세스의 **첫 요청**이 그 상태였다. `/generate`가 판정기(→어댑터)보다 먼저
+# `IMAGE_GENERATION_ENABLED`를 읽어서, 플래그가 켜져 있는데도 생성기를 안 만들고
+# **이미지가 0장 나갔다**(2026-08-23 재현). 두 번째 요청부터는 어댑터가 dotenv를
+# 이미 불러놔서 정상 동작해 — 그래서 간헐적으로 보였다.
+#
+# 같은 함정이 CHECKS_PERSIST·IMAGE_CACHE_ENABLED·JUDGE_KIND 등 이 파일의 다른
+# env 읽기에도 그대로 있었다. 앱을 띄울 때 한 번 읽어 그 창을 없앤다.
+load_dotenv()
+
 
 def _git_sha() -> str:
     """지금 체크아웃된 커밋. 못 읽으면 'unknown'(서버는 계속 뜬다)."""
