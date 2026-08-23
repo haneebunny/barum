@@ -321,6 +321,10 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
 _CLAIM_CATEGORIES = ("미백", "주름개선", "자외선차단")
 
 
+# 인정문구가 붙을 마지막 자리. 위험 모듈이 하나도 없을 때만 쓴다.
+_HERO_KIND = "hero_intro"
+
+
 def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> None:
     """위반소지 모듈이 채워진 섹션에 원래 모듈 kind를 달아준다(제자리 수정).
 
@@ -343,6 +347,8 @@ def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> No
     claim_slots = [m for m in plan.modules if m.has_claim_risk and not m.kind.startswith("clinical")]
     clinical_slots = [m for m in plan.modules if m.has_claim_risk and m.kind.startswith("clinical")]
     claim_iter = iter(claim_slots)
+    # 위험 모듈이 없을 때 인정문구가 갈 곳. 없으면 None이고 그때는 skipped로 나간다.
+    hero = next((m for m in plan.modules if m.kind == _HERO_KIND), None)
     for section in sections:
         if section.module_kind is not None:
             continue
@@ -350,6 +356,17 @@ def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> No
             module = next(claim_iter, None)
             if module is not None:
                 section.module_kind = module.kind
+            elif hero is not None:
+                # **위험 모듈이 하나도 없으면 히어로에 붙인다**(2026-08-23 팀장 확정).
+                # 플래너가 위험 모듈을 안 내는 계획을 만들면 인정문구가 붙을 자리가
+                # 없어 조용히 사라졌다. 검증된 법정 문구가 없어지는 건데, 그게
+                # create 모드의 존재 이유라 제일 나쁜 유실이다.
+                #
+                # 히어로를 고른 이유: 원래 한 마디 헤드라인 자리고, 검증된 문구가
+                # 생성 카피보다 그 자리에 더 맞다. `build_cards`가 setdefault라
+                # 인정문구 섹션이 앞에 있으면 자동으로 이겨서 히어로 카피를 대체한다.
+                section.module_kind = hero.kind
+                hero = None  # 인정문구가 여러 개여도 히어로는 한 번만 내준다
         elif section.source == "clinical_evidence" and clinical_slots:
             section.module_kind = clinical_slots[0].kind
 

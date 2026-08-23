@@ -371,8 +371,8 @@ def test_모듈에_붙은_인정문구는_스킵이_아니다():
     assert _unplaced_claim_skips([claim]) == []
 
 
-def test_위험모듈_없는_계획에서_인정문구가_카드에_없다는_것을_고정한다():
-    """지금 동작을 기록해 둔다. 배치 방식이 정해지면 이 테스트를 바꾼다."""
+def test_위험모듈이_없으면_인정문구가_히어로에_붙는다():
+    """2026-08-23 팀장 확정 (가). 전엔 붙을 자리가 없어 조용히 사라졌다."""
     from barum.generate.content import _link_risky_module_sections, build_cards
     from barum.models import ImagePlan, LayoutModule, LayoutPlan, Section
 
@@ -384,6 +384,41 @@ def test_위험모듈_없는_계획에서_인정문구가_카드에_없다는_�
     sections = [claim, hero]
     _link_risky_module_sections(sections, plan)
 
-    assert claim.module_kind is None, "위험 모듈이 없으면 붙을 자리가 없다"
+    assert claim.module_kind == "hero_intro"
     cards = build_cards(sections, plan, ImagePlan())
-    assert not any(c.text_source == "approved_claim" for c in cards)
+    # 검증된 문구가 생성 카피를 이긴다(build_cards는 setdefault, 인정문구가 앞에 있다).
+    assert [c.text_source for c in cards] == ["approved_claim"]
+    assert cards[0].headline == "피부의 미백에 도움을 준다."
+
+
+def test_위험모듈이_있으면_거기_붙고_히어로는_그대로다():
+    """히어로 폴백은 마지막 수단이다. 원래 자리가 있으면 그쪽이 우선이다."""
+    from barum.generate.content import _link_risky_module_sections
+    from barum.models import LayoutModule, LayoutPlan, Section
+
+    claim = Section(kind="광고문구", text="피부의 미백에 도움을 준다.", source="approved_claim")
+    plan = LayoutPlan(
+        modules=[
+            LayoutModule(kind="hero_intro", purpose="소개", layout_type="hero_fullbleed"),
+            LayoutModule(
+                kind="efficacy_explain", purpose="효능", layout_type="section_statement",
+                has_claim_risk=True,
+            ),
+        ]
+    )
+    _link_risky_module_sections([claim], plan)
+    assert claim.module_kind == "efficacy_explain"
+
+
+def test_히어로도_없으면_스킵으로_남는다():
+    """자리가 정말 없을 때는 조용히 사라지지 않고 사유가 남아야 한다."""
+    from barum.generate.content import _link_risky_module_sections, _unplaced_claim_skips
+    from barum.models import LayoutModule, LayoutPlan, Section
+
+    claim = Section(kind="광고문구", text="피부의 미백에 도움을 준다.", source="approved_claim")
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="how_to_use", purpose="사용법", layout_type="step_list")]
+    )
+    _link_risky_module_sections([claim], plan)
+    assert claim.module_kind is None
+    assert _unplaced_claim_skips([claim])
