@@ -1452,8 +1452,14 @@ function ContentGeneratorContent() {
           <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
           <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">생성된 상세페이지 초안</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+          {/* "재검증 통과"를 여기 고정 문구로 박아뒀더니 실제로 재검증에
+              실패해도(아래 recheckBadge가 "재검증 실패"를 보여줄 때도) 이
+              문구는 그대로 "통과"라고 말해서 같은 화면에 통과/실패가 동시에
+              떴다(팀장 실측, 2026-08-23). 여긴 결과가 아니라 파이프라인
+              설명 자리라 결과를 암시하는 말을 빼고 "포함"으로 바꾼다 -
+              실제 결과는 아래 recheckBadge 하나만 말한다. */}
           <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="secHint">
-            {isGenerated ? "원샷 생성 · 편집 불가 · 재검증 통과" : "원샷 생성 · 편집 불가"}
+            {isGenerated ? "원샷 생성 · 편집 불가 · 재검증 포함" : "원샷 생성 · 편집 불가"}
           </span>
         </div>
 
