@@ -240,10 +240,13 @@ function FindingCard({
                 제목이 길어지면 버튼 쪽으로 폭을 침범해 아이콘+글자가 세로로
                 쪼개지는 버그가 있었다(2026-08-23, 팀장 실측 - "미백에 도움"이
                 두 줄로 끊기고 "수용"/"제외" 버튼이 47px까지 눌림). 버튼 묶음은
-                shrink-0으로 항상 제 폭을 지키게 하고, 제목만 남는 공간에서
-                줄바꿈되게 한다 - 버튼이 깨지느니 제목이 두 줄이 되는 게 낫다. */}
+                shrink-0으로 항상 제 폭을 지키게 한다. 제목 span은 min-w-0만
+                준다(flex-1은 안 씀) - flex-1은 짧은 제목("재생" 두 글자)도
+                남는 폭을 억지로 다 채워서 빈 테두리 상자가 늘어나 보이는
+                부작용이 있었다(팀장 실측, #292 직후). min-w-0만 있으면 평소엔
+                내용 크기대로, 버튼과 공간이 부족할 때만 줄어들며 줄바꿈된다. */}
             <div className="flex items-center justify-between gap-2">
-              <span className={`${spanStyle} flex-1 min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
+              <span className={`${spanStyle} min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
                 {finding.span}
                 {positionIdxs.length > 1 && (
                   <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
