@@ -91,13 +91,16 @@ _MODULE_PROMPT = """너는 화장품 상세페이지의 '저위험 서술'만 �
 고객이 읽을 카피만 써라. "비주얼:", "이미지:", "설명:", "아이콘 그리드:", "좌우 배치"
 같은 말은 쓰지 않는다. 그건 화면이 알아서 하고, 여기 쓰면 고객에게 그대로 보인다.
 
-**문장 구조를 반드시 지켜라. 프론트가 첫 문장을 헤드라인으로 크게 키워 쓴다.**
-- **첫 문장은 20자 이내의 짧은 한 마디**여야 한다. 설명하지 말고 던져라.
-  좋은 예: "속기미, 왜 생길까요?" / "발림성부터 다릅니다" / "이렇게 쓰세요"
-  나쁜 예: "칙칙함이나 속기미는 수면, 스트레스, 외부 환경 등 여러 요인으로 인해
-  피부 표면에서 나타나는 현상일 수 있습니다." (설명을 첫 문장에 넣었다)
-- 설명은 **두 번째 문장부터** 2~3문장으로 쓴다.
-- 첫 문장이 길면 상세페이지에서 큰 글씨가 다섯 줄로 흘러 헤드라인 구실을 못 한다.
+**형식을 반드시 지켜라. 프론트가 첫 줄을 헤드라인으로 크게 키워 쓴다.**
+- **헤드라인을 첫 줄에만 쓰고, 줄을 바꾼 뒤 설명을 이어라.** 이게 제일 중요하다.
+  text 값 안에 줄바꿈 문자(\\n)를 넣으라는 뜻이다.
+- **헤드라인은 20자 이내의 짧은 한 마디**다. 설명하지 말고 던져라.
+- 설명은 둘째 줄부터 2~3문장으로 쓴다.
+
+  올바른 예: "발림성부터 다릅니다\\n젤-세럼 타입의 가벼운 제형입니다. 끈적임이 거의 없습니다."
+  틀린 예:   "발림성부터 다릅니다 젤-세럼 타입의 가벼운 제형입니다. 끈적임이 거의 없습니다."
+             (줄을 안 바꿔서 헤드라인이 어디서 끝나는지 알 수 없다)
+- 줄을 안 바꾸면 큰 글씨가 여러 줄로 흘러 헤드라인 구실을 못 한다.
 
 JSON으로만 답하라: {{"sections": [{{"kind": "모듈kind", "text": "..."}}]}}"""
 
@@ -140,6 +143,22 @@ def generate_sections(req: GenerateRequest, vlm) -> list[Section]:
     return _template_sections(req)
 
 
+def _ingredients_for_prompt(req: GenerateRequest) -> str:
+    """카피 프롬프트에 실을 전성분 문자열.
+
+    **create 모드는 `ingredients`가 아니라 `ingredient_amounts`에 성분을 담는다**
+    (전자는 improve 모드 입력이다). 그걸 안 보고 `ingredients`만 쓰면 사업자가
+    성분을 입력했는데도 프롬프트엔 "(미상)"이 들어가고, LLM이 "전성분 표기는
+    제공되지 않습니다" 같은 사과문을 쓴다(2026-08-23 실측).
+    """
+    if req.ingredients:
+        return req.ingredients
+    amounts = req.ingredient_amounts or []
+    if amounts:
+        return ", ".join(f"{a.name} {a.amount}".strip() for a in amounts)
+    return "(미상)"
+
+
 def generate_module_sections(
     req: GenerateRequest, modules: list[LayoutModule], vlm
 ) -> list[Section]:
@@ -154,7 +173,7 @@ def generate_module_sections(
     listed = "\n".join(f"- {m.kind}: {m.purpose}" for m in modules)
     prompt = _MODULE_PROMPT.format(
         product_name=req.product_name or "(미상)",
-        ingredients=req.ingredients or "(미상)",
+        ingredients=_ingredients_for_prompt(req),
         notes=req.notes or "(없음)",
         # 프리셋의 타겟팅만. 레이아웃 방향은 여기 넣으면 안 된다 — 지시문이 그대로
         # 카피로 새어나온다(presets.audience_hint docstring에 실측 결과).
