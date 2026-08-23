@@ -166,10 +166,48 @@
         }
       }
     },
+    "/check/us-sunscreen": {
+      "post": {
+        "summary": "Check Us Sunscreen",
+        "description": "미국 프리플라이트(자외선차단 최소보장) 검사. 국내 `/check`와 별도 엔드포인트(팀 확정).\n\n위반/합법 판정이 아니라 \"화장품→OTC의약품 분류전환\" 안내다(USPreflightCategory 참조).\ncountry는 프론트가 넘기되 지금은 미국만 실동작(`sunscreen_otc_classification.md` 스코프).\n이미지·글 중 최소 하나는 있어야 한다.",
+        "operationId": "check_us_sunscreen_check_us_sunscreen_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_check_us_sunscreen_check_us_sunscreen_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/USPreflightReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/remediate": {
       "post": {
         "summary": "Remediate",
-        "description": "위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다.",
+        "description": "위반 문구(sentence)와 유형(violation_type)을 입력받아 대체 표현을 제안한다.\n\n**조건표 후보를 그대로 내려주지 않고 안전한 것 하나만 고른다.**\n\n예전엔 `get_remediation()`이 낸 배열을 그대로 돌려줬고 프론트가 그걸 쉼표로\n이어 붙여 보여줬다. 그래서 리포트 화면에 모순이 보였다(2026-08-20 팀장 발견):\n같은 화면 카드 #3에서 `진정`이 검토필요로 걸리는데, 카드 #9의 대체표현 제안이\n\"피부 진정, 자극 완화\"였다. 우리가 방금 문제 삼은 표현을 우리가 추천한 것이다.\n\n`first_safe()`는 위반 후보를 버리고 검토필요 후보를 뒤로 미룬다(`generate/replace.py`).\n조건표에는 1순위가 검토필요인데 2순위가 깨끗한 규칙이 실제로 있다.\n\n**LLM 재작성은 여기서 안 한다.** 카드를 펼칠 때마다 실시간 호출이라 건당 5~8초가\n붙었다. 다듬은 대체표현은 이제 판정할 때 배치로 한 번에 만들어 `CheckReport.\nreplacements`에 실려 온다(`pipeline._build_replacements_for_report`, 2026-08-22\n팀장 지시). 리포트 화면은 그걸 읽으므로 이 엔드포인트를 부를 일이 없다.\n\n그래도 남겨둔다. replacements가 비어 있는 경우(생성 실패, 이 필드 이전에 저장된\n옛 리포트)에 즉시 답할 폴백이 필요하고, 조건표 경로는 과금도 지연도 0이다.",
         "operationId": "remediate_remediate_post",
         "requestBody": {
           "content": {
@@ -205,10 +243,89 @@
         }
       }
     },
+    "/generated/{image_id}": {
+      "get": {
+        "summary": "Get Generated Image",
+        "description": "`_image_sink`가 저장한 생성 이미지를 스트리밍한다(버킷 private, 서명 URL 없음).",
+        "operationId": "get_generated_image_generated__image_id__get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/uploads/product-photo": {
+      "post": {
+        "summary": "Upload Product Photo",
+        "description": "판매자가 올리는 제품사진을 저장하고 photo_id를 낸다(create 모드, AI 합성 참조용).\n\n`/generate`는 복잡한 JSON 바디(ingredient_amounts 등 중첩 리스트)라 통째로\nmultipart로 바꾸지 않고, `/generated/{image_id}`와 같은 \"먼저 올려 id를 받고\n나중에 그 id로 참조\" 패턴을 그대로 따른다(냐냐·PM과 확정, 2026-08-19).\n응답의 photo_id를 `GenerateRequest.product_photo_ids`에 담아 `/generate`로 보낸다.",
+        "operationId": "upload_product_photo_uploads_product_photo_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_product_photo_uploads_product_photo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Upload Product Photo Uploads Product Photo Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/generate": {
       "post": {
         "summary": "Generate",
-        "description": "검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve).\n\n위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.",
+        "description": "검사된 광고를 안전 버전으로 생성·개선한다(FR-11/13, improve+create).\n\n위반 문구는 조건표로 결정적 치환, 저위험 서술은 LLM 생성, 생성물은 재검증한다.\ncreate 모드의 모듈별 배경 이미지 생성은 `IMAGE_GENERATION_ENABLED=1`일 때만\n실제로 돈다(기본 비활성). 꺼져 있으면 image_generator=None이라 이미지 관련\n인자를 안 만들고 그대로 통과한다(불필요한 Supabase 클라이언트 생성 회피).",
         "operationId": "generate_generate_post",
         "requestBody": {
           "content": {
@@ -247,6 +364,57 @@
   },
   "components": {
     "schemas": {
+      "ApprovedReplacement": {
+        "properties": {
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "replaced": {
+            "type": "string",
+            "title": "Replaced"
+          },
+          "finding_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Index"
+          },
+          "violation_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViolationType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original",
+          "replaced"
+        ],
+        "title": "ApprovedReplacement",
+        "description": "리포트에서 **사용자가 수용한** 대체표현. 개선 모드의 입력이다.\n\n개선(improve)은 원래 `/check`가 이미 한 일(판정 + 대체표현 생성)을 처음부터 다시\n했다. 비용이 두 배인 것도 문제지만 더 나쁜 건 **사용자가 승인한 문구와 실제\n생성물이 달라질 수 있다는 것**이다. 생성은 실행마다 흔들린다(같은 개선본을 두 번\n검사해 4건/6건이 갈린 실측이 있다). 승인한 것을 그대로 받아 치환만 한다.\n\n**여기 담긴 문구는 클라이언트가 보낸 값이라 그대로 믿지 않는다.** 서버가 만든\n것과 같은 게이트를 다시 통과시킨다(`generate/replace.py:_accept`). 안 그러면\n지금까지 쌓은 대체표현 게이트가 우회된다."
+      },
       "BasisCitation": {
         "properties": {
           "id": {
@@ -370,6 +538,123 @@
         ],
         "title": "Body_check_check_post"
       },
+      "Body_check_us_sunscreen_check_us_sunscreen_post": {
+        "properties": {
+          "country": {
+            "type": "string",
+            "title": "Country",
+            "description": "대상국. 1차 대상국은 미국만 지원(팀 확정). 다른 값은 400.",
+            "default": "US"
+          },
+          "ad_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ad Text"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "ingredients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredients",
+            "description": "전성분(콤마 구분). 있으면 미국 승인 자외선차단 성분 대조가 붙는다."
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
+          }
+        },
+        "type": "object",
+        "title": "Body_check_us_sunscreen_check_us_sunscreen_post"
+      },
+      "Body_upload_product_photo_uploads_product_photo_post": {
+        "properties": {
+          "photo": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Photo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo"
+        ],
+        "title": "Body_upload_product_photo_uploads_product_photo_post"
+      },
+      "CanvasBackground": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "placements": {
+            "items": {
+              "$ref": "#/components/schemas/ModulePlacement"
+            },
+            "type": "array",
+            "title": "Placements",
+            "description": "모듈별 배치 좌표. 비면 프론트가 기존 렌더로 폴백한다."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CanvasBackground",
+        "description": "상세페이지 전체에 깔리는 긴 배경 이미지 1장 (레이어 구조 1단계).\n\n구조: 이 배경 위에 모듈 이미지·표·설문 결과·문구가 얹힌다(팀장 확정, 2026-08-20).\n모듈 이미지를 **대신하지 않는다** — 둘 다 쓰인다.\n\n`placements`가 비어 있으면 프론트는 기존 방식(모듈마다 자기 이미지를 쓰는 렌더)으로\n폴백한다. 배경 분석에 실패해도 생성 전체를 실패시키지 않기 위한 경로다."
+      },
       "CheckReport": {
         "properties": {
           "findings": {
@@ -409,6 +694,13 @@
                 "type": "null"
               }
             ]
+          },
+          "replacements": {
+            "items": {
+              "$ref": "#/components/schemas/Replacement"
+            },
+            "type": "array",
+            "title": "Replacements"
           }
         },
         "type": "object",
@@ -418,6 +710,134 @@
         ],
         "title": "CheckReport",
         "description": "`POST /check` 응답. findings + unjudged + summary.\n\nresult_id: 이 검사가 저장됐으면 그 추측불가 id(다시 보기 URL). 저장 안 됐으면\n(JUDGE_KIND=stub·DB 미설정·저장 실패) None. 프론트는 있으면 다시 보기 링크를 건다.\nbasis: 검사 시점에 실제 적용된 규제 근거 스냅샷. 나중에 레지스트리가 갱신돼도\n이 리포트를 다시 볼 때는 검사 당시 값 그대로 보여야 해서 결과에 박아 보낸다."
+      },
+      "ClinicalEvidence": {
+        "properties": {
+          "claim": {
+            "type": "string",
+            "title": "Claim",
+            "description": "무엇을 개선했는지, 예: \"다크스팟 개선\""
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "결과 수치 원문 표기, 예: \"87%\", \"4주 후 2.1배\""
+          },
+          "institution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution",
+            "description": "시험기관명"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period",
+            "description": "시험기간, 예: \"4주\", \"8주\""
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "피험자 수·조건 등 부연"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim",
+          "value"
+        ],
+        "title": "ClinicalEvidence",
+        "description": "create 모드 전용: 사업자가 직접 입력한 실증자료(인체적용시험 결과 등).\n\n**barum은 이 자료의 진위를 검증하지 않는다.** 기능성 인증서(`certifications`)와\n달리 대조할 레퍼런스팩이 없어서, 사업자 입력을 그대로 신뢰하고 그대로 싣는다.\n그래서 ① 응답 안내문구에 미검증임을 명시하고 ② `risk_confirmations`에 진위\n확인 항목을 넣는다(하니·PM 확정, 2026-08-18).\n\n이 값이 하나라도 있으면 임상 계열 모듈(clinical_result 등)이 계획에 허용된다.\n수치는 LLM이 쓰지 않고 여기 입력값을 그대로 쓴다(지어낼 여지를 없앤다)."
+      },
+      "ContentCard": {
+        "properties": {
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "module_kind": {
+            "type": "string",
+            "title": "Module Kind"
+          },
+          "layout_type": {
+            "type": "string",
+            "title": "Layout Type",
+            "default": "section_statement"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "default": ""
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "text_source": {
+            "type": "string",
+            "title": "Text Source"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "image_status": {
+            "type": "string",
+            "title": "Image Status",
+            "default": "skipped"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "module_kind",
+          "headline",
+          "text",
+          "text_source"
+        ],
+        "title": "ContentCard",
+        "description": "산출물 카드 한 장. **이미지 1장 + 문장 1개**, 그 이상 안 넣는다(팀장 확정 2026-08-22).\n\n전에는 프론트가 sections·module_images·layout_plan 세 곳을 module_kind로 짝지어\n긴 HTML 한 장으로 이어붙였다. 짝짓기를 백엔드가 해서 카드로 내려준다.\n\nsections·image_plan은 그대로 둔다. 지금 프론트가 그걸로 도는 중이라, 카드만 더해\n두면 백엔드를 먼저 머지해도 화면이 안 깨진다. 프론트가 갈아탄 뒤 정리한다."
       },
       "Finding": {
         "properties": {
@@ -454,8 +874,41 @@
             "type": "string",
             "title": "Explanation"
           },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Grade"
+          },
           "location": {
             "$ref": "#/components/schemas/Location"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -551,6 +1004,36 @@
             "type": "array",
             "title": "Certifications"
           },
+          "clinical_evidence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ClinicalEvidence"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clinical Evidence",
+            "description": "사업자 입력 실증자료(create 모드 전용). barum은 진위를 검증하지 않는다."
+          },
+          "survey_evidence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SurveyEvidence"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Survey Evidence",
+            "description": "사업자 입력 소비자 설문조사 결과(create 모드 전용). **실증자료가 아니다** — 임상 모듈을 열지 못하고, 피부 변화(효능) 주장은 거부된다."
+          },
           "notes": {
             "anyOf": [
               {
@@ -562,6 +1045,120 @@
             ],
             "title": "Notes",
             "description": "설문/추가 제품정보 자유서술"
+          },
+          "approved_replacements": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ApprovedReplacement"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Replacements",
+            "description": "리포트에서 사용자가 수용한 대체표현(improve 모드). 주면 판정·대체표현 생성을 다시 하지 않고 치환만 한다(LLM 호출 절약 + 승인한 문구와 생성물 일치). 안 주면 기존대로 처음부터 계산한다."
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "콘텐츠 프리셋 id(create 모드). 타겟팅·레이아웃 방향·색/무드·폰트단을 한 세트로 먹인다(`reference/data/content_presets.json`). 없는 id면 무시하고 기존 경로로 생성한다. color_tone·mood를 함께 보내면 그쪽이 프리셋보다 우선한다."
+          },
+          "targeting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targeting",
+            "description": "이 상세페이지가 겨냥하는 층. 프리셋이 채우지만 직접 줄 수도 있다(그러면 프리셋보다 우선). 텍스트·이미지 프롬프트 양쪽에 들어간다."
+          },
+          "layout_direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Direction",
+            "description": "레이아웃 방향. targeting과 같은 규칙(프리셋이 채우고 명시값이 우선)."
+          },
+          "color_tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Tone",
+            "description": "인터뷰에서 받은 컬러톤(create 모드, 이미지 생성용). 예: '베이지·아이보리 톤'"
+          },
+          "mood": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mood",
+            "description": "인터뷰에서 받은 분위기(create 모드, 이미지 생성용). 예: '미니멀하고 차분한'"
+          },
+          "product_photo_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Photo Ids",
+            "description": "`POST /uploads/product-photo`로 먼저 올린 제품사진 ID 목록(create 모드). 있으면 배경 이미지 생성 시 합성 참조 이미지로 쓴다(AI 배경·연출 합성, 팀장 승인)."
+          },
+          "formulation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formulation Type",
+            "description": "인터뷰에서 받은 제형(create 모드, table_info 상품정보 모듈용). 예: '액상', '크림'"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume",
+            "description": "인터뷰에서 받은 용량·중량(create 모드, table_info 상품정보 모듈용). 예: '50ml'"
           },
           "image_generation": {
             "anyOf": [
@@ -586,6 +1183,13 @@
             },
             "type": "array",
             "title": "Sections"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/ContentCard"
+            },
+            "type": "array",
+            "title": "Cards"
           },
           "replacements": {
             "items": {
@@ -618,8 +1222,26 @@
             "type": "array",
             "title": "Skipped Claims"
           },
+          "layout_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "create 모드 모듈 구성·순서. improve 모드는 None"
+          },
           "recheck": {
             "$ref": "#/components/schemas/RecheckSummary"
+          },
+          "unapplied_replacements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unapplied Replacements"
           },
           "disclaimer": {
             "type": "string",
@@ -667,6 +1289,12 @@
               }
             ],
             "title": "Prompt"
+          },
+          "canvas_requested": {
+            "type": "boolean",
+            "title": "Canvas Requested",
+            "description": "긴 배경 이미지 1장을 추가로 만들지(레이어 구조 1단계). 모듈 이미지를 대신하지 않고 더해지므로 이미지가 한 장 늘고 과금도 는다. 그래서 기본은 꺼져 있다.",
+            "default": false
           }
         },
         "type": "object",
@@ -723,6 +1351,25 @@
           },
           "generation": {
             "$ref": "#/components/schemas/ImageGenResult"
+          },
+          "module_images": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleImage"
+            },
+            "type": "array",
+            "title": "Module Images",
+            "description": "create 모드 모듈별 이미지 생성 결과"
+          },
+          "canvas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CanvasBackground"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "긴 배경 이미지 1장(옵트인). None이면 요청 안 했거나 생성기가 없다는 뜻."
           }
         },
         "type": "object",
@@ -758,6 +1405,67 @@
         "title": "JudgmentFlag",
         "description": "판정 확정도. v1.8: 위험도(고/중/저) 등급 폐지 → 위반/검토필요 이진화.\n\n'근거 있으면 위반, 근거 없으면 검토필요'(FR-5). RagJudge 이전엔 대부분\n유형에 규칙집 대조 수단이 없어 잠정적으로 위반으로 둔다(recall 우선).\n2호(기능성오인)만 예외다. 성분 정합이 실제 근거 대조라 그 결과를 쓴다."
       },
+      "LayoutModule": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "has_claim_risk": {
+            "type": "boolean",
+            "title": "Has Claim Risk",
+            "default": false
+          },
+          "layout_type": {
+            "type": "string",
+            "title": "Layout Type",
+            "default": "section_statement"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "purpose"
+        ],
+        "title": "LayoutModule",
+        "description": "상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."
+      },
+      "LayoutPlan": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutModule"
+            },
+            "type": "array",
+            "title": "Modules"
+          },
+          "product_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Type",
+            "description": "추측된 상품 종류. None이면 레퍼런스 없이 폴백"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "planner(LLM 계획) | fallback(고정 플랜)",
+            "default": "fallback"
+          }
+        },
+        "type": "object",
+        "title": "LayoutPlan",
+        "description": "이번 상품 상세페이지의 모듈 구성·순서(플래너 산출물)."
+      },
       "Location": {
         "properties": {
           "tile": {
@@ -774,6 +1482,28 @@
           "order": {
             "type": "integer",
             "title": "Order"
+          },
+          "x_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Start"
+          },
+          "x_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X End"
           },
           "y_start": {
             "anyOf": [
@@ -836,7 +1566,100 @@
           "order"
         ],
         "title": "Location",
-        "description": "문구가 잡힌 위치.\n\nOCR은 글자 좌표(bbox)를 주지 않는다. 우리가 확보하는 위치 정보는 어느 타일의\n몇 번째 문장이냐까지다. 타일 단위 세로 밴드(y_start~y_end)를 원본 이미지\n좌표로 실어, 프론트가 원본 위에 밴드를 하이라이트할 수 있게 한다. 문장 단위\n정밀 좌표는 없다(OCR이 bbox를 안 주므로 타일 밴드가 최선).\n\n이미지 입력만 좌표가 있다. 텍스트 입력(이미지 없음)이면 tile과 좌표 모두 None.\nsource_h/source_w는 원본 이미지 크기라 프론트가 밴드를 원본 축척에 맞춘다."
+        "description": "문구가 잡힌 위치.\n\nVLM 비전 OCR에서 문구/단어 단위의 정밀 사각 좌표(x_start~x_end, y_start~y_end)를\n원본 이미지 픽셀 좌표로 실어, 프론트가 원본 위에 정밀한 하이라이트 박스를 칠 수 있게 한다.\n좌표가 없거나 밴드만 있는 경우 x_start/x_end는 None 또는 이미지 전체 폭이 될 수 있다.\n\n이미지 입력만 좌표가 있다. 텍스트 입력(이미지 없음)이면 tile과 좌표 모두 None.\nsource_h/source_w는 원본 이미지 크기라 프론트가 밴드 및 bbox를 원본 축척에 맞춘다."
+      },
+      "ModuleImage": {
+        "properties": {
+          "module_kind": {
+            "type": "string",
+            "title": "Module Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "module_kind",
+          "status"
+        ],
+        "title": "ModuleImage",
+        "description": "계획된 모듈 하나에 대한 이미지 생성 결과.\n\n텍스트는 굽지 않는다. 배경·연출만 만들고 문구는 프론트가 위에 얹는다.\n실패·거부도 조용히 빠지지 않게 status와 reason으로 남긴다."
+      },
+      "ModulePlacement": {
+        "properties": {
+          "module_kind": {
+            "type": "string",
+            "title": "Module Kind"
+          },
+          "y_start_pct": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y Start Pct"
+          },
+          "y_end_pct": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y End Pct"
+          },
+          "background_mode": {
+            "type": "string",
+            "title": "Background Mode",
+            "description": "image_scrim(사진 위 스크림) | solid_plate(불투명 플레이트). layout_type으로 정해진다.",
+            "default": "solid_plate"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "placed(배치됨) | skipped(배치 실패)",
+            "default": "placed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "skipped 사유. 조용히 빠지지 않게 남긴다(CLAUDE.md §E)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "module_kind",
+          "y_start_pct",
+          "y_end_pct"
+        ],
+        "title": "ModulePlacement",
+        "description": "모듈 하나가 긴 배경 위 어디에 어떤 바탕으로 앉는지 (레이어 구조 2단계).\n\n**좌표는 픽셀이 아니라 배경 세로 대비 비율이다.** 배경 크기가 생성마다 달라지고\n(비율을 프롬프트로만 지시한다), export HTML은 컨테이너 폭에 맞춰 스케일된다.\n퍼센트라야 둘 다에 안 깨진다. VLM bbox 하이라이트가 이미 같은 관례를 쓴다\n(`design/mockups/long-canvas-placement-rules.md` §1).\n\n`background_mode`는 **`layout_type`으로 결정된다. 밝기 계산이 아니다.**\n처음엔 \"quiet zone의 대비 여유\"로 가르자는 안이 있었는데 성립하지 않는다.\n스크림 `rgba(0,0,0,.6)`은 PR #208에서 **최악 조건(순백 배경)으로 역산한 값**이라\n어떤 배경에서도 AA를 넘긴다(순백 5.74:1, 어두울수록 더 올라감). 밝기를 아무리\n재도 답이 항상 `image_scrim`이라 `solid_plate`가 죽은 코드가 된다.\n\n실제 기준은 어휘집 12종의 성격이다(디디 §4):\n- 사진 위에 문구를 직접 겹치는 건 `hero_fullbleed`·`mood_macro` **둘뿐**\n- 나머지는 완전 평면이거나 이미지·텍스트 분리형이라 `solid_plate`가 **기본값**이지\n  안전지대를 못 찾아 쓰는 폴백이 아니다"
       },
       "PlacedImage": {
         "properties": {
@@ -876,6 +1699,13 @@
             "type": "integer",
             "title": "N Needs Review",
             "default": 0
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array",
+            "title": "Findings"
           }
         },
         "type": "object",
@@ -1002,6 +1832,28 @@
           "basis": {
             "type": "string",
             "title": "Basis"
+          },
+          "finding_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Index"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "type": "object",
@@ -1056,6 +1908,33 @@
           "source": {
             "type": "string",
             "title": "Source"
+          },
+          "table_rows": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TableRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Rows",
+            "description": "table_info layout_type 모듈용 구조화 데이터. 없으면 text만 쓰는 일반 섹션"
+          },
+          "module_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Kind",
+            "description": "이 섹션이 채우는 layout_plan 모듈의 kind. 프론트가 모듈 이미지를 찾을 때 쓴다. kind와 다를 수 있다 — 위반소지 모듈(hero_intro 등)의 내용은 LLM이 아니라 인정문구·실증자료가 채우므로 kind가 '광고문구'·'실증자료'로 나온다."
           }
         },
         "type": "object",
@@ -1115,7 +1994,15 @@
             "title": "Product Name"
           },
           "report": {
-            "$ref": "#/components/schemas/CheckReport"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckReport"
+              },
+              {
+                "$ref": "#/components/schemas/USPreflightReport"
+              }
+            ],
+            "title": "Report"
           }
         },
         "type": "object",
@@ -1157,12 +2044,33 @@
             "title": "N Unjudged",
             "default": 0
           },
+          "n_ocr_failed_tiles": {
+            "type": "integer",
+            "title": "N Ocr Failed Tiles",
+            "default": 0
+          },
           "counts_by_type": {
             "additionalProperties": {
               "type": "integer"
             },
             "type": "object",
             "title": "Counts By Type"
+          },
+          "product_out_of_scope": {
+            "type": "boolean",
+            "title": "Product Out Of Scope",
+            "default": false
+          },
+          "out_of_scope_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Of Scope Reason"
           }
         },
         "type": "object",
@@ -1173,6 +2081,175 @@
         ],
         "title": "Summary",
         "description": "리포트 상단 요약. 정책상 점수가 아니라 근거 개수로 표현한다.\n\nn_findings = n_violation + n_needs_review(합법·대상외 제외). n_unjudged는\n별개 개념이다(판정 자체를 못함, VLM 호출 실패). 검토필요(판정은 했으나 근거\n약함)와 혼동하지 않는다."
+      },
+      "SurveyEvidence": {
+        "properties": {
+          "claim": {
+            "type": "string",
+            "title": "Claim",
+            "description": "무엇에 대한 응답인지, 예: \"향에 만족\""
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "결과 수치 원문 표기, 예: \"96%\""
+          },
+          "sample_size": {
+            "type": "string",
+            "title": "Sample Size",
+            "description": "표본 수, 예: \"200명\""
+          },
+          "institution": {
+            "type": "string",
+            "title": "Institution",
+            "description": "조사기관명"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "description": "조사 시기, 예: \"2026년 3월\""
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "description": "조사 방법, 예: \"온라인 자기기입식 설문\""
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim",
+          "value",
+          "sample_size",
+          "institution",
+          "period",
+          "method"
+        ],
+        "title": "SurveyEvidence",
+        "description": "create 모드 전용: 사업자가 입력한 **소비자 설문조사** 결과.\n\n**`ClinicalEvidence`와 절대 섞지 않는다.** 관리지침 [별표2]가 인정하는 실증\n수단은 인체적용시험·인체외시험·시험분석·기능성심사 자료뿐이고 **설문조사는\n목록에 없다.** 그래서 이 값이 아무리 많아도 임상 계열 모듈(clinical_*)은\n열리지 않는다(2026-08-20 팀장 확정).\n\n쓸 수 있는 건 효능이 아닌 항목뿐이다(향·발림성·용기·재구매의향 등). 피부\n변화를 말하는 순간 효능 주장이라 설문으로는 못 받친다. 판별은\n`reference.survey.is_efficacy_survey`가 한다.\n\n메타데이터를 전부 필수로 받는 이유: 판정기가 \"사용자 96% 만족\"을 5호(거짓·과장)\n검토필요로 잡으면서 사유를 이렇게 냈다 — \"설문방법·표본·시기·출처 등 근거\n제시가 없어 객관적 확인 필요\"(2026-08-20 실측). 수치만 있고 출처가 없으면\n그 자체로 위반 소지라, 선택 필드로 두면 위반 소지 문구를 우리가 만들어주게 된다.\n\n**다만 메타데이터를 다 넣어도 5호 검토필요는 해소되지 않는다**(2026-08-20 실측으로\n확인, 처음엔 해소될 거라 봤으나 틀렸다). 판정기는 조사기관·시기·표본이 있어도\n원자료(조사방법·무작위성·질문 문항)를 봐야 한다고 본다. 그래서 이 필드들은\n\"합법으로 만들어주는 장치\"가 아니라 **검토 범위를 좁히고 사용자에게 무엇을\n준비해야 하는지 알려주는 장치**다. 그 사실은 `risk_confirmations`로 고지한다."
+      },
+      "TableRow": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "TableRow",
+        "description": "table_info 레이아웃 슬롯 한 줄(label→value). 예: \"제형\"→\"액상\"."
+      },
+      "USPreflightCategory": {
+        "type": "string",
+        "enum": [
+          "OTC의약품_분류전환",
+          "미국_미승인_성분",
+          "성분정보_확인불가"
+        ],
+        "title": "USPreflightCategory",
+        "description": "미국 프리플라이트 지적 갈래. 국내 ViolationType/JudgmentFlag와 다른 개념이다 —\n법 위반이 아니라 화장품→OTC의약품 규제 카테고리 전환 안내다(팀 확정 2026-08-18,\nreference/cosmetic_us/sunscreen_otc_classification.md §0)."
+      },
+      "USPreflightFinding": {
+        "properties": {
+          "span": {
+            "type": "string",
+            "title": "Span"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "category": {
+            "$ref": "#/components/schemas/USPreflightCategory"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "span",
+          "sentence",
+          "category",
+          "explanation",
+          "location"
+        ],
+        "title": "USPreflightFinding",
+        "description": "미국 프리플라이트 지적 하나. 국내 Finding과 필드는 비슷하지만 violation_type/flag\n대신 category를 쓴다(위반이 아니므로). 국내 Finding과 절대 섞지 않는다."
+      },
+      "USPreflightReport": {
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/USPreflightFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/USPreflightSummary"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "findings",
+          "summary",
+          "disclaimer"
+        ],
+        "title": "USPreflightReport",
+        "description": "미국 프리플라이트 검사 응답. 국내 CheckReport와 별도 엔드포인트·별도 스키마(팀 확정).\n\ndisclaimer: 리포트 하단 각주. 확정 안 된 규제 변경 리스크(OTC000008 등)는 개별\nfinding으로 안 만들고 여기 각주로만 담기로 확정함(sunscreen_otc_classification.md §4)."
+      },
+      "USPreflightSummary": {
+        "properties": {
+          "n_sentences": {
+            "type": "integer",
+            "title": "N Sentences"
+          },
+          "n_findings": {
+            "type": "integer",
+            "title": "N Findings"
+          },
+          "counts_by_category": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts By Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n_sentences",
+          "n_findings"
+        ],
+        "title": "USPreflightSummary",
+        "description": "미국 프리플라이트 리포트 상단 요약."
       },
       "UnjudgedSentence": {
         "properties": {
