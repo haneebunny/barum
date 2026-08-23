@@ -473,3 +473,34 @@ def test_CHECK_REPLACEMENTS_0이면_대체표현을_끈다(monkeypatch):
     assert report.findings  # 판정은 그대로
     assert report.replacements == []
     assert fake.calls == 0
+
+
+# ── 소수점이 문장 끝으로 잘리던 문제 (2026-08-23) ──────────────────────────
+
+def test_소수점은_문장_끝이_아니다():
+    """**사업자가 입력한 실증 수치가 문장 한가운데서 잘렸다.**
+
+    "피부결 개선 2.1배"가 "피부결 개선 2" + "1배"로 쪼개져, 판정기가 깨진 조각을
+    문장으로 보고 판정하고 리포트에도 그렇게 떴다. 같은 방어가 헤드라인 분리엔
+    이미 있었는데(2026-08-20) 문장 분리기엔 없었다.
+    """
+    from barum.pipeline import _split_text_to_sentences
+
+    out = [s["text"] for s in _split_text_to_sentences("피부결 개선 2.1배 (4주) 시험. 20명 대상")]
+    assert "피부결 개선 2.1배 (4주) 시험" in out
+    assert not any(t.strip() == "1배 (4주) 시험" for t in out)
+
+
+def test_퍼센트_소수점도_안_잘린다():
+    from barum.pipeline import _split_text_to_sentences
+
+    out = [s["text"] for s in _split_text_to_sentences("수분감 23.5% 개선. 4주 사용 시")]
+    assert out[0] == "수분감 23.5% 개선"
+
+
+def test_일반_마침표는_그대로_쪼갠다():
+    """예외가 너무 넓어지면 문장이 안 쪼개져 판정 단위가 통째로 커진다."""
+    from barum.pipeline import _split_text_to_sentences
+
+    out = [s["text"] for s in _split_text_to_sentences("첫 문장이다. 둘째 문장이다! 셋째?")]
+    assert out == ["첫 문장이다", "둘째 문장이다", "셋째"]
