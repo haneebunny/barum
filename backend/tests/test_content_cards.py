@@ -470,3 +470,68 @@ def test_섹션이_비어도_안_터진다():
     assert _sanitize_generated([], NeverCalled()) == []
     out = _sanitize_generated([Section(kind="x", text="", source="llm")], NeverCalled())
     assert out[0].text == ""
+
+
+# ── 재검증에 성분을 제대로 넘긴다 (2026-08-23) ─────────────────────────────
+
+def test_판정용_전성분은_이름만_넘긴다():
+    """**함량을 이름 칸에 붙이면 성분표 대조가 이름을 못 찾는다.**
+
+    "나이아신아마이드 3%"로 넘기면 대조가 실패해 "고시원료가 전성분에 없음"으로
+    읽고, 검토필요를 **위반으로 격상**시킨다(실측). 함량은 별도 인자로 간다.
+    """
+    from barum.generate.content import _amounts_for_judge, _ingredients_for_judge
+    from barum.models import GenerateRequest, IngredientAmount
+
+    req = GenerateRequest(
+        mode="create",
+        ingredient_amounts=[
+            IngredientAmount(name="나이아신아마이드", amount="3%"),
+            IngredientAmount(name="히알루론산", amount="1%"),
+        ],
+    )
+    assert _ingredients_for_judge(req) == "나이아신아마이드, 히알루론산"
+    assert _amounts_for_judge(req) == "나이아신아마이드:3%,히알루론산:1%"
+
+
+def test_성분이_없으면_None이지_미상이_아니다():
+    """**'(미상)'을 판정기에 넘기면 그걸 성분명으로 읽는다.**
+
+    그러면 "고시원료가 전성분에 없음"이 되어 검토필요가 위반으로 격상된다.
+    없으면 없다고 해야 판정기가 "확인 못 함"으로 정직하게 남긴다.
+    """
+    from barum.generate.content import (
+        _amounts_for_judge,
+        _ingredients_for_judge,
+        _ingredients_for_prompt,
+    )
+    from barum.models import GenerateRequest
+
+    req = GenerateRequest(content="x")
+    assert _ingredients_for_judge(req) is None
+    assert _amounts_for_judge(req) is None
+    # 프롬프트는 사람이 읽는 것이라 자리표시자가 맞다.
+    assert _ingredients_for_prompt(req) == "(미상)"
+
+
+def test_프롬프트용은_함량을_같이_보여준다():
+    from barum.generate.content import _ingredients_for_prompt
+    from barum.models import GenerateRequest, IngredientAmount
+
+    req = GenerateRequest(
+        mode="create",
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    assert _ingredients_for_prompt(req) == "나이아신아마이드 3%"
+
+
+def test_improve_전성분이_판정에서도_우선한다():
+    from barum.generate.content import _ingredients_for_judge
+    from barum.models import GenerateRequest, IngredientAmount
+
+    req = GenerateRequest(
+        content="x",
+        ingredients="정제수, 글리세린",
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    assert _ingredients_for_judge(req) == "정제수, 글리세린"
