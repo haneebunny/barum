@@ -493,6 +493,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
   });
   const [loading, setLoading] = useState(false);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
+  // "모두 수용" 실행취소용 스냅샷. 개별 조작이나 리포트 전환이 끼어들면 되돌릴
+  // 대상이 불분명해지므로 null로 비운다(팀장 지시 - 17건 일괄 변경은 실수하면
+  // 아파서 되돌리기가 있어야 한다, 2026-08-23).
+  const [bulkUndoSnapshot, setBulkUndoSnapshot] = useState<Record<number, "accept" | "exclude" | null> | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
@@ -587,7 +591,34 @@ export function ReportClient({ envelope }: ReportClientProps) {
     setRemediationCount(0);
     setOpenOrderIndex(0);
     setFlagFilter(null);
+    setBulkUndoSnapshot(null);
   }, [activeEnvelope]);
+
+  // 필터가 걸려 있으면 "보이는 것만"이 대상이다(팀장 판단 필요 지점 - 안 보이는
+  // 것까지 바뀌면 화면과 실제 상태가 어긋나 더 놀랍다). 이미 제외(exclude)한
+  // 항목은 명시적 결정이라 존중해서 안 건드리고, 이미 수용한 항목은 대상에서
+  // 빼서 버튼의 "N건" 표시가 "실제로 바뀔 건수"를 그대로 보여주게 한다.
+  const acceptAllTargets = visibleFindGroups
+    .flatMap((g) => g.positionIdxs)
+    .filter((idx) => actions[idx] !== "exclude" && actions[idx] !== "accept");
+
+  const handleAcceptAllVisible = () => {
+    if (acceptAllTargets.length === 0) return;
+    setBulkUndoSnapshot({ ...actions });
+    setActions((prev) => {
+      const next = { ...prev };
+      acceptAllTargets.forEach((idx) => {
+        next[idx] = "accept";
+      });
+      return next;
+    });
+  };
+
+  const handleUndoBulkAccept = () => {
+    if (!bulkUndoSnapshot) return;
+    setActions(bulkUndoSnapshot);
+    setBulkUndoSnapshot(null);
+  };
 
   const scrollToBox = (idx: number, isUj = false) => {
     const id = isUj ? `highlight-box-uj-${idx}` : `highlight-box-${idx}`;
@@ -604,6 +635,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 이상하다). idxs[0]을 대표값으로 토글 여부를 판단한다 - 그룹은 항상 이
   // 함수를 통해서만 값이 바뀌므로 idxs 전체가 항상 같은 값을 유지한다.
   const handleAction = (idxs: number[], orderIndex: number, act: "accept" | "exclude") => {
+    setBulkUndoSnapshot(null); // 개별 조작이 끼면 일괄 되돌리기 대상이 불분명해진다
     setActions((prev) => {
       const next = { ...prev };
       if (next[idxs[0]] === act) {
@@ -635,6 +667,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       setActiveEnvelope(data as any);
       setActiveFixture(key);
       setActions({});
+      setBulkUndoSnapshot(null);
     } catch (err) {
       console.error(err);
       showError("리포트 조회 오류", "리포트를 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
@@ -750,6 +783,38 @@ export function ReportClient({ envelope }: ReportClientProps) {
               <span className="font-mono">{findGroups.length}</span>건
             </span>
           </div>
+          {/* 모두 수용: 개별 수용 버튼(채움, --brand-deep/--brand)보다 시각적으로
+              약하게 - 일괄 동작이 기본값처럼 보이면 안 된다(팀장 지시,
+              2026-08-23). 채움 없이 테두리+텍스트만 쓴다. 이미 "제외"한 항목은
+              명시적 결정이라 안 건드리고, 필터가 걸려 있으면 보이는 것만 대상이다
+              (버튼 문구가 그 범위를 드러낸다). 되돌리기는 확인 모달 대신 클릭
+              직후 나타나는 링크로 처리한다(17건 일괄 변경이라 사고 방지 필요하지만
+              모달 확인 단계를 넣기엔 개별 수용/제외에 이미 있는 토글식 취소
+              관례와 결이 다르다고 판단). */}
+          {/* FREE 티어는 카드에 수용/제외 버튼 자체가 없다("유료 요금제 전용"만
+              보임) - 일괄 버튼만 따로 있으면 앞뒤가 안 맞는다. */}
+          {tier !== "FREE" && (
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <button
+                type="button"
+                onClick={handleAcceptAllVisible}
+                disabled={acceptAllTargets.length === 0}
+                className="font-mono text-[11px] font-semibold text-[var(--ink-3)] border border-[var(--line-2)] rounded-sm px-2 py-1 cursor-pointer inline-flex items-center gap-1 hover:text-[var(--ink)] hover:border-[var(--ink-3)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[var(--ink-3)] disabled:hover:border-[var(--line-2)]"
+              >
+                <Check size={11} weight="bold" />
+                {flagFilter ? `보이는 ${acceptAllTargets.length}건 모두 수용` : `모두 수용 (${acceptAllTargets.length}건)`}
+              </button>
+              {bulkUndoSnapshot && (
+                <button
+                  type="button"
+                  onClick={handleUndoBulkAccept}
+                  className="font-mono text-[11px] text-[var(--ink-3)] underline cursor-pointer hover:text-[var(--ink)]"
+                >
+                  되돌리기
+                </button>
+              )}
+            </div>
+          )}
           {/* 근거 등급 범례. "검토필요 + 규칙문서 확정"처럼 flag와 등급이 어긋나 보이는
               조합이 나올 수 있어 두 축이 다르다는 걸 카드 밖에서 한 번 짚어준다
               (디디 최종안, 2026-08-23). */}
