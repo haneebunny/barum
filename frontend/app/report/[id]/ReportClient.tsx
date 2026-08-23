@@ -236,18 +236,23 @@ function FindingCard({
 
           {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
           <div className="flex-1 min-w-0">
-            {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron */}
+            {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron.
+                제목이 길어지면 버튼 쪽으로 폭을 침범해 아이콘+글자가 세로로
+                쪼개지는 버그가 있었다(2026-08-23, 팀장 실측 - "미백에 도움"이
+                두 줄로 끊기고 "수용"/"제외" 버튼이 47px까지 눌림). 버튼 묶음은
+                shrink-0으로 항상 제 폭을 지키게 하고, 제목만 남는 공간에서
+                줄바꿈되게 한다 - 버튼이 깨지느니 제목이 두 줄이 되는 게 낫다. */}
             <div className="flex items-center justify-between gap-2">
-              <span className={`${spanStyle} ${isExcluded ? "line-through opacity-50" : ""}`}>
+              <span className={`${spanStyle} flex-1 min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
                 {finding.span}
                 {positionIdxs.length > 1 && (
                   <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
                 )}
               </span>
 
-              <div className="flex items-center gap-1.5 ml-auto">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {tier === "FREE" ? (
-                  <span className="text-[10.5px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)]">
+                  <span className="text-[10.5px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)] whitespace-nowrap">
                     유료 요금제 전용
                   </span>
                 ) : (
@@ -256,7 +261,7 @@ function FindingCard({
                       // 수용=채움, 제외=윤곽선으로 위계를 준다(새 심각도 색 없이, 팀장 지시).
                       // 라이트는 --brand 배경이 대비 미달(3.39:1)이라 --brand-deep(9.36:1) 사용,
                       // 다크는 --brand 그대로 통과(6.48:1) - 디디 검증 완료(DESIGN.md §4.1, PR #268)
-                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "accept"
+                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-all duration-[120ms] ${act === "accept"
                         ? "font-bold text-[var(--on-brand)] border-[var(--brand-deep)] bg-[var(--brand-deep)] dark:border-[var(--brand)] dark:bg-[var(--brand)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
@@ -266,7 +271,7 @@ function FindingCard({
                       수용
                     </button>
                     <button
-                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 transition-all duration-[120ms] ${act === "exclude"
+                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-all duration-[120ms] ${act === "exclude"
                         ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
                         : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
                         }`}
