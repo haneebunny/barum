@@ -49,6 +49,7 @@ function InspectContent() {
   const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingP, setIsDraggingP] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
   // 홈 화면에서 붙여넣거나 끌어다 놓은 초안을 그대로 이어받는다 (1단계 입력 UI 자체는 그대로).
@@ -151,6 +152,27 @@ function InspectContent() {
     setIsDragging(false);
     if (status === "running") return;
     addFilesToList(e.dataTransfer.files, false);
+  };
+
+  // 제품 정보(pFiles) 쪽은 광고 이미지 쪽과 별도 드롭 영역이라 상태·핸들러를 따로 둔다
+  // (팀장이 겪은 버그: 광고 이미지 쪽만 드롭이 되고 제품 정보 쪽엔 애초에 핸들러가
+  // 없었다, 2026-08-23).
+  const handleDragOverP = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (status === "running") return;
+    setIsDraggingP(true);
+  };
+
+  const handleDragLeaveP = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingP(false);
+  };
+
+  const handleDropP = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingP(false);
+    if (status === "running") return;
+    addFilesToList(e.dataTransfer.files, true);
   };
 
   const removeAdFile = (id: string) => {
@@ -452,6 +474,14 @@ function InspectContent() {
                   status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
                 onClick={status === "running" ? undefined : triggerAdFileSelect}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{
+                  borderColor: isDragging ? "var(--brand)" : undefined,
+                  borderStyle: isDragging ? "solid" : undefined,
+                  backgroundColor: isDragging ? "var(--surface-sub)" : undefined,
+                }}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
                 aria-label="광고 이미지 파일 추가"
@@ -531,6 +561,14 @@ function InspectContent() {
                   status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
                 onClick={status === "running" ? undefined : triggerPFileSelect}
+                onDragOver={handleDragOverP}
+                onDragLeave={handleDragLeaveP}
+                onDrop={handleDropP}
+                style={{
+                  borderColor: isDraggingP ? "var(--brand)" : undefined,
+                  borderStyle: isDraggingP ? "solid" : undefined,
+                  backgroundColor: isDraggingP ? "var(--surface-sub)" : undefined,
+                }}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
                 aria-label="제품 정보 파일 추가"
