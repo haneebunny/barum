@@ -225,7 +225,10 @@ function FindingCard({
       // 2026-08-23) - 카드마다 테두리+배경 박스를 두르던 걸 왼쪽 심각도선 하나로
       // 대체한다. 항목 사이 구분선은 부모 목록 컨테이너의 [&>*+*]:border-t가 담당
       // (첫 카드는 위 구분선이 없어야 해서 :first-child 대신 인접 형제 선택자를 씀).
-      className={`pl-4 pb-4 border-l-[3px] ${isExcluded ? "opacity-50" : ""}`}
+      // 카드 배경은 라이트만 흰색(--surface) - 디디 다크모드 작업은 여기서 멈췄고
+      // 색 판단 남은 게 없는 단순 지시라 다크는 손 안 댐(PM 8대 루루 지시,
+      // 2026-08-23, globals.css 37~55행 다크 값 그대로 유지).
+      className={`pl-4 pb-4 border-l-[3px] bg-[var(--surface)] dark:bg-transparent ${isExcluded ? "opacity-50" : ""}`}
       style={{ borderLeftColor: accentColor }}
       data-i={index}
       onMouseEnter={() => onHover(true)}
