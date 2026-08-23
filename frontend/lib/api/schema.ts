@@ -69,7 +69,10 @@ export const SummarySchema = z.object({
   // 못 본 상태다 - "읽었는데 문제없음"과 구분해서 화면에 알려야 한다. 이 필드
   // 이전에 저장된 옛 리포트엔 없을 수 있어 default(0).
   n_ocr_failed_tiles: z.number().default(0),
-  counts_by_type: z.record(ViolationTypeSchema, z.number()),
+  // 백엔드는 0건인 유형의 키를 아예 안 보낸다(Counter 기반이라 자연스러운 형태,
+  // 2026-08-23 zod 실측으로 확인). partialRecord라 값 없는 키는 허용하되, 키
+  // 자체가 유효한 위반유형인지는 계속 검증한다(오타 유형명은 여전히 잡힘).
+  counts_by_type: z.partialRecord(ViolationTypeSchema, z.number()),
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
