@@ -110,3 +110,67 @@ def test_재검증_지적이_없으면_목록도_비어_있다():
     sections = [Section(kind="광고문구", text="촉촉한 사용감의 데일리 로션", source="template")]
     recheck, _ = _recheck(sections, GenerateRequest(content="x"), StubJudge())
     assert recheck.findings == [] or recheck.n_findings == len(recheck.findings)
+
+
+# ── 확인항목은 문장당 하나 (2026-08-23) ────────────────────────────────────
+
+def _finding(span, sentence, explanation):
+    from barum.models import Finding, JudgmentFlag, Location, ViolationType
+
+    return Finding(
+        span=span, sentence=sentence,
+        violation_type=ViolationType.type_1_drug_misperception,
+        legal_basis="화장품법 제13조", flag=JudgmentFlag.violation,
+        explanation=explanation, location=Location(order=0),
+    )
+
+
+def test_같은_문장은_확인항목_하나로_묶인다():
+    """**시연이 여기서 막혔다.**
+
+    문장의 매칭을 전부 내게 바꾸면서(#296) 한 문장에 지적이 여러 개 생겼고,
+    확인항목이 finding마다 하나씩 나가 **토씨 하나 안 틀린 문장이 세 번** 찍혔다.
+    사용자는 같은 걸 세 번 체크해야 다음으로 넘어갈 수 있었다.
+    """
+    from barum.generate.content import _confirmations_by_sentence
+
+    line = "줄기세포 배양 기술 세포재생의 시작"
+    findings = [
+        _finding("줄기세포", line, "규칙문서 대조: 줄기세포"),
+        _finding("세포재생", line, "규칙문서 대조: 세포재생"),
+        _finding("진피층", line, "규칙문서 대조: 진피층"),
+    ]
+    out = _confirmations_by_sentence(findings)
+
+    assert len(out) == 1, "같은 문장이 확인항목으로 여러 번 나갔다"
+    assert out[0].text == line
+    # 사유는 잃지 않는다. 체크박스만 하나로 묶는 것이다.
+    for expected in ("줄기세포", "세포재생", "진피층"):
+        assert expected in out[0].reason
+
+
+def test_다른_문장은_따로_남는다():
+    from barum.generate.content import _confirmations_by_sentence
+
+    out = _confirmations_by_sentence([
+        _finding("아토피", "아토피 개선", "규칙문서 대조: 아토피"),
+        _finding("재생", "피부 재생", "규칙문서 대조: 재생"),
+    ])
+    assert len(out) == 2
+    assert [r.id for r in out] == ["rc_0", "rc_1"]
+
+
+def test_같은_사유가_두_번_붙지_않는다():
+    from barum.generate.content import _confirmations_by_sentence
+
+    out = _confirmations_by_sentence([
+        _finding("재생", "피부 재생", "같은 설명"),
+        _finding("세포재생", "피부 재생", "같은 설명"),
+    ])
+    assert out[0].reason == "같은 설명"
+
+
+def test_지적이_없으면_확인항목도_없다():
+    from barum.generate.content import _confirmations_by_sentence
+
+    assert _confirmations_by_sentence([]) == []
