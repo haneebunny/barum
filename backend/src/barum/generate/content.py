@@ -693,16 +693,33 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
 _HEADLINE_SPLIT = re.compile(r"^([\s\S]+?[.!?](?!\d))\s*([\s\S]*)$")
 
 
-def split_headline(text: str) -> tuple[str, str]:
-    """카드 문구를 (헤드라인, 본문)으로 쪼갠다. 줄바꿈이 있으면 그게 우선."""
+# 헤드라인으로 둘 수 있는 최대 길이. 넘으면 큰 글씨가 여러 줄로 흘러 헤드라인
+# 구실을 못 한다(프롬프트가 요구하는 20자에 약간의 여유).
+_MAX_HEADLINE = 24
+
+
+def split_headline(text: str, *, allow_long_headline: bool = False) -> tuple[str, str]:
+    """카드 문구를 (헤드라인, 본문)으로 쪼갠다. 줄바꿈이 있으면 그게 우선.
+
+    **본문이 비고 헤드라인만 긴 결과를 만들지 않는다.** 프롬프트로 줄바꿈을 요구해도
+    (#311) 모델이 가끔 안 지키는데, 그러면 긴 한 문장이 통째로 헤드라인이 되고 본문이
+    빈다. 화면에서는 그 칸이 짧아지면서 **옆에 붙는 이미지까지 26px로 찌그러진다**
+    (2026-08-23 실측). 그럴 땐 전부 본문으로 돌린다 — 큰 글씨 한 덩어리보다
+    평범한 문단 하나가 덜 깨져 보인다.
+
+    allow_long_headline: 인정문구처럼 **법으로 문구가 정해진 텍스트**에 쓴다.
+    길어도 헤드라인 자리를 지켜야 한다(자외선차단 인정문구는 35자다). 길이로는
+    LLM 카피와 못 가르므로 부르는 쪽이 출처를 보고 정해준다.
+    """
     text = (text or "").strip()
     if "\n" in text:
         head, _, rest = text.partition("\n")
         return head.strip(), rest.strip()
     m = _HEADLINE_SPLIT.match(text)
-    if not m:
-        return text, ""
-    return m.group(1).strip(), m.group(2).strip()
+    head, body = (text, "") if not m else (m.group(1).strip(), m.group(2).strip())
+    if not body and not allow_long_headline and len(head) > _MAX_HEADLINE:
+        return "", head
+    return head, body
 
 
 def build_cards(
@@ -737,7 +754,10 @@ def build_cards(
         if not (sec.text or "").strip() and not sec.table_rows:
             continue
         img = images.get(module.kind)
-        head, body = split_headline(sec.text)
+        # 인정문구는 법으로 정해진 문구라 길어도 헤드라인 자리를 지킨다.
+        head, body = split_headline(
+            sec.text, allow_long_headline=sec.source == "approved_claim"
+        )
         cards.append(
             ContentCard(
                 order=len(cards),
