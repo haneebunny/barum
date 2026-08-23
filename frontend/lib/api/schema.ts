@@ -310,6 +310,10 @@ export const ContentCardSchema = z.object({
   // 실증자료 필요 고지. 있으면 화면에 반드시 같이 노출한다(빠뜨리면 사용자가
   // 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
   note: z.string().nullable().default(null),
+  // 표 카드(상품 스펙표)의 행. 문장이 아니라 표로만 이뤄진 카드가 있다 -
+  // headline·body가 비어 있고 이 필드만 채워진다(PR #314, 베베). 문장 카드와
+  // 같은 틀로 그리면 빈 카드처럼 보이니 렌더링에서 따로 분기해야 한다.
+  table_rows: z.array(TableRowSchema).nullable().default(null),
 });
 export type ContentCard = z.infer<typeof ContentCardSchema>;
 
