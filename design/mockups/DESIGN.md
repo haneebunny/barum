@@ -125,17 +125,35 @@ grep -c "—" design/mockups/barum.html   # 0 이어야 함
 --nav-hover:#FFFFFF; --nav-active-bg:#E9F2ED;           /* 사이드바 hover/선택 (옅은 틴트, Notion식 고스트) */
 ```
 
-### 다크 v2 `:root[data-theme="dark"]` (2026-08-17 개정, 현행. 진실 소스 = frontend/app/globals.css)
-> 개정 이유(하니 지시): v1은 brand 3종이 전부 #3EE08A 단일 네온이라 형광 번짐 + 단조로움 + 순검정 배경의 과대비 피로.
-> v2 = 그레이-그린 서피스로 상향 + 그린 3단 분리 + 다크에서 채움은 "딥 그린 + 밝은 글자"로 반전(on-brand 방향이 라이트와 다름).
+### 다크 v3 `:root[data-theme="dark"]` (2026-08-23 개정, 현행. 진실 소스 = frontend/app/globals.css)
+> 개정 이유(팀장 체감 피드백): "다크모드 눈이 너무 피로하다, 너무 까맣고 대비도 심해서. 형광도 너무 심하고." v2도 WCAG 대비·CVD는 전부 통과했지만, **대비 수치 통과와 체감 피로는 다른 축** — 근접 검정(#101612) 위에 완전채도 빨강(#FF5252)이 얹히면 동시대비로 튀어 보인다.
+> v3 = 배경 3종(canvas/surface/surface-sub)·line 2종·nav 2종을 "v1→v2 델타의 절반"만큼 한 단계 더 상향(사다리를 통째로 한 칸 밀고 맨 위에 새 칸 추가) + crit만 HSL 채도 100%→75%로 완화. brand 3종은 그대로(HSL S 49%로 이미 순색이 아니라 "형광" 지목 대상이 crit이 명확했음). 사이드바를 라이트/다크 무관하게 고정하는 안도 팀장이 반려("너무 이상하다") — 사이드바는 항상 테마를 따라간다(`var(--surface-sub)`), 고정하지 말 것.
+>
+> 마크업 규칙(v2에서 계속 유효, brand-deep·surface 값 안 바뀜): hover는 어두워지는 방향(hover:bg=brand-deep),
+> crit 채움 위 글자는 text-white 금지 → var(--surface)(라이트 6.2 / 다크 5.4).
+```
+--canvas:#151C17; --surface:#1A221D; --surface-sub:#202923;
+--line:#2D3830; --line-2:#3B463C;
+--ink:#DBE7DF; --ink-2:#A8C0B2; --ink-3:#8AA294;        /* 순백 대신 눌러진 잉크(피로 완화), v2와 동일 */
+--brand:#196340;       /* 채움(버튼). on-brand와 6.48, v2와 동일 */
+--brand-ink:#66CB92;   /* 텍스트·커서·진행선 그린, v2와 동일 */
+--brand-deep:#124A2D;  /* 태그·인버스, v2와 동일 */
+--on-brand:#EAF5EE;    /* 다크에선 밝은 글자 (라이트는 흰색 유지) */
+--crit:#E96868; --crit-bg:#2A1715; --crit-bd:#553029;   /* crit만 v2 #FF5252(S100%)→S75% */
+--nav-hover:#233027; --nav-active-bg:#29372E;
+```
+**v3 검증 기록(2026-08-23):** ink 3계층 x 배경 3종 전부 5.47~13.64 PASS ·
+crit(#E96868) x 배경 3종·crit-bg 전부 5.15~5.49 PASS ·
+crit(#E96868) CVD ΔE = vs brand 11.7(protan) / vs brand-ink 8.5(deutan) / vs brand-deep 20.2(protan), 기준 ≥8 전부 PASS.
+**채도 후보 스윕(S85/75/65/55%)에서 deutan ΔE가 8.9/8.5/8.2/7.8로 떨어져, S75%가 기준 8 위에서 가장 여유(0.5)를 남긴 지점 — S65% 이하는 위험선, S55%는 이 프로젝트 기준(≥8, WARN 밴드 불허) 미달로 기각.**
+crit-bd·brand 계열·on-brand는 손대지 않음(재검증 불필요, v2 기록 그대로 유효).
+
+### (폐기) 다크 v2 - 2026-08-17~2026-08-23. 기록 보존용, 사용 금지
 ```
 --canvas:#101612; --surface:#151C17; --surface-sub:#1A221C;
 --line:#27332B; --line-2:#364439;
---ink:#DBE7DF; --ink-2:#A8C0B2; --ink-3:#8AA294;        /* 순백 대신 눌러진 잉크(피로 완화) */
---brand:#196340;       /* 채움(버튼). on-brand와 6.48 */
---brand-ink:#66CB92;   /* 텍스트·커서·진행선 그린. surface와 8.69 */
---brand-deep:#124A2D;  /* 태그·인버스. on-brand와 9.20 */
---on-brand:#EAF5EE;    /* 다크에선 밝은 글자 (라이트는 흰색 유지) */
+--ink:#DBE7DF; --ink-2:#A8C0B2; --ink-3:#8AA294;
+--brand:#196340; --brand-ink:#66CB92; --brand-deep:#124A2D; --on-brand:#EAF5EE;
 --crit:#FF5252; --crit-bg:#2A1715; --crit-bd:#553029;
 --nav-hover:#1E2A22; --nav-active-bg:#24322A;
 ```
@@ -143,6 +161,7 @@ grep -c "—" design/mockups/barum.html   # 0 이어야 함
 그린 3종 x #FF5252 CVD ΔE = brand 10.4(protan) / brand-ink 9.4(deutan) / brand-deep 18.9(protan), 기준 ≥8 전부 PASS ·
 crit on crit-bg 5.34 PASS. 동반 마크업 규칙: hover는 어두워지는 방향(hover:bg=brand-deep),
 crit 채움 위 글자는 text-white 금지 → var(--surface)(라이트 6.2 / 다크 5.4).
+**폐기 이유:** WCAG 통과와 체감 피로는 별개 축이었음 — 근접 검정+완전채도 빨강의 동시대비 문제가 안 잡혔다. v3에서 배경 상향+crit 채도 완화로 대응.
 
 ### (폐기) 다크 v1 - 2026-08-17 이전. 기록 보존용, 사용 금지
 ```
