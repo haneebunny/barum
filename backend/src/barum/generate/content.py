@@ -19,7 +19,7 @@ from barum.generate.layout import (
     plan_layout,
     select_top_modules,
 )
-from barum.generate.replace import apply_replacements, build_replacements
+from barum.generate.replace import _accept, apply_replacements, build_replacements
 from barum.models import (
     ContentCard,
     GenerateRequest,
@@ -32,10 +32,12 @@ from barum.models import (
     ModuleImage,
     PlacedImage,
     RecheckSummary,
+    Replacement,
     RiskConfirmation,
     Section,
     SkippedClaim,
     TableRow,
+    ViolationType,
 )
 from barum.pipeline import run_check
 from barum.reference.approved_claims import match_approved_claim
@@ -430,14 +432,53 @@ def build_product_spec_section(req: GenerateRequest) -> Section:
     return Section(kind=PRODUCT_SPEC_KIND, text="", source="product_spec", table_rows=rows)
 
 
+# 대체표현 출처 표기. 리포트에서 사용자가 고른 값이지 우리가 새로 만든 게 아니다.
+_BASIS_APPROVED = "리포트에서 사용자가 수용한 대체 표현"
+
+
+def _accept_approved(req: GenerateRequest) -> tuple[list[Replacement], list[str]]:
+    """사용자가 수용한 대체표현을 받아 (적용할 것, 게이트에 걸린 것)으로 가른다.
+
+    **클라이언트가 보낸 문구를 그대로 믿지 않는다.** 서버가 만든 것과 같은 게이트를
+    통과시킨다. 안 그러면 임의 텍스트가 상세페이지에 들어가 대체표현 게이트가 통째로
+    우회된다. 게이트는 규칙·사례 대조라 LLM 호출이 없다(비용 0).
+    """
+    approved: list[Replacement] = []
+    rejected: list[str] = []
+    for a in req.approved_replacements or []:
+        if not _accept(a.replaced, original=a.original):
+            print(f"[generate] 수용 대체표현이 게이트에 걸림, 제외: {a.replaced!r}")
+            rejected.append(a.replaced)
+            continue
+        approved.append(
+            Replacement(
+                original=a.original,
+                replaced=a.replaced,
+                violation_type=a.violation_type or ViolationType.type_5_deception,
+                basis=_BASIS_APPROVED,
+                finding_index=a.finding_index,
+                note=a.note,
+            )
+        )
+    return approved, rejected
+
+
 def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
     """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM)."""
-    # 1. 원본 검사 → 위반 findings
-    initial = run_check("KR", req.content, None, None, None, judge, ingredients=req.ingredients)
-    # 2. 위반 문구 치환. 조건표가 방향을 정하고 LLM이 문장을 다듬는다.
-    #    LLM이 "대체할 수 없다"고 본 문구(유통 채널 안내·제품명 등)는 제안 자체를 안 낸다.
-    reps = build_replacements(initial.findings, rewriter=vlm)
+    gate_rejected: list[str] = []
+    if req.approved_replacements is not None:
+        # **재계산하지 않는다.** 리포트에서 이미 판정하고 사용자가 승인한 결과를 쓴다.
+        # 다시 돌리면 비용이 두 배고, 실행편차 때문에 승인한 문구와 생성물이 달라진다.
+        reps, gate_rejected = _accept_approved(req)
+    else:
+        # 하위호환: 승인 목록 없이 부르면 예전처럼 처음부터 계산한다.
+        initial = run_check(
+            "KR", req.content, None, None, None, judge, ingredients=req.ingredients
+        )
+        reps = build_replacements(initial.findings, rewriter=vlm)
     safe_content = apply_replacements(req.content, reps)
+    # 치환 대상을 원문에서 못 찾은 것. 조용히 넘어가면 "고쳤다"고 표시된 채로 원문이 나간다.
+    unapplied = [r.replaced for r in reps if r.original not in req.content] + gate_rejected
     # 3. 섹션 조립: 개선된 원문(광고문구) + LLM 저위험 서술
     sections = [
         Section(kind="광고문구", text=safe_content, source="remediation" if reps else "template")
@@ -456,6 +497,7 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
         pii_removed=sorted(pii_kinds),
         risk_confirmations=risks,
         recheck=recheck,
+        unapplied_replacements=unapplied,
         disclaimer=_DISCLAIMER,
     )
 

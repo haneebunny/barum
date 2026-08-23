@@ -317,6 +317,26 @@ class Replacement(BaseModel):
     note: str | None = None
 
 
+class ApprovedReplacement(BaseModel):
+    """리포트에서 **사용자가 수용한** 대체표현. 개선 모드의 입력이다.
+
+    개선(improve)은 원래 `/check`가 이미 한 일(판정 + 대체표현 생성)을 처음부터 다시
+    했다. 비용이 두 배인 것도 문제지만 더 나쁜 건 **사용자가 승인한 문구와 실제
+    생성물이 달라질 수 있다는 것**이다. 생성은 실행마다 흔들린다(같은 개선본을 두 번
+    검사해 4건/6건이 갈린 실측이 있다). 승인한 것을 그대로 받아 치환만 한다.
+
+    **여기 담긴 문구는 클라이언트가 보낸 값이라 그대로 믿지 않는다.** 서버가 만든
+    것과 같은 게이트를 다시 통과시킨다(`generate/replace.py:_accept`). 안 그러면
+    지금까지 쌓은 대체표현 게이트가 우회된다.
+    """
+
+    original: str  # 치환 대상 원문(문장 또는 span)
+    replaced: str  # 사용자가 승인한 문구
+    finding_index: int | None = None  # 리포트 지적과의 짝(표시용)
+    violation_type: ViolationType | None = None
+    note: str | None = None
+
+
 # CheckReport가 Replacement를 앞선 위치에서 문자열로 참조한다(정의 순서 때문).
 # 여기서 한 번 굳혀둔다.
 CheckReport.model_rebuild()
@@ -569,6 +589,12 @@ class GenerateRequest(BaseModel):
         "**실증자료가 아니다** — 임상 모듈을 열지 못하고, 피부 변화(효능) 주장은 거부된다.",
     )
     notes: str | None = Field(None, description="설문/추가 제품정보 자유서술")
+    approved_replacements: list[ApprovedReplacement] | None = Field(
+        None,
+        description="리포트에서 사용자가 수용한 대체표현(improve 모드). 주면 판정·"
+        "대체표현 생성을 다시 하지 않고 치환만 한다(LLM 호출 절약 + 승인한 문구와 "
+        "생성물 일치). 안 주면 기존대로 처음부터 계산한다.",
+    )
     preset: str | None = Field(
         None,
         description="콘텐츠 프리셋 id(create 모드). 타겟팅·레이아웃 방향·색/무드·폰트단을 "
@@ -660,4 +686,8 @@ class GenerateResponse(BaseModel):
         None, description="create 모드 모듈 구성·순서. improve 모드는 None"
     )
     recheck: RecheckSummary
+    # 원문에서 대상을 못 찾아 치환되지 않은 대체표현. **조용한 무동작을 드러낸다.**
+    # `apply_replacements`는 문자열 치환이라 대상이 없으면 아무 일도 안 하고 넘어간다.
+    # 리포트가 낡았거나 프론트가 문장을 다듬어 보내면 통째로 안 바뀌는데 티가 안 난다.
+    unapplied_replacements: list[str] = Field(default_factory=list)
     disclaimer: str
