@@ -4,18 +4,12 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
-import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
+import { getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
 import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 import { Modal } from "@/components/Modal/Modal";
-
-const FIXTURE_OPTIONS: TabOption<"unjudged" | "text" | "image">[] = [
-  { value: "image", label: "이미지 예시" },
-  { value: "text", label: "텍스트 예시" },
-  { value: "unjudged", label: "미판정 포함" },
-];
 
 const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
   { value: "image", label: "원본 보기" },
@@ -464,14 +458,7 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
-  const { showError } = useError();
-  const [activeEnvelope, setActiveEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
-  const [activeFixture, setActiveFixture] = useState<"image" | "text" | "unjudged">(() => {
-    if (envelope.result_id === "demo-text-id" || envelope.result_id === "text" || envelope.result_id === "demo-id-2") return "text";
-    if (envelope.result_id === "demo-unjudged-id" || envelope.result_id === "unjudged" || envelope.result_id === "a3Fk9mdemo") return "unjudged";
-    return "image";
-  });
-  const [loading, setLoading] = useState(false);
+  const [activeEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
   // "모두 수용" 실행취소용 스냅샷. 개별 조작이나 리포트 전환이 끼어들면 되돌릴
   // 대상이 불분명해지므로 null로 비운다(팀장 지시 - 17건 일괄 변경은 실수하면
@@ -642,22 +629,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     });
   };
 
-  const handleFixtureChange = async (key: "image" | "text" | "unjudged") => {
-    setLoading(true);
-    try {
-      const data = await getReport(key);
-      setActiveEnvelope(data as any);
-      setActiveFixture(key);
-      setActions({});
-      setBulkUndoSnapshot(null);
-    } catch (err) {
-      console.error(err);
-      showError("리포트 조회 오류", "리포트를 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   let nViol = 0;
   let nReview = 0;
 
@@ -704,20 +675,22 @@ export function ReportClient({ envelope }: ReportClientProps) {
   return (
     <>
       <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface)] font-mono text-[11.5px] text-[var(--ink-3)] flex-wrap">
-        <div className="ml-auto flex items-center gap-4 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
-          <TabSwitch
-            label="목업 전용 · 실제 화면엔 없음:"
-            options={FIXTURE_OPTIONS}
-            value={activeFixture}
-            onChange={handleFixtureChange}
-            disabled={loading}
-          />
-          <TabSwitch
-            label="티어 미리보기"
-            options={TIER_OPTIONS}
+        <div className="ml-auto flex items-center gap-1.5 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
+          <label htmlFor="tier-preview" className="text-[var(--ink-3)] text-[11px] font-sans mr-0.5 select-none">
+            티어 미리보기
+          </label>
+          <select
+            id="tier-preview"
             value={tier}
-            onChange={setTier}
-          />
+            onChange={(e) => setTier(e.target.value as "FREE" | "BASIC" | "PRO")}
+            className="text-[11px] font-sans p-[4px_8px] border border-[var(--line-2)] rounded-[2px] bg-[var(--surface)] text-[var(--ink)] cursor-pointer"
+          >
+            {TIER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -918,11 +891,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
             )}
           </div>
           <div id="origPanel">
-            {loading ? (
-              <p className="text-[var(--ink-3)] p-3">
-                로딩 중...
-              </p>
-            ) : isImageMode ? (
+            {isImageMode ? (
               <ReportImageViewer
                 viewMode={viewMode}
                 findByOrder={findByOrder}
