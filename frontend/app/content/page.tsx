@@ -624,9 +624,14 @@ function ContentGeneratorContent() {
 
       if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
         const { headline, subcopy } = splitHeadline(s.text);
+        // 인정문구(source="approved_claim")는 법정 고정 문구라 우리가 늘리거나
+        // 꾸미면 안 된다 - 짧게 끝나는 게 정상이다. 근데 짧은 한 줄만 있으면
+        // "본문 없는 깨진 카드"처럼 보인다(베베 발견, 2026-08-23). 작은 태그로
+        // "의도된 짧음"이라는 걸 드러낸다(빈 상태가 아니라 고정 문구라는 신호).
+        const claimTag = s.source === "approved_claim" ? `<span class="dp-claim-tag">인정문구</span>` : "";
         return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span><p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
     </div>
     ${aiImageCaption}`;
       }
@@ -716,9 +721,13 @@ function ContentGeneratorContent() {
           const noteHtml = card.note ? `<div class="dp-block dp-fine"><p>${escapeHtml(card.note)}</p></div>` : "";
 
           if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
+            // 인정문구(text_source="approved_claim")는 법정 고정 문구라 짧게
+            // 끝나는 게 정상이다 - "본문 없는 깨진 카드"처럼 안 보이게 작은
+            // 태그로 의도된 짧음임을 드러낸다(베베 발견, 2026-08-23).
+            const claimTag = card.text_source === "approved_claim" ? `<span class="dp-claim-tag">인정문구</span>` : "";
             return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span><p>${escapeHtml(card.headline)}</p></div>
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}</p></div>
     </div>
     ${aiImageCaption}
     ${noteHtml}`;
@@ -823,6 +832,13 @@ function ContentGeneratorContent() {
     .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
     .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.4; color: #ffffff; margin: 0 0 7px; }
     .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
+    /* 인정문구(법정 고정 문구)로 채워진 히어로 본문이 짧게 끝나도 "빈 카드"가
+       아니라 의도된 짧음이라는 걸 드러내는 작은 태그. 새 색 없이 흰 배경
+       투명도만 조절(--dp-* 토큰 체계와 별개인 히어로 위 오버레이 전용 표기). */
+    /* .dp-hero-card span(1클래스+1태그, 특이성 0,1,1)이 바로 위에 있어 이
+       배지가 .dp-claim-tag 단독(0,1,0)이면 밀린다 - .dp-hero-card와 묶어서
+       특이성을 0,2,0으로 올려야 이긴다(실측 확인, 2026-08-23). */
+    .dp-hero-card .dp-claim-tag { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.32); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
