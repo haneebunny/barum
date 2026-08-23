@@ -322,6 +322,27 @@
         }
       }
     },
+    "/version": {
+      "get": {
+        "summary": "Version",
+        "description": "지금 도는 서버가 **어느 코드인지** 알려준다.\n\n오늘 두 번, 머지된 코드가 안 도는 상태에서 결과를 보고 원인을 엉뚱한 데서\n찾았다(낡은 프로세스 / 캐시 의심). 두 번 다 `/openapi.json`에 특정 필드가\n있는지로 역추적했는데 그건 우회다. 한 줄로 확정할 수 있게 노출한다.\n\n    curl -s localhost:8000/version",
+        "operationId": "version_version_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Version Version Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/generate": {
       "post": {
         "summary": "Generate",
