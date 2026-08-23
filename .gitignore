@@ -46,3 +46,8 @@ frontend/out/
 frontend/build/
 frontend/.env*.local
 design/mockups/fonts/
+
+# ── design/mockups: 목업 html은 추적하지 않는다 ──
+# 정적 목업이라 깃 히스토리에 남길 실익이 없다(재포맷만으로 1000줄대 diff가 난다).
+# 규칙 문서(DESIGN.md·long-canvas-placement-rules.md)와 로고·파비콘은 계속 추적한다.
+design/mockups/*.html
