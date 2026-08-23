@@ -567,3 +567,44 @@ def test_임상이_아닌_모듈은_상한까지_계속_만든다():
     plan = _plan_with_types(("a", "mood_macro"), ("b", "mood_macro"), ("c", "mood_macro"))
     results, _ = generate_module_images(plan, _REQ, gen)
     assert len([r for r in results if r.status == "generated"]) == 3
+
+
+# ── 참조 제품사진이 있을 때 글자 규칙 (2026-08-23) ──────────────────────────
+
+def _prompt_with(has_photo: bool) -> str:
+    from barum.generate.images import build_image_prompt
+    from barum.models import GenerateRequest, LayoutModule
+
+    module = LayoutModule(kind="hero_intro", purpose="제품 소개", layout_type="full_bleed_photo")
+    req = GenerateRequest(mode="create", product_name="리쥬랩 리페어 크림")
+    return build_image_prompt(module, req, product_type="크림", has_product_photo=has_photo)
+
+
+def test_참조사진이_없으면_글자를_전부_금지한다():
+    """모델이 그리는 라벨은 뭉개진 가짜 글자가 된다(39b2b54)."""
+    p = _prompt_with(False)
+    assert "글자가 단 하나도 없어야 한다" in p
+    assert "인쇄된 라벨 전부 포함" in p
+
+
+def test_참조사진이_있으면_라벨_금지와_충돌하지_않는다():
+    """**이게 실제 버그였다.** 합성 지시는 "라벨을 유지하라"인데 최우선 규칙은
+    "인쇄된 라벨 포함 금지"라, 최우선 쪽이 이겨서 라벨 없는 빈 병이 나왔다.
+    """
+    p = _prompt_with(True)
+    assert "인쇄된 라벨 전부 포함" not in p, "라벨 금지 규칙이 합성 지시와 충돌한다"
+    assert "그대로 유지하라" in p  # 합성 지시는 살아 있다
+    assert "용기 표면에 인쇄된 것" in p
+
+
+def test_참조사진의_배경_카피는_옮겨_그리지_않게_한다():
+    """두 갈래(남길 것/새로 만들 것)로만 나누면 참조 페이지의 광고 카피까지
+    따라 그린다 — 모델 입장에선 그것도 "새로 쓴 글자"가 아니라서다(2026-08-23 실측).
+    """
+    p = _prompt_with(True)
+    assert "옮겨 그리지 말 것" in p
+    assert "광고 문구" in p
+
+
+def test_참조사진_유무에_따라_글자_규칙이_갈린다():
+    assert _prompt_with(True) != _prompt_with(False)
