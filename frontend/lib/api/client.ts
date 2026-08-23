@@ -67,9 +67,10 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         legal_basis_text: "기능성화장품이 아닌 화장품을 기능성화장품으로 잘못 인식할 우려가 있거나 기능성화장품의 안전성ㆍ유효성에 관한 심사결과와 다른 내용의 표시 또는 광고",
         flag: "검토필요",
         explanation: "미백은 기능성 심사·고시원료 확인이 필요한 표현이다. 심사 근거 없이 주장하면 기능성 오인. (전성분 미입력, 성분 정합 확인 못 함)",
-        // 확신도 배지 데모: 규칙 경로(confidence 없음) - "규칙 확정" 배지 확인용
         confidence: null,
         source: "rule",
+        // 근거 등급 배지 데모: "검토필요 + 규칙문서 확정" 조합(범례가 필요한 이유가 된 사례)
+        evidence_grade: "rule_confirmed",
         location: {
           tile: "detail_000_t00.png",
           order: 0,
@@ -89,9 +90,10 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         legal_basis_text: "의약품으로 잘못 인식할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "질병(아토피)의 완화·재생은 의약품으로 오인될 수 있는 의학적 효능 표현이다.",
-        // 확신도 배지 데모: VLM 경로 - "확신도 87%" 배지 확인용
         confidence: 87,
         source: "vlm",
+        // 근거 등급 배지 데모: VLM 경로 + 인용검증 통과
+        evidence_grade: "citation_verified",
         location: {
           tile: "detail_000_t01.png",
           order: 2,
@@ -111,6 +113,8 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         legal_basis_text: "그 밖에 사실과 다르게 소비자를 속이거나 소비자가 잘못 인식하도록 할 우려가 있는 표시 또는 광고",
         flag: "위반",
         explanation: "객관적 근거 없는 비교 수치(3배)는 거짓·과장 광고에 해당할 소지가 있다.",
+        // 근거 등급 배지 데모: 인용검증 실패("낮은 등급=안전 아님" 확인용, 위반 flag와 짝)
+        evidence_grade: "unverified",
         location: {
           tile: "detail_000_t01.png",
           order: 3,
