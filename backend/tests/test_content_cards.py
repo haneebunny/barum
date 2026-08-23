@@ -96,8 +96,10 @@ def test_카드_수만큼_추리되_계획_순서는_유지한다():
     kept, skipped = select_top_modules(plan)
     kinds = [m.kind for m in kept.modules]
     assert len(kinds) == CARD_LIMIT
-    # 우선순위가 낮은 것부터 빠진다.
-    assert {"brand_story", "lineup", "bundle_suggestion"} == {s.category for s in skipped}
+    # 우선순위가 낮은 것부터 빠진다. (스킵 사유의 category는 화면에 뜨는 값이라
+    # 2026-08-23부터 kind가 아니라 한글 purpose를 담는다. 여기선 kept로 확인한다.)
+    assert {"brand_story", "lineup", "bundle_suggestion"}.isdisjoint(kinds)
+    assert len(skipped) == 3
     # 남은 것들의 순서는 원래 계획 순서 그대로다(우선순위 순으로 재배열하지 않는다).
     assert kinds == [k for k in [m.kind for m in plan.modules] if k in set(kinds)]
 
@@ -604,3 +606,100 @@ def test_카드가_인정문구만_헤드라인_예외를_준다():
     assert cards["hero_intro"].headline  # 인정문구는 헤드라인 유지
     assert cards["ingredient_highlight"].headline == ""  # LLM 카피는 본문으로
     assert cards["ingredient_highlight"].body == long_one
+
+
+# ── 자료를 다 싣는다 (2026-08-23 팀장 지시) ────────────────────────────────
+
+def _mod(kind, purpose="목적", risk=False, lt="section_statement"):
+    from barum.models import LayoutModule
+
+    return LayoutModule(kind=kind, purpose=purpose, has_claim_risk=risk, layout_type=lt)
+
+
+def test_보호_모듈은_카드_상한을_안_센다():
+    """**보호 모듈이 상한을 먹으면 자료를 넉넉히 넣을수록 카피가 잘린다.**
+
+    실측(2026-08-23): 보호 6장이 상한을 다 먹어 자유생성 카피가 0장이 됐다.
+    자료가 많을수록 페이지가 풍성해져야지 빈약해지면 안 된다.
+    """
+    from barum.generate.layout import CARD_LIMIT, PRODUCT_SPEC_KIND, select_top_modules
+    from barum.models import LayoutPlan
+
+    safe = [_mod(f"m{i}") for i in range(8)]
+    protected = [_mod(PRODUCT_SPEC_KIND, lt="table_info"), _mod("clinical_result", risk=True)]
+    kept, _ = select_top_modules(
+        LayoutPlan(modules=safe + protected),
+        protected=(PRODUCT_SPEC_KIND, "clinical_result"),
+    )
+    kinds = [m.kind for m in kept.modules]
+    assert PRODUCT_SPEC_KIND in kinds and "clinical_result" in kinds
+    # 자유생성 카피도 상한만큼 살아남는다.
+    assert len([k for k in kinds if k.startswith("m")]) == CARD_LIMIT
+
+
+def test_절대_상한은_있다():
+    """무제한이면 이미지 과금과 화면 길이가 같이 는다."""
+    from barum.generate.layout import HARD_CARD_LIMIT, select_top_modules
+    from barum.models import LayoutPlan
+
+    many = [_mod(f"p{i}") for i in range(20)]
+    kept, _ = select_top_modules(
+        LayoutPlan(modules=many), protected=tuple(m.kind for m in many)
+    )
+    assert len(kept.modules) == HARD_CARD_LIMIT
+
+
+def test_스킵_사유가_한글로_나간다():
+    """`clinical_intro` 같은 내부 식별자가 화면에 그대로 떴다(팀장 지적)."""
+    from barum.generate.layout import select_top_modules
+    from barum.models import LayoutPlan
+
+    mods = [_mod(f"m{i}", purpose=f"설명{i}") for i in range(9)]
+    _, skipped = select_top_modules(LayoutPlan(modules=mods))
+    assert skipped
+    assert all(s.category.startswith("설명") for s in skipped)
+
+
+def test_실증자료가_여러_건이면_섹션도_여러_개():
+    """2026-08-20엔 한 섹션에 묶었다. 그러면 임상 모듈이 여러 개여도 채울 섹션이
+    하나뿐이라 나머지가 '자료 부족'으로 드롭됐다. 팀장 지시로 뒤집었다."""
+    from barum.generate.content import _generate_create_content  # noqa: F401
+    from barum.generate.layout import clinical_sections_text
+    from barum.models import ClinicalEvidence
+
+    ev = [
+        ClinicalEvidence(claim="다크스팟 개선", value="87%"),
+        ClinicalEvidence(claim="피부결 개선", value="2.1배"),
+    ]
+    per = [clinical_sections_text([e]) for e in ev]
+    assert len(per) == 2
+    assert "87%" in per[0] and "2.1배" in per[1]
+
+
+def test_전성분_섹션은_LLM을_안_태운다():
+    """화장품법상 의무 표시사항이라 지어낼 여지를 두면 안 된다."""
+    from barum.generate.content import build_full_ingredient_section
+    from barum.models import GenerateRequest, IngredientAmount
+
+    sec = build_full_ingredient_section(
+        GenerateRequest(mode="create", ingredient_amounts=[
+            IngredientAmount(name="나이아신아마이드", amount="3%"),
+        ])
+    )
+    assert sec.source == "full_ingredient"
+    assert sec.table_rows and sec.table_rows[0].label == "나이아신아마이드"
+
+
+def test_설문은_전용_자리를_받는다():
+    """자리가 없으면 섹션만 만들어지고 카드가 안 생겨 화면에서 사라진다."""
+    from barum.generate.layout import SURVEY_KIND, ensure_survey_module
+    from barum.models import GenerateRequest, LayoutPlan, SurveyEvidence
+
+    req = GenerateRequest(mode="create", survey_evidence=[
+        SurveyEvidence(claim="발림성 만족", value="94%", sample_size="150명",
+                       institution="유어리서치", period="2026년 3월", method="온라인 설문"),
+    ])
+    out = ensure_survey_module(LayoutPlan(modules=[]), req)
+    assert any(m.kind == SURVEY_KIND for m in out.modules)
+    # 설문이 없으면 안 만든다.
+    assert ensure_survey_module(LayoutPlan(modules=[]), GenerateRequest(content="x")).modules == []
