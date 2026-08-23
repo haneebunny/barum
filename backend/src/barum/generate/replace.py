@@ -383,7 +383,31 @@ def _rewrite(
 
 
 def apply_replacements(content: str, reps: list[Replacement]) -> str:
-    """원문에서 각 위반 표현(original)을 안전표현(replaced)으로 치환한 텍스트를 낸다."""
-    for r in reps:
+    """원문에서 각 위반 표현(original)을 안전표현(replaced)으로 치환한 텍스트를 낸다.
+
+    **긴 original부터 적용한다.** 치환 단위가 섞여 있어서다 — LLM 경로는 문장 전체를,
+    조건표 경로는 단어를 original로 쓴다. 짧은 단어를 먼저 치환하면 그 단어를 품고
+    있던 긴 문장이 더 이상 원문에 없어서, 뒤에 오는 문장 단위 치환이 **조용히
+    무시된다.** 그러면 그 문장이 담고 있던 다른 위반어가 결과물에 그대로 남는다.
+
+    한 문장에 위반이 여러 개면 반드시 이 상황이 된다(2026-08-23 실측: `진피층`이
+    결과에 남았다). 문장당 매칭을 전부 내게 되면서 흔해진 경로다.
+    """
+    for r in sorted(reps, key=lambda r: len(r.original), reverse=True):
         content = content.replace(r.original, r.replaced)
     return content
+
+
+def unapplied_originals(final_text: str, reps: list[Replacement]) -> list[str]:
+    """결과물에 안 실린 대체표현. **최종 결과 기준으로 본다.**
+
+    판단은 "이 문구가 결과물에 들어갔는가" 하나다. 원문 기준으로 "대상을 못 찾았나"를
+    보면 두 가지를 놓친다.
+      · 대상은 있었는데 다른 치환이 먼저 적용돼 문장이 바뀌는 바람에 무시된 경우
+        (위반 표현이 결과에 그대로 남는다 — 제일 나쁜 경우인데 원문 기준으론 안 잡힌다)
+      · 사용자가 승인한 문구가 더 큰 치환에 흡수돼 그대로는 안 들어간 경우
+
+    둘 다 "승인/생성한 문구가 결과물에 없다"는 같은 사실이고, 사용자에게 알릴 값어치가
+    있다. 그래서 결과물에 `replaced`가 있는지만 본다.
+    """
+    return [r.replaced for r in reps if r.replaced not in final_text]
