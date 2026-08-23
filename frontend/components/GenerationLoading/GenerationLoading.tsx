@@ -36,9 +36,14 @@ function buildSteps(mode: GenerationMode, imagesRequested: boolean): string[] {
 }
 
 // 실제 진행률이 아니다 - 기다릴 수 있게 하는 눈속임 진행바다(팀장 지시).
-// 이미지 생성이 있으면 훨씬 오래 걸리니 추정 총 시간을 넉넉히 잡는다(실측 없음).
+// 92% 점근선 도달 시점이 실제 평균 완료 시점 근처에 오도록 실측 기반으로 잡았다
+// (generate_cost_probe.py 실측, 2026-08-23: 이미지 끔 66~96초·켬 107~125초, 각 범위
+// 중앙값을 기준으로 역산 - 57행 공식상 92% 도달 시점은 total의 약 1.515배).
+// create 모드만 실측함. improve 모드는 이미지를 안 쓰므로 항상 이미지 끔 값을 쓰는데,
+// 그 값 자체가 improve 모드로 실측된 적은 없다(재검증·대체표현 생성뿐이라 더 짧을 가능성 높음,
+// 확인 전엔 추정 안 함).
 function estimatedTotalMs(imagesRequested: boolean): number {
-  return imagesRequested ? 45_000 : 12_000;
+  return imagesRequested ? 76_550 : 53_450;
 }
 
 export function GenerationLoading({ mode, imagesRequested = false }: GenerationLoadingProps) {
