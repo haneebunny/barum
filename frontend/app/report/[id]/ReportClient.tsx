@@ -294,7 +294,7 @@ function FindingCard({
                 className={`font-semibold whitespace-nowrap shrink-0 cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] ${isExcluded ? "underline" : ""}`}
                 onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
               >
-                {isExcluded ? "제외됨 · 되돌리기" : "제외"}
+                {isExcluded ? "제외됨" : "제외"}
               </button>
             </div>
           )}
@@ -834,7 +834,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
               필터로 앞 카드들이 숨겨질 수 있어 "실제 렌더된 첫 카드"가 항상
               DOM상 첫 자식은 아니지만, 형제 결합자는 "바로 앞 형제가 있는
               요소"만 잡으므로 숨은 형제와 무관하게 정확히 동작한다). */}
-          <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-[var(--line)]">
+          <div className="flex flex-col gap-3 [&>*+*]:border-t [&>*+*]:border-[var(--line)]">
             {findGroups.map((g, orderIndex) => {
               if (flagFilter && g.representative.flag !== flagFilter) return null;
               return (
