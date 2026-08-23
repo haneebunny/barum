@@ -756,22 +756,17 @@ function ContentGeneratorContent() {
     ${noteHtml}`;
           }
 
-          // 표 카드(상품 스펙표): headline·body가 비어 있고 table_rows만 있다
-          // (PR #314, 베베). 문장 카드와 같은 틀로 그리면 빈 카드처럼 보이니
-          // 먼저 걸러서 실제 <table>로 그린다. 옛 sections 경로의 dp-table
-          // 스타일을 그대로 재사용(레이아웃 새로 안 만듦).
-          if (card.layout_type === "table_info" && card.table_rows && card.table_rows.length > 0) {
-            const rowsHtml = card.table_rows
-              .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`)
-              .join("");
-            return `<div class="dp-table-wrap"><table class="dp-table">${rowsHtml}</table></div>
-    ${noteHtml}`;
-          }
+          // card.body(본문)가 8개 템플릿 어디에서도 렌더되지 않고 있었다 -
+          // headline만 <p>로 넣고 body는 그냥 버려졌다(팀장이 직접 코드로 확인,
+          // 2026-08-23). 백엔드는 헤드라인·본문을 둘 다 정상 생성하는데 화면엔
+          // 본문이 아예 안 나가 상세페이지가 헤드라인만 나열된 것처럼 부실해
+          // 보였다. 옛 sections 경로가 쓰던 .dp-subcopy를 그대로 재사용한다.
+          const bodyHtml = card.body ? `<p class="dp-subcopy">${escapeHtml(card.body)}</p>` : "";
 
           if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
             return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}</p></div>
+      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
     </div>
     ${aiImageCaption}
     ${noteHtml}`;
@@ -786,7 +781,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     </div>
     ${noteHtml}`;
           }
@@ -800,7 +795,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}</p></div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
     </div>
     ${noteHtml}`;
           }
@@ -808,7 +803,7 @@ function ContentGeneratorContent() {
           if (card.layout_type === "section_statement") {
             const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
             statementAltIndex++;
-            return `<div class="dp-statement${tone}${finePrintCard}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+            return `<div class="dp-statement${tone}${finePrintCard}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     ${noteHtml}`;
           }
 
@@ -817,11 +812,12 @@ function ContentGeneratorContent() {
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
     ${card.headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
+    ${card.body ? `<p class="dp-caption">${escapeHtml(card.body)}</p>` : ""}
     ${noteHtml}`;
           }
 
           if (card.layout_type === "banner_strip") {
-            return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
+            return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
     ${noteHtml}`;
           }
 
@@ -830,10 +826,10 @@ function ContentGeneratorContent() {
             return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
+    <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     ${noteHtml}`;
           }
-          return `<div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
+          return `<div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     ${noteHtml}`;
         })
       );
