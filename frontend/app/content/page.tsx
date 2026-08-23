@@ -110,16 +110,6 @@ function nextProductPhotoId() {
   return `pp-${productPhotoSeq}`;
 }
 
-function getRemediationProposal(violationType: string, span: string): string {
-  if (span.includes("아토피 피부염")) return "순화된 보습 표현으로 대체";
-  if (span.includes("3배 빠른 흡수")) return "근거 없는 비교 수치 제거";
-  if (span.includes("멜라닌")) return "생성 억제 대신 기능성 화장품 표현 활용";
-  if (span.includes("주름을 개선")) return "주름 개선 기능성 심사 필 문구 사용";
-  if (span.includes("염증을 가라앉히고")) return "의학적 판단 여지 제거 및 보습 완화";
-  if (span.includes("파워 수분 공급")) return "자극적인 수식어 배제";
-  return "순화된 표현 권고";
-}
-
 function UpgradeCard({ title, desc, children }: { title: string; desc: string; children?: React.ReactNode }) {
   return (
     <div className="p-[18px_20px]">
@@ -356,11 +346,16 @@ function ContentGeneratorContent() {
       ? report.findings.map((f, idx) => (f.flag === "위반" ? idx : -1)).filter((idx) => idx !== -1)
       : [1, 2]; // 기본 mockup에서는 위반 2건 수용
 
-  const acceptedFindings = report
-    ? report.findings.filter((_, idx) => acceptedIndices.includes(idx))
+  // findingIdx를 들고 있어야 report.replacements와 finding_index로 짝지을 수 있다
+  // (PR #265 - 판정할 때 배치로 만들어진 진짜 대체표현. 데모용 하드코딩 목록으로
+  // 대신하던 걸 실제 값으로 바꾼다, 2026-08-23 팀장 실측 버그).
+  const acceptedFindings: Array<{ span: string; violation_type: string; findingIdx: number }> = report
+    ? report.findings
+        .map((f, idx) => ({ span: f.span, violation_type: f.violation_type, findingIdx: idx }))
+        .filter((f) => acceptedIndices.includes(f.findingIdx))
     : [
-        { span: "아토피 피부염을 완화하고 손상된 피부를 재생", violation_type: "1호_의약품오인" },
-        { span: "시중 제품 대비 3배 빠른 흡수", violation_type: "5호_거짓과장기만" }
+        { span: "아토피 피부염을 완화하고 손상된 피부를 재생", violation_type: "1호_의약품오인", findingIdx: -1 },
+        { span: "시중 제품 대비 3배 빠른 흡수", violation_type: "5호_거짓과장기만", findingIdx: -1 }
       ];
 
   // 업로드된 이미지 칩 추출
@@ -1407,18 +1402,27 @@ function ContentGeneratorContent() {
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
               <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
               <ul className="list-none m-0 p-0 flex flex-col gap-1.25">
-                {acceptedFindings.map((f, i) => (
-                  <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
-                    <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
-                      <path d="M4 12l5 5L20 6" />
-                    </svg>
-                    <span>
-                      <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
-                      <span className="text-[var(--ink-3)] mx-0.5">→</span>
-                      {getRemediationProposal(f.violation_type || "", f.span || "")}
-                    </span>
-                  </li>
-                ))}
+                {acceptedFindings.map((f, i) => {
+                  // finding_index로 짝짓는다(PR #265). 못 찾으면 "제안할 수
+                  // 없었다"는 뜻(제품명·유통 채널 등 자동 수정이 구조적으로
+                  // 안 되는 문구) - 지어낸 문구로 덮지 않는다.
+                  const rep = report?.replacements.find((r) => r.finding_index === f.findingIdx);
+                  return (
+                    <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
+                      <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                        <path d="M4 12l5 5L20 6" />
+                      </svg>
+                      <span>
+                        <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
+                        <span className="text-[var(--ink-3)] mx-0.5">→</span>
+                        {rep ? rep.replaced : <span className="text-[var(--ink-3)]">자동 수정하지 못했습니다</span>}
+                        {rep?.note && (
+                          <span className="block text-[11px] text-[var(--ink-3)] mt-0.5">ⓘ {rep.note}</span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
                 {acceptedFindings.length === 0 && (
                   <li style={{ color: "var(--ink-3)" }}>수용 처리된 수정 권고안이 없습니다.</li>
                 )}
