@@ -167,6 +167,12 @@ function ContentGeneratorContent() {
     Array<IngredientAmount & { id: string }>
   >([]);
   const [createCertifications, setCreateCertifications] = useState<Set<string>>(new Set());
+  // 상품 스펙표(제형·용량) 입력. 둘 다 비워두면 백엔드가 표 모듈 자체를 안
+  // 만든다(ensure_product_spec_module) - 표 카드가 화면에서 사라지는 버그의
+  // 원인 중 하나였다(입력할 UI가 없어서 정상 입력 경로를 아무도 테스트한 적이
+  // 없었다, 2026-08-23).
+  const [createFormulationType, setCreateFormulationType] = useState("");
+  const [createVolume, setCreateVolume] = useState("");
   const [createClinicalEvidence, setCreateClinicalEvidence] = useState<
     Array<ClinicalEvidence & { id: string }>
   >([]);
@@ -431,6 +437,8 @@ function ContentGeneratorContent() {
             .filter((row) => row.name.trim() && row.amount.trim())
             .map(({ name, amount }) => ({ name, amount })),
           certifications: Array.from(createCertifications).map((c) => `${c} 기능성 인증`),
+          formulation_type: createFormulationType.trim() || undefined,
+          volume: createVolume.trim() || undefined,
           clinical_evidence: createClinicalEvidence.length
             ? createClinicalEvidence
                 .filter((row) => row.claim.trim() && row.value.trim())
@@ -622,13 +630,18 @@ function ContentGeneratorContent() {
       const layoutType = layoutModulesByKind[lookupKey];
       const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(s.kind)}" -->`;
 
+      // 인정문구(source="approved_claim")는 법정 고정 문구라 우리가 늘리거나
+      // 꾸미면 안 된다 - 짧게 끝나는 게 정상이다. 근데 짧은 한 줄만 있으면
+      // "본문 없는 깨진 카드"처럼 보인다(베베 발견, 2026-08-23). 어느 모듈에
+      // 붙을지 고정돼 있지 않아(_link_risky_module_sections가 계획 순서대로
+      // 아무 위험 모듈에나 꽂는다, 베베 확인) layoutType 분기와 무관하게
+      // source로만 판단하고 모든 분기에 태그를 넣는다.
+      const isApprovedClaim = s.source === "approved_claim";
+      const claimTag = isApprovedClaim ? `<span class="dp-claim-tag">인정문구</span>` : "";
+      const claimTagOnLight = isApprovedClaim ? `<span class="dp-claim-tag-onlight">인정문구</span>` : "";
+
       if ((idx === 0 || layoutType === "hero_fullbleed") && dataUri) {
         const { headline, subcopy } = splitHeadline(s.text);
-        // 인정문구(source="approved_claim")는 법정 고정 문구라 우리가 늘리거나
-        // 꾸미면 안 된다 - 짧게 끝나는 게 정상이다. 근데 짧은 한 줄만 있으면
-        // "본문 없는 깨진 카드"처럼 보인다(베베 발견, 2026-08-23). 작은 태그로
-        // "의도된 짧음"이라는 걸 드러낸다(빈 상태가 아니라 고정 문구라는 신호).
-        const claimTag = s.source === "approved_claim" ? `<span class="dp-claim-tag">인정문구</span>` : "";
         return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')">
       <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(headline)}${subcopy ? ` ${escapeHtml(subcopy)}` : ""}</p></div>
@@ -646,7 +659,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>
     </div>`;
       }
 
@@ -663,7 +676,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy"><p class="dp-step-text">${escapeHtml(s.text)}</p></div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(s.text)}</p></div>
     </div>`;
       }
 
@@ -671,7 +684,7 @@ function ContentGeneratorContent() {
         const { headline, subcopy } = splitHeadline(s.text);
         const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
         statementAltIndex++;
-        return `<div class="dp-statement${tone}${finePrint}"><p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>`;
+        return `<div class="dp-statement${tone}${finePrint}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(headline)}</p>${subcopy ? `<p class="dp-subcopy">${escapeHtml(subcopy)}</p>` : ""}</div>`;
       }
 
       if (layoutType === "mood_macro" && dataUri) {
@@ -680,11 +693,11 @@ function ContentGeneratorContent() {
         return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    ${headline ? `<p class="dp-caption">${escapeHtml(headline)}</p>` : ""}`;
+    ${headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(headline)}</p>` : ""}`;
       }
 
       if (layoutType === "banner_strip") {
-        return `<div class="dp-banner"><p>${escapeHtml(s.text)}</p></div>`;
+        return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(s.text)}</p></div>`;
       }
 
       if (layoutType === "table_info" && s.table_rows && s.table_rows.length > 0) {
@@ -699,9 +712,9 @@ function ContentGeneratorContent() {
         return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(s.kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    <div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
+    <div class="dp-block${finePrint}">${claimTagOnLight}<p>${escapeHtml(s.text)}</p></div>`;
       }
-      return `<div class="dp-block${finePrint}"><p>${escapeHtml(s.text)}</p></div>`;
+      return `<div class="dp-block${finePrint}">${claimTagOnLight}<p>${escapeHtml(s.text)}</p></div>`;
     }).join("\n    ");
 
     // 카드형 산출물 렌더링(useCards는 위에서 이미 계산). 백엔드가 sections·
@@ -719,6 +732,29 @@ function ContentGeneratorContent() {
           // 실증자료 필요 고지. 있으면 카드 유형과 무관하게 항상 같이 낸다(빠뜨리면
           // 사용자가 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
           const noteHtml = card.note ? `<div class="dp-block dp-fine"><p>${escapeHtml(card.note)}</p></div>` : "";
+          // 인정문구(text_source="approved_claim")는 법정 고정 문구라 짧게
+          // 끝나는 게 정상이다 - "본문 없는 깨진 카드"처럼 안 보이게 작은 태그로
+          // 의도된 짧음임을 드러낸다(베베 발견, 2026-08-23). 어느 모듈에 붙을지
+          // 고정돼 있지 않다 - _link_risky_module_sections가 계획 순서대로
+          // 아무 위험 모듈에나 꽂아서 매 생성마다 카드 kind가 달라질 수 있다
+          // (베베 확인). 그래서 layout_type 분기와 무관하게 text_source로만
+          // 판단하고, 모든 분기에 태그를 넣는다. 히어로(사진 위, 밝은 글자)와
+          // 나머지(밝은 배경, 어두운 글자)는 대비가 반대라 톤을 분리한다.
+          const isApprovedClaim = card.text_source === "approved_claim";
+          const claimTag = isApprovedClaim ? `<span class="dp-claim-tag">인정문구</span>` : "";
+          const claimTagOnLight = isApprovedClaim ? `<span class="dp-claim-tag-onlight">인정문구</span>` : "";
+
+          // 표 카드(상품 스펙표): headline·body가 비어 있고 table_rows만 있다
+          // (PR #314, 베베). 문장 카드와 같은 틀로 그리면 빈 카드처럼 보이니
+          // 먼저 걸러서 실제 <table>로 그린다. 옛 sections 경로의 dp-table
+          // 스타일을 그대로 재사용(레이아웃 새로 안 만듦).
+          if (card.layout_type === "table_info" && card.table_rows && card.table_rows.length > 0) {
+            const rowsHtml = card.table_rows
+              .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`)
+              .join("");
+            return `<div class="dp-table-wrap"><table class="dp-table">${rowsHtml}</table></div>
+    ${noteHtml}`;
+          }
 
           // 표 카드(상품 스펙표): headline·body가 비어 있고 table_rows만 있다
           // (PR #314, 베베). 문장 카드와 같은 틀로 그리면 빈 카드처럼 보이니
@@ -733,10 +769,6 @@ function ContentGeneratorContent() {
           }
 
           if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
-            // 인정문구(text_source="approved_claim")는 법정 고정 문구라 짧게
-            // 끝나는 게 정상이다 - "본문 없는 깨진 카드"처럼 안 보이게 작은
-            // 태그로 의도된 짧음임을 드러낸다(베베 발견, 2026-08-23).
-            const claimTag = card.text_source === "approved_claim" ? `<span class="dp-claim-tag">인정문구</span>` : "";
             return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
       <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}</p></div>
@@ -754,7 +786,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy"><p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p></div>
     </div>
     ${noteHtml}`;
           }
@@ -768,7 +800,7 @@ function ContentGeneratorContent() {
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
         ${aiImageCaption}
       </div>
-      <div class="dp-split-copy"><p class="dp-step-text">${escapeHtml(card.headline)}</p></div>
+      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}</p></div>
     </div>
     ${noteHtml}`;
           }
@@ -776,7 +808,7 @@ function ContentGeneratorContent() {
           if (card.layout_type === "section_statement") {
             const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
             statementAltIndex++;
-            return `<div class="dp-statement${tone}${finePrintCard}"><p class="dp-headline">${escapeHtml(card.headline)}</p></div>
+            return `<div class="dp-statement${tone}${finePrintCard}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p></div>
     ${noteHtml}`;
           }
 
@@ -784,12 +816,12 @@ function ContentGeneratorContent() {
             return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    ${card.headline ? `<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
+    ${card.headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
     ${noteHtml}`;
           }
 
           if (card.layout_type === "banner_strip") {
-            return `<div class="dp-banner"><p>${escapeHtml(card.headline)}</p></div>
+            return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
     ${noteHtml}`;
           }
 
@@ -798,10 +830,10 @@ function ContentGeneratorContent() {
             return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
     ${aiImageCaption}
-    <div class="dp-block${finePrintCard}"><p>${escapeHtml(card.headline)}</p></div>
+    <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
     ${noteHtml}`;
           }
-          return `<div class="dp-block${finePrintCard}"><p>${escapeHtml(card.headline)}</p></div>
+          return `<div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p></div>
     ${noteHtml}`;
         })
       );
@@ -851,6 +883,10 @@ function ContentGeneratorContent() {
        배지가 .dp-claim-tag 단독(0,1,0)이면 밀린다 - .dp-hero-card와 묶어서
        특이성을 0,2,0으로 올려야 이긴다(실측 확인, 2026-08-23). */
     .dp-hero-card .dp-claim-tag { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.32); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
+    /* 히어로 밖(밝은 배경) 전용 톤 - 어느 모듈에나 인정문구가 붙을 수 있어
+       (베베 확인) 밝은 배경용 변형이 필요하다. 새 색 없이 기존 --dp-ink-3·
+       --dp-surface-sub·--dp-line 토큰만 재사용. */
+    .dp-claim-tag-onlight { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: var(--dp-ink-3); background: var(--dp-surface-sub); border: 1px solid var(--dp-line); border-radius: 3px; padding: 2px 7px; margin: 0 0 6px; }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
@@ -1239,6 +1275,27 @@ function ContentGeneratorContent() {
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">제형·용량 (선택, 상품 스펙표 모듈용)</p>
+              <div className="flex flex-col gap-1.5">
+                <input
+                  type="text"
+                  value={createFormulationType}
+                  onChange={(e) => setCreateFormulationType(e.target.value)}
+                  placeholder="제형 (예: 크림, 액상)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+                <input
+                  type="text"
+                  value={createVolume}
+                  onChange={(e) => setCreateVolume(e.target.value)}
+                  placeholder="용량 (예: 50ml)"
+                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                />
+              </div>
+              <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">둘 다 비워두면 상품 스펙표 모듈 자체를 안 만들어요.</p>
             </div>
 
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
