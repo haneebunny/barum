@@ -437,3 +437,42 @@ def test_explain을_안_켜면_설명이_그대로다():
     build_replacements([f], rewriter=rewriter)
 
     assert f.explanation == before
+
+
+# ── 치환 단위가 섞일 때 순서 (2026-08-23) ──────────────────────────────────
+
+def test_긴_치환을_먼저_적용한다():
+    """**위반어가 결과에 남던 버그다.**
+
+    LLM 경로는 문장 전체를, 조건표 경로는 단어를 original로 쓴다. 짧은 단어를 먼저
+    치환하면 그 단어를 품고 있던 긴 문장이 원문에서 사라져 문장 단위 치환이 조용히
+    무시되고, 그 문장이 담고 있던 다른 위반어가 결과에 그대로 남는다.
+    한 문장에 위반이 여러 개면 반드시 이 상황이 된다.
+    """
+    from barum.generate.replace import apply_replacements
+    from barum.models import Replacement, ViolationType
+
+    line = "줄기세포 배양 기술 세포재생의 시작 진피층까지 침투하여"
+    reps = [
+        # 단어 단위(조건표)가 앞에, 문장 단위(LLM)가 뒤에 오는 배치
+        Replacement(original="세포재생", replaced="피부 생기 부여",
+                    violation_type=ViolationType.type_1_drug_misperception, basis="조건표"),
+        Replacement(original=line, replaced="피부 보호에 도움을 주는 포뮬러",
+                    violation_type=ViolationType.type_1_drug_misperception, basis="LLM"),
+    ]
+    out = apply_replacements(line, reps)
+    assert not any(w in out for w in ("줄기세포", "세포재생", "진피층")), f"위반어가 남았다: {out}"
+
+
+def test_결과에_안_실린_대체표현을_알려준다():
+    from barum.generate.replace import unapplied_originals
+    from barum.models import Replacement, ViolationType
+
+    def rep(original, replaced):
+        return Replacement(original=original, replaced=replaced,
+                           violation_type=ViolationType.type_1_drug_misperception, basis="x")
+
+    final = "피부 보호에 도움을 주는 포뮬러"
+    assert unapplied_originals(final, [rep("진피층", final)]) == []
+    # 대상이 아예 없던 경우(낡은 리포트)
+    assert unapplied_originals(final, [rep("없는 문장", "산뜻한 제형")]) == ["산뜻한 제형"]

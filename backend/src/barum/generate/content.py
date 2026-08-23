@@ -19,7 +19,12 @@ from barum.generate.layout import (
     plan_layout,
     select_top_modules,
 )
-from barum.generate.replace import _accept, apply_replacements, build_replacements
+from barum.generate.replace import (
+    _accept,
+    apply_replacements,
+    build_replacements,
+    unapplied_originals,
+)
 from barum.models import (
     ContentCard,
     Finding,
@@ -553,8 +558,10 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
         )
         reps = build_replacements(initial.findings, rewriter=vlm)
     safe_content = apply_replacements(req.content, reps)
-    # 치환 대상을 원문에서 못 찾은 것. 조용히 넘어가면 "고쳤다"고 표시된 채로 원문이 나간다.
-    unapplied = [r.replaced for r in reps if r.original not in req.content] + gate_rejected
+    # 치환이 실제로 안 된 것. 조용히 넘어가면 "고쳤다"고 표시된 채로 원문이 나간다.
+    # **최종 결과 기준으로 본다**(원문 기준으로 보면 다른 치환이 먼저 처리한 것까지
+    # 미적용으로 세고, 정작 결과에 남은 위반은 못 잡는다).
+    unapplied = unapplied_originals(safe_content, reps) + gate_rejected
     # 3. 섹션 조립: 개선된 원문(광고문구) + LLM 저위험 서술
     sections = [
         Section(kind="광고문구", text=safe_content, source="remediation" if reps else "template")
