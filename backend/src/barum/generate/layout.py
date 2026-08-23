@@ -32,6 +32,13 @@ _CLINICAL_PREFIX = "clinical"
 # 없는 개념) 플래너가 스스로 못 만든다. req에 데이터가 있으면 계획에 결정적으로
 # 끼워넣는다(2026-08-19, 팀장 확정: table_info 지원 범위 = 제형·용량만).
 PRODUCT_SPEC_KIND = "product_spec"
+# 전성분 전체 목록. **화장품법상 의무 표시사항이라 자리가 없어서 빠지면 안 된다.**
+# 지금까지 이 모듈은 보호가 없어 6장 추리기에 잘렸다(2026-08-23 팀장 지적).
+FULL_INGREDIENT_KIND = "full_ingredient_list"
+# 소비자 설문 결과. 실증자료가 아니라서 임상 모듈에 못 붙는데(별표2가 인정하는
+# 실증 수단이 아니다), 붙을 자리가 없어 **조용히 사라지고 있었다**(2026-08-23).
+# 인정문구가 사라지던 것(#321)과 같은 패턴이라 전용 자리를 준다.
+SURVEY_KIND = "survey_result"
 
 # LLM이 카탈로그 밖 값을 내거나 layout_type을 빠뜨렸을 때 쓰는 안전한 기본값.
 # 텍스트 블록 하나짜리라 어떤 모듈에 붙어도 어색하지 않다.
@@ -270,6 +277,45 @@ def ensure_product_spec_module(plan: LayoutPlan, req: GenerateRequest) -> Layout
     return LayoutPlan(modules=[*plan.modules, module], product_type=plan.product_type, source=plan.source)
 
 
+def ensure_survey_module(plan: LayoutPlan, req: GenerateRequest) -> LayoutPlan:
+    """쓸 수 있는 설문 결과가 있으면 설문 모듈을 계획에 끼워넣는다.
+
+    임상 모듈에 못 붙인다 — 관리지침 [별표2]가 인정하는 실증 수단에 설문은 없다
+    (2026-08-20 팀장 확정). 그렇다고 자리를 안 주면 섹션만 만들어지고 카드가 안
+    생겨 화면에서 통째로 사라진다. 그래서 전용 자리를 준다.
+    """
+    if not req.survey_evidence:
+        return plan
+    if any(m.kind == SURVEY_KIND for m in plan.modules):
+        return plan
+    module = LayoutModule(
+        kind=SURVEY_KIND,
+        purpose="소비자 설문 결과",
+        has_claim_risk=False,
+        layout_type="section_statement",
+    )
+    return LayoutPlan(modules=[*plan.modules, module], product_type=plan.product_type, source=plan.source)
+
+
+def ensure_full_ingredient_module(plan: LayoutPlan, req: GenerateRequest) -> LayoutPlan:
+    """전성분 데이터가 있으면 전성분 모듈을 계획에 끼워넣는다.
+
+    `ensure_product_spec_module`과 같은 원칙이다. 사업자 입력값을 그대로 옮길 뿐이라
+    LLM을 안 태우고, 없으면 안 만든다(빈 목록을 만들지 않는다).
+    """
+    if not (req.ingredients or req.ingredient_amounts):
+        return plan
+    if any(m.kind == FULL_INGREDIENT_KIND for m in plan.modules):
+        return plan
+    module = LayoutModule(
+        kind=FULL_INGREDIENT_KIND,
+        purpose="전성분 표기",
+        has_claim_risk=False,
+        layout_type="table_info",
+    )
+    return LayoutPlan(modules=[*plan.modules, module], product_type=plan.product_type, source=plan.source)
+
+
 def clinical_sections_text(evidence: list[ClinicalEvidence]) -> str:
     """실증자료를 그대로 문장으로 만든다. LLM을 태우지 않는다(수치를 지어낼 여지 제거)."""
     parts = []
@@ -303,6 +349,17 @@ _CARD_PRIORITY: tuple[str, ...] = (
     "caution",
 )
 CARD_LIMIT = 6
+# 보호 모듈까지 포함한 절대 상한. **보호 모듈은 CARD_LIMIT을 안 센다.**
+#
+# 팀장 지시(2026-08-23): "항상 6장일 필요 없어. 내용에 따라 판단해야지."
+# 실증자료가 3건이면 임상 카드가 3장 나와야 하는데, 6장 상한이 그걸 도로 잘랐다.
+# 그래서 보호 모듈(전성분·스펙표·인정문구·실증자료)은 개수 제한 없이 살리고
+# 자유생성 카피만 남는 자리에 채운다.
+#
+# 완전 무제한은 안 둔다. 이미지가 모듈당 1장이라 카드가 늘면 과금이 그대로 는다
+# (6장에 이미지 5장·125초 실측). 보호 모듈만으로 12를 넘는 건 실증자료를 6건 넘게
+# 넣는 극단이라 실사용에선 안 걸린다.
+HARD_CARD_LIMIT = 12
 
 
 def _priority_rank(kind: str) -> int:
@@ -345,11 +402,28 @@ def select_top_modules(
             pair[0],  # 동점이면 계획 순서가 이긴다
         ),
     )
-    keep_idx = {i for i, _ in ordered[:limit]}
+    # **보호 모듈은 상한을 안 센다.** 사업자가 입력한 사실(전성분·제형·실증자료)과
+    # 검증된 인정문구는 "자리가 없어서" 빠지면 안 된다. 자유생성 카피만 남는 자리를
+    # 두고 경쟁한다. 다만 절대 상한은 둔다(과금·화면 길이).
+    protected_idx = [i for i, m in enumerate(plan.modules) if m.kind in protected_set]
+    rest = [(i, m) for i, m in ordered if i not in set(protected_idx)]
+    # **상한은 자유생성 카피에만 건다.** 보호 모듈이 상한을 먹어버리면, 실증자료를
+    # 넉넉히 넣을수록 오히려 서술 카피가 전부 잘려 표만 남는 페이지가 된다
+    # (2026-08-23 실측: 보호 6장이 상한을 다 먹어 자유생성 카피가 0장이 됐다).
+    # 자료가 많을수록 페이지가 풍성해져야지 빈약해지면 안 된다.
+    keep_idx = set(protected_idx) | {i for i, _ in rest[:limit]}
+    if len(keep_idx) > HARD_CARD_LIMIT:
+        keep_idx = set(sorted(keep_idx)[:HARD_CARD_LIMIT])
     kept = [m for i, m in enumerate(plan.modules) if i in keep_idx]
     dropped = [m for i, m in enumerate(plan.modules) if i not in keep_idx]
+    # **화면에 뜨는 값이라 내부 식별자를 그대로 쓰지 않는다.**
+    # `clinical_intro`·`full_ingredient_list` 같은 영문 kind가 사용자에게 그대로
+    # 보였다(2026-08-23 팀장 지적). purpose가 이미 한글 설명이라 그걸 쓴다.
     skipped = [
-        SkippedClaim(category=m.kind, reason=f"카드 {limit}장으로 추리면서 제외했습니다.")
+        SkippedClaim(
+            category=m.purpose or m.kind,
+            reason=f"카드가 길어져 이번 구성에서는 뺐습니다.",
+        )
         for m in dropped
     ]
     return (

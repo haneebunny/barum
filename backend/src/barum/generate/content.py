@@ -12,8 +12,12 @@ import re
 from barum.generate.images import generate_canvas_background, generate_module_images
 from barum.reference.presets import apply_preset, audience_hint
 from barum.generate.layout import (
+    FULL_INGREDIENT_KIND,
+    SURVEY_KIND,
     PRODUCT_SPEC_KIND,
     clinical_sections_text,
+    ensure_full_ingredient_module,
+    ensure_survey_module,
     ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
@@ -493,6 +497,9 @@ def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> No
     claim_slots = [m for m in plan.modules if m.has_claim_risk and not m.kind.startswith("clinical")]
     clinical_slots = [m for m in plan.modules if m.has_claim_risk and m.kind.startswith("clinical")]
     claim_iter = iter(claim_slots)
+    # 실증자료도 하나씩 배정한다. 예전엔 전부 clinical_slots[0]에 몰아넣어서,
+    # 자료가 여러 건이어도 카드가 1장뿐이었다(2026-08-23 팀장 지시로 변경).
+    clinical_iter = iter(clinical_slots)
     # 위험 모듈이 없을 때 인정문구가 갈 곳. 없으면 None이고 그때는 skipped로 나간다.
     hero = next((m for m in plan.modules if m.kind == _HERO_KIND), None)
     for section in sections:
@@ -513,8 +520,10 @@ def _link_risky_module_sections(sections: list[Section], plan: LayoutPlan) -> No
                 # 인정문구 섹션이 앞에 있으면 자동으로 이겨서 히어로 카피를 대체한다.
                 section.module_kind = hero.kind
                 hero = None  # 인정문구가 여러 개여도 히어로는 한 번만 내준다
-        elif section.source == "clinical_evidence" and clinical_slots:
-            section.module_kind = clinical_slots[0].kind
+        elif section.source == "clinical_evidence":
+            module = next(clinical_iter, None)
+            if module is not None:
+                section.module_kind = module.kind
 
 
 def _drop_unfilled_risky_modules(
@@ -615,6 +624,23 @@ def _unplaced_claim_skips(sections: list[Section]) -> list[SkippedClaim]:
         for s in sections
         if s.source == "approved_claim" and s.module_kind is None
     ]
+
+
+def build_full_ingredient_section(req: GenerateRequest) -> Section:
+    """전성분 전체 목록 섹션. LLM을 안 태운다.
+
+    화장품법상 의무 표시사항이라 지어낼 여지를 두면 안 된다. 사업자가 입력한 값을
+    그대로 옮긴다. 함량이 있으면 같이 적는다.
+    """
+    rows: list[TableRow] = []
+    if req.ingredients:
+        for name in (n.strip() for n in req.ingredients.split(",")):
+            if name:
+                rows.append(TableRow(label="", value=name))
+    else:
+        for a in req.ingredient_amounts or []:
+            rows.append(TableRow(label=a.name, value=a.amount or ""))
+    return Section(kind=FULL_INGREDIENT_KIND, text="", source="full_ingredient", table_rows=rows)
 
 
 def build_product_spec_section(req: GenerateRequest) -> Section:
@@ -822,6 +848,8 @@ def _generate_create_content(
     )
     skipped += plan_skipped
     plan = ensure_product_spec_module(plan, req)
+    plan = ensure_full_ingredient_module(plan, req)
+    plan = ensure_survey_module(plan, req)
 
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
@@ -829,19 +857,25 @@ def _generate_create_content(
     #    ensure_product_spec_module이 항상 plan.modules 맨 뒤에 붙이므로, 여기서도
     #    맨 뒤에 붙여야 렌더 순서가 계획된 모듈 순서와 어긋나지 않는다(2026-08-19,
     #    실제 export에서 표가 히어로보다 앞에 나오던 결함, 팀장 지시로 즉시 수정).
-    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
+    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind not in (PRODUCT_SPEC_KIND, FULL_INGREDIENT_KIND, SURVEY_KIND)]
     clinical_planned = any(m.kind.startswith("clinical") for m in plan.modules)
     sections = list(claim_sections)
     if clinical_planned and evidence:
-        sections.append(
-            Section(kind="실증자료", text=clinical_sections_text(evidence), source="clinical_evidence")
-        )
+        # **자료 1건 = 섹션 1장.** 2026-08-20엔 "같은 자료 반복 방지"로 전부 한 섹션에
+        # 묶었는데, 그러면 임상 모듈이 여러 개여도 채울 섹션이 하나뿐이라 나머지가
+        # "자료 부족"으로 드롭됐다. 사업자가 실증자료를 3건 넣어도 카드는 1장이었다.
+        # 팀장 지시로 뒤집는다(2026-08-23): "실증자료까지 다 넣어."
+        sections += [
+            Section(kind="실증자료", text=clinical_sections_text([e]), source="clinical_evidence")
+            for e in evidence
+        ]
     if surveys:
         sections.append(
             Section(
                 kind="설문조사",
                 text=" / ".join(survey_sentence(s) for s in surveys),
                 source="survey_evidence",
+                module_kind=SURVEY_KIND,
             )
         )
     _link_risky_module_sections(sections, plan)
@@ -866,17 +900,19 @@ def _generate_create_content(
     # (2026-08-23 실측: 제형·용량을 입력했는데 표가 안 나옴).
     filled_kinds = tuple(s.module_kind for s in sections if s.module_kind)
     plan, over_limit_skipped = select_top_modules(
-        plan, protected=filled_kinds + (PRODUCT_SPEC_KIND,)
+        plan, protected=filled_kinds + (PRODUCT_SPEC_KIND, FULL_INGREDIENT_KIND, SURVEY_KIND)
     )
     skipped += over_limit_skipped
     # 추린 뒤에 다시 계산한다. 위에서 잡은 safe_modules에는 버린 모듈이 남아 있어,
     # 그대로 쓰면 카드로 안 나갈 모듈의 문장까지 LLM에 시킨다.
-    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
+    safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind not in (PRODUCT_SPEC_KIND, FULL_INGREDIENT_KIND, SURVEY_KIND)]
     sections += _sanitize_generated(generate_module_sections(req, safe_modules, vlm), vlm)
     # **추린 뒤의 계획으로 다시 확인한다.** 위에서 잡은 값은 추리기 전 것이라,
     # 모듈이 잘렸는데도 섹션만 만들어져 화면에 안 나오는 섹션이 생긴다.
     if any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules):
         sections.append(build_product_spec_section(req))
+    if any(m.kind == FULL_INGREDIENT_KIND for m in plan.modules):
+        sections.append(build_full_ingredient_section(req))
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
