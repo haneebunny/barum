@@ -8,6 +8,7 @@ import type { USPreflightReport } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { useError } from "@/lib/error/ErrorContext";
 import { takeDraft } from "@/lib/draftHandoff";
 
@@ -702,7 +703,7 @@ function InspectPageWrapper() {
 
 export default function InspectPage() {
   return (
-    <Suspense fallback={<div className="devnote" style={{ padding: "20px" }}>로딩 중...</div>}>
+    <Suspense fallback={<RouteLoading />}>
       <InspectPageWrapper />
     </Suspense>
   );
