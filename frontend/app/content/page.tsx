@@ -1705,7 +1705,9 @@ function ContentGeneratorContent() {
                       />
                       <label className="cursor-pointer" htmlFor={rc.id}>
                         <span className="font-bold text-[13px]">{rc.text}</span>
-                        <p className="m-[2px_0_0] text-[11.5px] text-[var(--ink-3)]">{rc.reason}</p>
+                        {/* 문장 하나에 지적이 여러 건이면 사유가 \n으로 이어붙어 온다
+                            (PR #324, 베베) - pre-line 없으면 한 줄로 붙어 보인다. */}
+                        <p className="m-[2px_0_0] text-[11.5px] text-[var(--ink-3)] whitespace-pre-line">{rc.reason}</p>
                       </label>
                     </li>
                   ))}
@@ -1854,7 +1856,9 @@ function ContentGeneratorContent() {
                   <span className="font-mono text-[12px] font-bold text-[var(--crit)] shrink-0 mt-0.5 leading-none">[warn]</span>
                   <span className="text-[13.5px] text-[var(--ink-2)] font-sans leading-[1.55]">
                     <span className="font-bold">{rc.text}</span>
-                    <span className="block text-[11.5px] text-[var(--ink-3)] mt-0.5">{rc.reason}</span>
+                    {/* 문장 하나에 지적이 여러 건이면 사유가 \n으로 이어붙어 온다
+                        (PR #324, 베베) - pre-line 없으면 한 줄로 붙어 보인다. */}
+                    <span className="block text-[11.5px] text-[var(--ink-3)] mt-0.5 whitespace-pre-line">{rc.reason}</span>
                   </span>
                 </div>
                 <input
