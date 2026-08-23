@@ -11,6 +11,7 @@ import time
 from typing import Protocol
 
 from dotenv import load_dotenv
+from langsmith import traceable
 
 
 class VLM(Protocol):
@@ -19,6 +20,52 @@ class VLM(Protocol):
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
         """프롬프트 + 이미지들을 넣고 JSON 응답(dict)을 받는다."""
         ...
+
+
+
+# ── LangSmith 수동 계측 ────────────────────────────────────────────────────
+#
+# **`wrappers.wrap_gemini`로는 우리 호출이 안 잡힌다.** 그 래퍼는
+# `client.models.generate_content`(+stream)만 monkey-patch하는데(langsmith
+# `wrappers/_gemini.py:643`), 우리는 2026-08-20에 401 회피로 전부
+# `client.interactions.create`로 이관했다. 래핑 호출은 에러 없이 통과하니
+# "관측되고 있다"처럼 보이지만 실제로 트레이스를 만드는 훅이 없다.
+#
+# 그래서 호출 메서드를 직접 감싼다. 프롬프트가 어떻게 들어가는지 보려는 것이
+# 목적이라(팀장 요청) 입력 텍스트는 그대로 싣고, **이미지 바이트는 크기만 싣는다**
+# — 원본을 실으면 트레이스가 수 MB가 되고 조회가 느려진다.
+def _trace_inputs(inputs: dict) -> dict:
+    """LangSmith에 실을 입력. 이미지는 바이트 대신 크기로 바꾼다."""
+    out = {k: v for k, v in inputs.items() if k not in ("self", "images")}
+    me = inputs.get("self")
+    if me is not None:
+        out["model"] = getattr(me, "model", None)
+    images = inputs.get("images") or []
+    if images:
+        out["images"] = [f"<image {len(b):,} bytes>" for b in images]
+    return out
+
+
+def _tag_model(model: str) -> None:
+    """지금 트레이스에 모델명을 단다.
+
+    `process_inputs`로는 못 붙인다 — 메서드에 걸면 `self`가 입력으로 안 들어와서
+    모델명을 읽을 데가 없다. 역할별 모델 분리(JUDGE_MODEL·IMAGE_MODEL 등)를 넣은
+    뒤로는 **어느 모델이 돌았는지가 트레이스에 보여야** 비교가 된다.
+    """
+    try:
+        from langsmith.run_helpers import get_current_run_tree
+
+        rt = get_current_run_tree()
+        if rt is not None:
+            rt.metadata["model"] = model
+    except Exception:  # 관측 실패가 판정을 막으면 안 된다
+        pass
+
+
+def _trace_image_output(output) -> dict:
+    """생성 이미지도 바이트를 안 싣는다."""
+    return {"image_bytes": len(output) if isinstance(output, (bytes, bytearray)) else None}
 
 
 def _model_path(model: str) -> str:
@@ -131,7 +178,9 @@ class GeminiVLM:
         if usage is not None:
             self.total_tokens += getattr(usage, "total_tokens", 0) or 0
 
+    @traceable(run_type="llm", name="gemini.interactions.create", process_inputs=_trace_inputs)
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
+        _tag_model(self.model)
         self._throttle()
 
         interaction = self.client.interactions.create(
@@ -292,8 +341,15 @@ class GeminiImageGenerator(GeminiVLM):
             print(f"    [retry] 콘텐츠 필터 거부(과금 없음) → 1회 재시도: {str(e)[:80]}")
         return self._generate_once(prompt, images)
 
+    @traceable(
+        run_type="llm",
+        name="nano-banana.image",
+        process_inputs=_trace_inputs,
+        process_outputs=_trace_image_output,
+    )
     def _generate_once(self, prompt: str, images: list[bytes]) -> bytes:
         """실제 호출 1회. 재시도 판단은 `generate_image`가 한다."""
+        _tag_model(self.model)
         self._throttle()
 
         interaction = self.client.interactions.create(
