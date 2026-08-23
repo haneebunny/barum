@@ -826,6 +826,20 @@
               }
             ],
             "title": "Note"
+          },
+          "table_rows": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TableRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Rows"
           }
         },
         "type": "object",

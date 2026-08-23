@@ -299,3 +299,44 @@ def test_줄바꿈이_있으면_그게_헤드라인_경계다():
     head, body = split_headline("발림성부터 다릅니다\n젤-세럼 타입입니다. 끈적임이 없습니다.")
     assert head == "발림성부터 다릅니다"
     assert body.startswith("젤-세럼")
+
+
+# ── 상품 스펙표가 카드로 나가는가 (2026-08-23) ──────────────────────────────
+
+def test_스펙표_모듈은_카드_상한에_안_잘린다():
+    """**PR #272에서 넣은 카드 상한이 스펙표를 잘랐다.**
+
+    사업자가 직접 입력한 제형·용량을 그대로 옮기는 표라 우선순위가 낮게 잡혀
+    있었는데, 상한에 걸려 계획에서 빠졌다. 그런데 섹션은 그대로 만들어져
+    **갈 곳 없는 섹션**이 됐다(build_cards는 plan.modules를 돈다). 화면에서
+    표가 통째로 사라졌다.
+    """
+    from barum.generate.layout import PRODUCT_SPEC_KIND, select_top_modules
+    from barum.models import LayoutModule, LayoutPlan
+
+    modules = [
+        LayoutModule(kind=f"filler_{i}", purpose="x", layout_type="section_statement")
+        for i in range(8)
+    ]
+    modules.append(LayoutModule(kind=PRODUCT_SPEC_KIND, purpose="스펙표", layout_type="table_info"))
+    plan = LayoutPlan(modules=modules)
+
+    trimmed, _ = select_top_modules(plan, protected=(PRODUCT_SPEC_KIND,))
+    assert any(m.kind == PRODUCT_SPEC_KIND for m in trimmed.modules), "스펙표가 잘렸다"
+
+
+def test_스펙표_데이터가_카드까지_간다():
+    """섹션에 table_rows만 있고 카드가 없으면 화면엔 아무것도 안 나온다."""
+    from barum.generate.content import build_cards, build_product_spec_section
+    from barum.generate.layout import PRODUCT_SPEC_KIND
+    from barum.models import GenerateRequest, ImagePlan, LayoutModule, LayoutPlan
+
+    req = GenerateRequest(mode="create", formulation_type="크림", volume="50ml")
+    spec = build_product_spec_section(req)
+    assert spec.table_rows, "표 데이터 자체가 안 만들어졌다"
+
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind=PRODUCT_SPEC_KIND, purpose="스펙표", layout_type="table_info")]
+    )
+    cards = build_cards([spec], plan, ImagePlan())
+    assert cards, "표 데이터는 있는데 카드가 안 나왔다"
