@@ -436,6 +436,24 @@ def build_approved_claim_sections(req: GenerateRequest) -> tuple[list[Section], 
     return sections, skipped
 
 
+def _unplaced_claim_skips(sections: list[Section]) -> list[SkippedClaim]:
+    """모듈에 못 붙은 인정문구를 스킵 사유로 낸다.
+
+    조용히 빠지는 것과 "왜 빠졌는지 적힌 채로 빠지는 것"은 완전히 다르다. 전자는
+    아무도 못 알아채고, 후자는 화면에도 뜨고 다음 사람이 원인을 찾을 수 있다.
+    """
+    return [
+        SkippedClaim(
+            category="인정문구",
+            reason=(
+                f"계획에 이 문구를 실을 모듈이 없어 화면에 넣지 못했습니다: {s.text}"
+            ),
+        )
+        for s in sections
+        if s.source == "approved_claim" and s.module_kind is None
+    ]
+
+
 def build_product_spec_section(req: GenerateRequest) -> Section:
     """제형·용량으로 상품 스펙표 섹션을 만든다(table_info layout_type 전용).
 
@@ -642,6 +660,13 @@ def _generate_create_content(
             )
         )
     _link_risky_module_sections(sections, plan)
+    # **자리를 못 찾은 인정문구를 조용히 흘려보내지 않는다.**
+    # 인정문구는 계획에 `has_claim_risk` 모듈이 있어야 거기 붙는다. 플래너가 그런
+    # 모듈을 하나도 안 내면 `module_kind`가 None으로 남고, `build_cards`는
+    # `plan.modules`를 돌기 때문에 카드가 안 생긴다. 검증된 법정 문구가 흔적도
+    # 없이 사라지는데, 그게 create 모드의 존재 이유라 제일 나쁜 유실이다
+    # (2026-08-23 실측: 위험 모듈이 없는 계획에서 재현됨).
+    skipped += _unplaced_claim_skips(sections)
     plan, unfilled_skipped = _drop_unfilled_risky_modules(plan, sections)
     skipped += unfilled_skipped
     # 카드 5~6장으로 추린다. **위험 모듈 필터 뒤, 이미지 생성 앞**이어야 한다

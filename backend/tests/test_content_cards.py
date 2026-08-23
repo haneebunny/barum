@@ -340,3 +340,50 @@ def test_스펙표_데이터가_카드까지_간다():
     )
     cards = build_cards([spec], plan, ImagePlan())
     assert cards, "표 데이터는 있는데 카드가 안 나왔다"
+
+
+# ── 인정문구가 자리를 못 찾을 때 (2026-08-23) ──────────────────────────────
+
+def test_자리_못_찾은_인정문구가_조용히_사라지지_않는다():
+    """**create 모드의 존재 이유가 사라지는 유실이다.**
+
+    인정문구는 계획에 `has_claim_risk` 모듈이 있어야 거기 붙는다. 플래너가 그런
+    모듈을 하나도 안 내면 module_kind가 None으로 남고, build_cards는 plan.modules를
+    돌기 때문에 카드가 안 생긴다. 검증된 법정 문구가 흔적도 없이 빠진다.
+    """
+    from barum.generate.content import _unplaced_claim_skips
+    from barum.models import Section
+
+    claim = Section(kind="광고문구", text="피부의 미백에 도움을 준다.", source="approved_claim")
+    skips = _unplaced_claim_skips([claim])
+    assert len(skips) == 1
+    assert "피부의 미백에 도움을 준다." in skips[0].reason
+
+
+def test_모듈에_붙은_인정문구는_스킵이_아니다():
+    from barum.generate.content import _unplaced_claim_skips
+    from barum.models import Section
+
+    claim = Section(
+        kind="광고문구", text="피부의 미백에 도움을 준다.",
+        source="approved_claim", module_kind="efficacy_explain",
+    )
+    assert _unplaced_claim_skips([claim]) == []
+
+
+def test_위험모듈_없는_계획에서_인정문구가_카드에_없다는_것을_고정한다():
+    """지금 동작을 기록해 둔다. 배치 방식이 정해지면 이 테스트를 바꾼다."""
+    from barum.generate.content import _link_risky_module_sections, build_cards
+    from barum.models import ImagePlan, LayoutModule, LayoutPlan, Section
+
+    claim = Section(kind="광고문구", text="피부의 미백에 도움을 준다.", source="approved_claim")
+    hero = Section(kind="hero_intro", text="데일리 크림\n가벼운 텍스처", source="llm", module_kind="hero_intro")
+    plan = LayoutPlan(
+        modules=[LayoutModule(kind="hero_intro", purpose="소개", layout_type="hero_fullbleed")]
+    )
+    sections = [claim, hero]
+    _link_risky_module_sections(sections, plan)
+
+    assert claim.module_kind is None, "위험 모듈이 없으면 붙을 자리가 없다"
+    cards = build_cards(sections, plan, ImagePlan())
+    assert not any(c.text_source == "approved_claim" for c in cards)
