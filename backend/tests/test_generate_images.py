@@ -68,10 +68,17 @@ def test_한_모듈이_실패해도_나머지는_계속_만든다():
     assert blobs == {"texture": b"B"}
 
 
-def test_생성기가_없으면_아무것도_안_만든다():
+def test_생성기가_없으면_사유를_남기고_안_만든다():
+    """**조용히 빈 목록을 내지 않는다.**
+
+    사용자가 이미지를 요청했는데 결과에 아무 흔적이 없으면 왜 안 나왔는지 알 방법이
+    없다(2026-08-23: module_images=[] · reason=null 로 나가 원인 추적에 시간을 썼다).
+    """
     results, blobs = generate_module_images(_plan("hero_intro"), _REQ, None)
-    assert results == []
     assert blobs == {}
+    assert len(results) == 1
+    assert results[0].status == "skipped"
+    assert results[0].reason and "IMAGE_GENERATION_ENABLED" in results[0].reason
 
 
 def test_상한을_넘으면_사유를_남기고_건너뛴다():

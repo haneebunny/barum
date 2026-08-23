@@ -461,6 +461,17 @@ def generate_module_images(
     results: list[ModuleImage] = []
     blobs: dict[str, bytes] = {}
     if generator is None:
+        # **조용히 빈 목록을 내지 않는다.** 사용자는 이미지를 요청했는데 결과에
+        # 아무 흔적이 없으면 "왜 안 나왔는지"를 알 방법이 없다(2026-08-23: 실제로
+        # module_images=[] · reason=null 로 나가서 원인 추적에 시간을 썼다).
+        for module in plan.modules:
+            results.append(
+                ModuleImage(
+                    module_kind=module.kind,
+                    status="skipped",
+                    reason="이미지 생성이 꺼져 있습니다(IMAGE_GENERATION_ENABLED).",
+                )
+            )
         return results, blobs
 
     reference_images: list[bytes] = []

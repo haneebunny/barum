@@ -228,3 +228,20 @@ def test_reload_감시에_레퍼런스_팩이_들어간다():
     )
     assert "reload_dirs" in src
     assert 'ROOT.parent / "reference"' in src
+
+
+def test_앱을_띄울_때_env를_읽는다():
+    """**갓 뜬 프로세스의 첫 요청이 .env를 못 보던 버그.**
+
+    지금까지는 VLM 어댑터들이 각자 load_dotenv를 불렀다. 그래서 어댑터가 하나라도
+    만들어지기 전에는 app.py의 env 읽기가 전부 빈손이었고, `/generate`가 판정기보다
+    먼저 IMAGE_GENERATION_ENABLED를 읽는 바람에 플래그가 켜져 있는데도 이미지가
+    0장 나갔다. 두 번째 요청부터는 정상이라 간헐적으로 보였다.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "src" / "barum" / "api" / "app.py").read_text(
+        encoding="utf-8"
+    )
+    # 모듈 최상위에서 부른다(함수 안이 아니라).
+    assert "\nload_dotenv()\n" in src
