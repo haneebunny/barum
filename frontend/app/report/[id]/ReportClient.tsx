@@ -30,10 +30,12 @@ const TYPE_LABEL = {
 // 근거 등급(evidence_grade) → 점 채움 개수·라벨. 색이 아니라 채움 개수(형태)로만
 // 구분한다 - 등급이 낮다고 "안전"으로 읽히면 안 된다(팀장 승인, 2026-08-23).
 // 표시 라벨은 디디 확정 전 잠정본(2026-08-23) - 바뀌어도 이 테이블만 고치면 된다.
+// 라벨은 "신뢰도 상/중/하"로 표시하지만 wire 값(rule_confirmed 등)은 그대로다 -
+// 이 테이블만 바뀌면 된다(디디 확정, 2026-08-23).
 const EVIDENCE_GRADE_DOTS: Record<string, { dots: number; label: string }> = {
-  rule_confirmed: { dots: 3, label: "규칙문서 확정" },
-  citation_verified: { dots: 2, label: "원문 인용 확인" },
-  unverified: { dots: 1, label: "근거 미확인" },
+  rule_confirmed: { dots: 3, label: "신뢰도 상" },
+  citation_verified: { dots: 2, label: "신뢰도 중" },
+  unverified: { dots: 1, label: "신뢰도 하" },
 };
 
 function EvidenceGradeBadge({ grade }: { grade: string | null | undefined }) {
@@ -206,8 +208,10 @@ function FindingCard({
   const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
     } ${isExcluded ? "opacity-50" : ""}`;
 
-  // 텍스트 글자색은 유지하고 테두리와 배경으로만 하이라이트
-  const spanStyle = `font-semibold text-[var(--ink)] border px-1.5 py-0.5 rounded-sm inline-block ${cls === "violation" ? "border-[var(--crit)] bg-[var(--crit-bg)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
+  // 밑줄 스타일(테두리·배경 박스 아님) - 목업 원안 복원(design/mockups/barum-report.html
+  // .fcard.violation/.review .fsent .fspan, 팀장 지시로 언젠가 테두리+배경 칩으로
+  // 바뀌어 있었다). 박스 개수를 줄이려는 목적도 있다(디디 확정, 2026-08-23).
+  const spanStyle = `font-bold border-b-2 ${cls === "violation" ? "text-[var(--crit)] border-b-[var(--crit)]" : "text-[var(--ink)] border-b-[var(--ink-3)]"
     }`;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
@@ -230,32 +234,36 @@ function FindingCard({
         onClick={handleHeaderClick}
       >
         <div className="flex gap-2.5">
-          {/* 사각형 번호 배지 */}
-          <span className={`shrink-0 w-[22px] h-[22px] inline-flex items-center justify-center font-mono text-[11.5px] font-bold border rounded-none bg-[var(--surface)] ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--line-2)]"
-            }`}>{num}</span>
-
           {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
           <div className="flex-1 min-w-0">
-            {/* 1행: 문구 + 수용/제외 버튼(유료 한정) 또는 유료 안내 + chevron.
-                제목이 길어지면 버튼 쪽으로 폭을 침범해 아이콘+글자가 세로로
-                쪼개지는 버그가 있었다(2026-08-23, 팀장 실측 - "미백에 도움"이
-                두 줄로 끊기고 "수용"/"제외" 버튼이 47px까지 눌림). 버튼 묶음은
-                shrink-0으로 항상 제 폭을 지키게 한다. 제목 span은 min-w-0만
-                준다(flex-1은 안 씀) - flex-1은 짧은 제목("재생" 두 글자)도
-                남는 폭을 억지로 다 채워서 빈 테두리 상자가 늘어나 보이는
-                부작용이 있었다(팀장 실측, #292 직후). min-w-0만 있으면 평소엔
-                내용 크기대로, 버튼과 공간이 부족할 때만 줄어들며 줄바꿈된다. */}
+            {/* 1행: [번호+flag] pill + 표현(밑줄) + 수용/제외 버튼(유료 한정) 또는
+                유료 안내 + chevron. pill과 표현은 간격 없이 붙여서 시각적으로
+                하나처럼 읽히게 한다(디디 확정, 2026-08-23) - 실제 테두리 박스는
+                pill 하나뿐이라(표현은 밑줄만) #295가 고친 "짧은 제목도 억지로
+                늘어나는" 문제가 재현되지 않는다.
+                버튼 묶음은 shrink-0으로 항상 제 폭을 지키고(#292), 표현 span은
+                min-w-0만 줘서 평소엔 내용 크기대로, 공간이 부족할 때만 줄어들며
+                줄바꿈된다(flex-1은 안 씀, #295). */}
             <div className="flex items-center justify-between gap-2">
-              <span className={`${spanStyle} min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
-                {finding.span}
-                {positionIdxs.length > 1 && (
-                  <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
-                )}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {/* [번호 flag] pill. 채움 아니고 테두리만(§F, 일괄/개별 상태색 원칙) */}
+                <span className={`shrink-0 inline-flex items-center gap-1 px-1.5 h-[22px] font-mono text-[11px] font-bold border rounded-sm ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--ink-3)]"
+                  }`}>
+                  {num} {cls === "violation" ? "위반" : "검토필요"}
+                </span>
+                <span className={`${spanStyle} min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
+                  {finding.span}
+                  {positionIdxs.length > 1 && (
+                    <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
+                  )}
+                </span>
+              </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
                 {tier === "FREE" ? (
-                  <span className="text-[10.5px] font-bold text-[var(--ink-3)] bg-[var(--line)] px-2 py-0.5 rounded-sm border border-[var(--line-2)] whitespace-nowrap">
+                  // 박스 줄이기(디디 확정, 2026-08-23) - 테두리 빼고 텍스트+자물쇠만
+                  <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-[var(--ink-3)] whitespace-nowrap">
+                    <Lock size={11} weight="bold" />
                     유료 요금제 전용
                   </span>
                 ) : (
@@ -372,9 +380,19 @@ function FindingCard({
               </div>
             )}
 
-            {/* 조문 원문 인용 (화장품법 조항 및 조문 원문을 흰색 상자 안에 표기) */}
+            {/* 순서: [근거] 설명을 조문보다 먼저 - "어디가 왜 위반인지"를 먼저 보여주고
+                법령 원문은 뒤로 미룬다(디디 확정, 2026-08-23). */}
+            <p className="text-[13px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
+              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
+                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
+              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
+            </p>
+
+            {/* 조문 원문 인용. 사방 테두리 박스 대신 왼쪽 세로선만(박스 줄이기,
+                디디 확정, 2026-08-23) - <blockquote> 태그 자체가 인용 느낌을
+                주므로 배경·전체 테두리 없이도 구분된다. */}
             {(finding.legal_basis || finding.legal_basis_text) && (
-              <blockquote className="m-0 border border-[var(--line-2)] bg-[var(--surface)] p-[8px_12px] rounded-sm">
+              <blockquote className="m-0 border-l-2 border-[var(--line-2)] pl-3">
                 {tier === "FREE" && num > 1 ? (
                   <span className="text-[12.5px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
                 ) : (
@@ -393,12 +411,6 @@ function FindingCard({
                 )}
               </blockquote>
             )}
-
-            <p className="text-[13px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
-              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
-                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
-              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
-            </p>
 
             {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
             {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
@@ -739,10 +751,17 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "위반"}
             onClick={() => setFlagFilter((prev) => (prev === "위반" ? null : "위반"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${nViol > 0
-              ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-              : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
-              } ${flagFilter === "위반" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""}`}
+            // 선택 시 채움으로 바꾼다(디디 확정, 2026-08-23) - 전엔 outline 링 하나만
+            // 더해서 nViol>0일 때 이미 색이 있는 칩과 선택 상태가 거의 구별 안 됐다.
+            // 다크모드 --crit(#ff5252)는 밝은 색이라 밝은 글자(--on-brand)를 얹으면
+            // 대비가 2.86:1로 기준 미달 - 어두운 --canvas(#101612)를 얹어야
+            // 5.74:1로 통과한다(직접 계산, 기존 토큰만 재사용·새 색 없음).
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${flagFilter === "위반"
+              ? "border-[var(--crit)] bg-[var(--crit)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
+              : nViol > 0
+                ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+                : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
+              }`}
           >
             <Warning size={14} weight="bold" />
             위반 <span className="font-mono">{nViol}</span> 건
@@ -751,7 +770,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "검토필요"}
             onClick={() => setFlagFilter((prev) => (prev === "검토필요" ? null : "검토필요"))}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] ${flagFilter === "검토필요" ? "outline outline-2 outline-offset-1 outline-[var(--ink)]" : ""
+            // 검토필요 칩도 위반과 같은 방식 - 다크모드 --ink-3(#8aa294)도 밝은
+            // 색이라 --canvas를 얹어야 6.70:1로 통과한다(직접 계산).
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${flagFilter === "검토필요"
+              ? "border-[var(--ink-3)] bg-[var(--ink-3)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
+              : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
               }`}
           >
             <MagnifyingGlass size={14} weight="bold" />
@@ -823,11 +846,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
               )}
             </div>
           )}
-          {/* 근거 등급 범례. "검토필요 + 규칙문서 확정"처럼 flag와 등급이 어긋나 보이는
-              조합이 나올 수 있어 두 축이 다르다는 걸 카드 밖에서 한 번 짚어준다
-              (디디 최종안, 2026-08-23). */}
+          {/* 신뢰도 범례. 상/중/하로 가면서 "하 = 안전"으로 오독될 위험이 커져서,
+              뒷문장(낮아도 실제 위반일 수 있다)이 유일한 방어다 - 절대 빼지 않는다
+              (디디 확정, 2026-08-23). */}
           <p className="m-0 mb-2.5 text-[11px] text-[var(--ink-3)]">
-            근거 확인 단계: 규칙문서 확정 › 원문 인용 확인 › 근거 미확인. 위반·검토필요 여부와는 다른 축입니다.
+            신뢰도 상·중·하는 AI가 이 판정에 얼마나 확신하는지를 나타내며, 위반·검토필요(심각도)와는 다른 축입니다. 신뢰도 하는 지적이 틀렸거나 무시해도 된다는 뜻이 아닙니다. 실제 위반이어도 AI가 낮은 확신으로 판단할 수 있습니다.
           </p>
           <div className="flex flex-col gap-3">
             {findGroups.map((g, orderIndex) => {
