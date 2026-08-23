@@ -478,10 +478,10 @@ def _rule_explanation(outcome: RuleOutcome, span: str, vtype: ViolationType) -> 
     """
     if outcome == RuleOutcome.needs_review:
         return (
-            f"규칙집 대조: '{span}'은 실증대상 표현이다. "
+            f"규칙문서 대조: '{span}'은 실증대상 표현이다. "
             f"실증자료가 있으면 합법, 없으면 {vtype.value}. 확인 필요."
         )
-    return f"규칙집 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정)."
+    return f"규칙문서 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정)."
 
 
 class RagJudge:
