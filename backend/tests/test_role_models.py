@@ -75,7 +75,7 @@ def test_env_example이_동작_스위치를_다_적어둔다():
     for path in src.rglob("*.py"):
         used |= set(
             re.findall(
-                r'os\.(?:environ\.get|getenv)\(\s*"((?:BARUM_|IMAGE_|CHECK)[A-Z0-9_]*)"',
+                r'os\.(?:environ\.get|getenv)\(\s*"((?:BARUM_|IMAGE_|CHECK|GENERATE_CACHE)[A-Z0-9_]*)"',
                 path.read_text(encoding="utf-8"),
             )
         )

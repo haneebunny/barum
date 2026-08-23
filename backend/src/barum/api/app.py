@@ -42,6 +42,11 @@ from barum.storage.checks_store import (
     sha256_hex,
     upload_image,
 )
+from barum.storage.generate_cache import (
+    build_generate_cache_key,
+    get_cached_generate,
+    put_cached_generate,
+)
 from barum.vlm import get_image_generator, get_vlm, role_model
 
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
@@ -544,9 +549,17 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     실제로 돈다(기본 비활성). 꺼져 있으면 image_generator=None이라 이미지 관련
     인자를 안 만들고 그대로 통과한다(불필요한 Supabase 클라이언트 생성 회피).
     """
+    # 같은 입력이면 다시 만들지 않는다. 이미지를 켜면 한 번에 125초가 걸려서,
+    # 시연 준비처럼 같은 입력을 반복할 때 그 시간과 과금을 매번 다시 쓸 이유가 없다.
+    cache_key = build_generate_cache_key(req)
+    cached = get_cached_generate(cache_key)
+    if cached is not None:
+        print(f"    [info] 동일 입력, 캐시된 생성 결과 사용 (key={cache_key[:8]})")
+        return cached
+
     image_gen = _image_generator()
     client = _checks_client() if image_gen else None
-    return generate_content(
+    resp = generate_content(
         req,
         judge=_build_judge(),
         vlm=_section_vlm(),
@@ -554,3 +567,5 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         image_sink=_image_sink(client) if client else None,
         photo_resolver=_resolve_product_photos(client) if client else None,
     )
+    put_cached_generate(cache_key, resp)
+    return resp
