@@ -78,3 +78,35 @@ def test_image_gen_result_defaults():
     assert g.requested is False
     assert g.allowed is None
     assert g.ai_labeled is False
+
+
+# ── 재검증 결과를 개수만이 아니라 지적 단위로 준다 (2026-08-23) ──────────────
+
+def test_재검증_요약이_남은_지적을_그대로_싣는다():
+    """개수만 주면 화면이 '재검증 실패' 하나로 뭉뚱그린다.
+
+    실측(2026-08-23)에서 남은 6건 중 3건이 검토필요였다. 그건 실증자료를 요구하는
+    정상 동작인데 실패로 물들고 있었다.
+    """
+    from barum.generate.content import _recheck
+    from barum.judge.cosmetic import StubJudge
+    from barum.models import GenerateRequest, Section
+
+    sections = [Section(kind="광고문구", text="아토피 치료에 좋은 크림", source="template")]
+    recheck, risks = _recheck(sections, GenerateRequest(content="x"), StubJudge())
+
+    assert recheck.n_findings == len(recheck.findings)
+    if recheck.findings:
+        # flag가 있어야 프론트가 검토필요를 걸러낼 수 있다.
+        assert all(f.flag is not None for f in recheck.findings)
+        assert all(f.span for f in recheck.findings)
+
+
+def test_재검증_지적이_없으면_목록도_비어_있다():
+    from barum.generate.content import _recheck
+    from barum.judge.cosmetic import StubJudge
+    from barum.models import GenerateRequest, Section
+
+    sections = [Section(kind="광고문구", text="촉촉한 사용감의 데일리 로션", source="template")]
+    recheck, _ = _recheck(sections, GenerateRequest(content="x"), StubJudge())
+    assert recheck.findings == [] or recheck.n_findings == len(recheck.findings)

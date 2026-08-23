@@ -437,6 +437,15 @@ class RecheckSummary(BaseModel):
     n_findings: int
     n_violation: int = 0
     n_needs_review: int = 0
+    # 재검증에서 남은 지적 원본. **개수만으로는 화면을 제대로 못 그린다.**
+    #
+    # 남는 것들은 성격이 갈린다(2026-08-23 실측).
+    #   · 검토필요  — 실증자료를 요구하는 정상 동작이다. 실패가 아니다
+    #   · 구조적    — 제품명·유통 채널처럼 자동 수정이 설계상 불가능한 문구
+    #   · 재판정    — 우리가 만든 대체표현을 판정기가 다시 잡은 것
+    # 이걸 다 "재검증 실패"로 뭉치면 정상 동작까지 실패로 물든다. 화면이 갈라
+    # 보여줄 수 있게 지적을 그대로 싣는다(`flag`로 검토필요를 바로 걸러낼 수 있다).
+    findings: list[Finding] = Field(default_factory=list)
 
 
 class ImageGenRequest(BaseModel):

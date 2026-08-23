@@ -286,6 +286,9 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
         n_findings=rc.summary.n_findings,
         n_violation=rc.summary.n_violation,
         n_needs_review=rc.summary.n_needs_review,
+        # 개수만 주면 화면이 "재검증 실패" 하나로 뭉뚱그린다. 검토필요는 실증자료를
+        # 요구하는 정상 동작인데 그것까지 실패로 물든다(RecheckSummary 주석 참고).
+        findings=rc.findings,
     )
     risks = [
         RiskConfirmation(id=f"rc_{i}", text=f.sentence, reason=f.explanation)
