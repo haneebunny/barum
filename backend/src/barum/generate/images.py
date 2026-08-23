@@ -93,9 +93,7 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 - **글자·문구·숫자·로고를 새로 넣지 마라**(맨 위 최우선 규칙 재확인).
 - **사람 얼굴은 어떤 형태로도 넣지 마라**(클로즈업뿐 아니라 원거리·실루엣도 금지).
 - 의사·약사·전문가를 연상시키는 인물이나 소품(가운·청진기 등)을 넣지 마라.
-- **실제 사용 후기·체험담처럼 보이는 연출을 만들지 마라**(사용 전후 비교, 손으로
-  직접 촬영한 듯한 스냅샷 구도 등). 얼굴이 없어도 금지다. 실제 후기로 오인되면
-  안 된다.
+{staged_look_forbidden}
 - 시험 결과 그래프나 차트를 만들지 마라.
 
 화면 한쪽은 비교적 비워 둬라. **그 빈 자리는 끝까지 비어 있어야 한다.** 거기에
@@ -233,6 +231,35 @@ def _body_part_line(layout_type: str) -> str:
     return _HAND_ALLOWED_LINE if layout_type in _HAND_ALLOWED_LAYOUT_TYPES else _HAND_FORBIDDEN_LINE
 
 
+# "절대 넣지 말 것" 목록의 실제후기 금지 문구. **hero_fullbleed·step_list에서는
+# 위 _HAND_ALLOWED_LINE과 자기충돌한다** - #312(라벨 버그)와 같은 계열의 프롬프트
+# 자기충돌이다(2026-08-23, LangSmith 실 트레이스로 확인: 손 장면을 허용한 바로 그
+# 프롬프트에 "손으로 직접 촬영한 듯한 스냅샷 구도... 얼굴이 없어도 금지다"가 볼드로
+# 같이 박혀 있었다). #312와 똑같이 "무엇이 문제냐"가 아니라 "이 손 장면이 의도적으로
+# 허용된 것이냐"로 갈라서, 열어준 손 장면과 안 부딪히게 좁힌다. 손이 금지된 나머지
+# layout_type은 원래 문구 그대로 - 거기선 애초에 손 장면이 안 나오니 충돌도 없다.
+_STAGED_LOOK_FORBIDDEN = (
+    "- **실제 사용 후기·체험담처럼 보이는 연출을 만들지 마라**(사용 전후 비교, 손으로\n"
+    "  직접 촬영한 듯한 스냅샷 구도 등). 얼굴이 없어도 금지다. 실제 후기로 오인되면\n"
+    "  안 된다."
+)
+_STAGED_LOOK_FORBIDDEN_HAND_ALLOWED = (
+    "- **일반 소비자가 스마트폰으로 찍은 듯한 캐주얼한 셀피·인증샷 구도는 만들지 마라**\n"
+    "  (흔들린 각도, 어수선한 배경, 사용 전후 비교 등 실제 후기로 오인될 연출). 위에서\n"
+    "  허용한 손 동작 장면은 이 금지 대상이 아니다 - 브랜드 화보처럼 정돈되고 의도적인\n"
+    "  구도라면 손이 나와도 된다."
+)
+
+
+def _staged_look_forbidden_line(layout_type: str) -> str:
+    """실제후기 금지 문구를 layout_type에 따라 가른다(_body_part_line과 같은 기준)."""
+    return (
+        _STAGED_LOOK_FORBIDDEN_HAND_ALLOWED
+        if layout_type in _HAND_ALLOWED_LAYOUT_TYPES
+        else _STAGED_LOOK_FORBIDDEN
+    )
+
+
 _NO_PRODUCT_INSTRUCTION = "- **제품(병·튜브·용기·패키지)을 그리지 마라.** 제품 사진은 판매자가 직접 올린다."
 # 글자 금지 규칙. **참조 제품사진이 있느냐에 따라 갈린다.**
 #
@@ -304,6 +331,11 @@ def build_image_prompt(
     가른다. 안 가르면 모든 모듈이 비슷한 추상 그라데이션이나 "손으로 제품 바르는
     장면"으로 수렴한다(2026-08-19 실측·팀장 지적).
 
+    같은 layout_type 기준으로 실제후기 금지 문구도 가른다(_staged_look_forbidden_line).
+    안 가르면 손 장면을 허용해 놓고 바로 아래에서 "손으로 찍은 듯한 구도 금지"가
+    자기충돌해 손 장면이 억제된다(2026-08-23 LangSmith 트레이스로 확인, #312
+    라벨 버그와 같은 계열).
+
     variation_index: 같은 layout_type이 이 페이지에서 몇 번째로 등장하는지(0부터).
     layout_type이 같으면 나머지 입력이 전부 같아 프롬프트가 거의 동일해지므로, 이
     값으로 소재·앵글·거리를 갈라준다(2026-08-20 실측: 같은 유형 3개가 거의 같은
@@ -316,6 +348,7 @@ def build_image_prompt(
         tone=_resolve_tone(req, product_type),
         composition_lines=_composition_lines(module.layout_type, product_type, variation_index),
         body_part_line=_body_part_line(module.layout_type),
+        staged_look_forbidden=_staged_look_forbidden_line(module.layout_type),
         product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
         text_rule=_KEEP_LABEL_TEXT_RULE if has_product_photo else _NO_TEXT_RULE,
     )
