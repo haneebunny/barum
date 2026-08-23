@@ -22,6 +22,7 @@ from barum.generate.layout import (
 from barum.generate.replace import _accept, apply_replacements, build_replacements
 from barum.models import (
     ContentCard,
+    Finding,
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
@@ -311,11 +312,32 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
         # 요구하는 정상 동작인데 그것까지 실패로 물든다(RecheckSummary 주석 참고).
         findings=rc.findings,
     )
-    risks = [
-        RiskConfirmation(id=f"rc_{i}", text=f.sentence, reason=f.explanation)
-        for i, f in enumerate(rc.findings)
+    return recheck, _confirmations_by_sentence(rc.findings)
+
+
+def _confirmations_by_sentence(findings: list[Finding]) -> list[RiskConfirmation]:
+    """남은 지적을 **문장 하나당 확인항목 하나**로 묶는다.
+
+    예전엔 finding마다 하나씩 냈다. 그때는 문장당 지적이 하나뿐이라 같은 결과였는데,
+    문장의 매칭을 전부 내게 바꾸면서(2026-08-23) **같은 문장이 확인항목으로 여러 번
+    찍히게 됐다.** 화면에는 토씨 하나 안 틀린 문장이 세 번 나오고, 사용자는 같은 걸
+    세 번 확인해야 다음으로 넘어간다.
+
+    사용자가 확인하는 단위는 "이 문장을 이대로 내보내도 되는가"다. 지적이 몇 개
+    걸렸는지는 사유에 적으면 되고 체크박스를 늘릴 일이 아니다.
+
+    사유는 순서를 지키며 합치고 중복은 지운다. 규칙 경로 설명은 span마다 달라서
+    보통 서로 다른 문장이 되지만, 같은 설명이 두 번 붙는 경우도 있다.
+    """
+    reasons: dict[str, list[str]] = {}
+    for f in findings:
+        bucket = reasons.setdefault(f.sentence, [])
+        if f.explanation and f.explanation not in bucket:
+            bucket.append(f.explanation)
+    return [
+        RiskConfirmation(id=f"rc_{i}", text=sentence, reason="\n".join(rs))
+        for i, (sentence, rs) in enumerate(reasons.items())
     ]
-    return recheck, risks
 
 
 _CLAIM_CATEGORIES = ("미백", "주름개선", "자외선차단")
