@@ -266,6 +266,12 @@ export const GenerateRequestSchema = z.object({
   preset: z.string().nullable().optional(),
   targeting: z.string().nullable().optional(),
   layout_direction: z.string().nullable().optional(),
+  // 상품 스펙표(table_info 모듈)용. 둘 다 없으면 백엔드가 표 모듈 자체를 안 만든다
+  // (ensure_product_spec_module) - 이 필드가 프론트에 없어서 아무도 정상 입력
+  // 경로를 테스트한 적이 없었다(표 카드가 화면에서 사라지는 버그의 원인 중 하나,
+  // 2026-08-23 베베 확인).
+  formulation_type: z.string().nullable().optional(),
+  volume: z.string().nullable().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
