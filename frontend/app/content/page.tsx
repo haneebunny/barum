@@ -720,6 +720,18 @@ function ContentGeneratorContent() {
           // 사용자가 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
           const noteHtml = card.note ? `<div class="dp-block dp-fine"><p>${escapeHtml(card.note)}</p></div>` : "";
 
+          // 표 카드(상품 스펙표): headline·body가 비어 있고 table_rows만 있다
+          // (PR #314, 베베). 문장 카드와 같은 틀로 그리면 빈 카드처럼 보이니
+          // 먼저 걸러서 실제 <table>로 그린다. 옛 sections 경로의 dp-table
+          // 스타일을 그대로 재사용(레이아웃 새로 안 만듦).
+          if (card.layout_type === "table_info" && card.table_rows && card.table_rows.length > 0) {
+            const rowsHtml = card.table_rows
+              .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`)
+              .join("");
+            return `<div class="dp-table-wrap"><table class="dp-table">${rowsHtml}</table></div>
+    ${noteHtml}`;
+          }
+
           if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
             // 인정문구(text_source="approved_claim")는 법정 고정 문구라 짧게
             // 끝나는 게 정상이다 - "본문 없는 깨진 카드"처럼 안 보이게 작은
