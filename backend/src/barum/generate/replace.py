@@ -18,6 +18,7 @@
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from barum.models import Finding, JudgmentFlag, Replacement, ViolationType
 from barum.reference.case_phrases import reuses_sanctioned_phrase
@@ -325,15 +326,65 @@ def _vtype_value(vtype) -> str:
     return vtype.value if isinstance(vtype, ViolationType) else str(vtype)
 
 
+# 대체표현 생성을 나눠 돌리는 크기·동시 실행 수.
+#
+# **한 번에 다 물으면 출력 토큰이 그대로 대기시간이 된다**(2026-08-23 실측:
+# 지적 5건 한 배치가 52.3초, `/check` 전체의 57%). 입력이 아니라 출력이 지배해서
+# 프롬프트를 줄이는 것보다 나눠서 동시에 돌리는 쪽이 훨씬 크게 듣는다.
+#
+#   단일 배치      52.3초        /check 전체 91.2초
+#   2건씩 3분할    28.4초 (-46%)  /check 전체 67.8초
+#   1건씩 5분할    18.2초 (-65%)  /check 전체 54.0초 (-41%)
+#
+# **기본값을 1로 둔다.** 호출마다 근거 문서가 다시 실리는 게 걱정이었는데, 재보니
+# 프롬프트 캐시 적중률이 92.8%였다(입력 62,737 토큰 중 58,240이 캐시). 반복 전송
+# 비용이 사실상 없어서 가장 빠른 값을 못 쓸 이유가 없다. 동시 실행은 6으로 막아
+# 지적이 많아도 호출이 무한정 늘지 않게 한다.
+_DEFAULT_BATCH = 1
+_DEFAULT_WORKERS = 6
+
+
+def _batch_config() -> tuple[int, int]:
+    """(배치 크기, 동시 실행 수). 환경변수로 조절한다."""
+    size = max(1, int(os.getenv("REPLACEMENT_BATCH_SIZE", _DEFAULT_BATCH) or _DEFAULT_BATCH))
+    workers = max(1, int(os.getenv("REPLACEMENT_MAX_WORKERS", _DEFAULT_WORKERS) or _DEFAULT_WORKERS))
+    return size, workers
+
+
 def _rewrite(
     rewriter, entries: list[dict]
 ) -> tuple[dict[int, str], set[int], dict[int, str], list[str]]:
-    """LLM에 배치로 한 번 물어 (다듬은 문구, 제안 불가 인덱스)를 낸다.
+    """LLM에 나눠 물어 (다듬은 문구, 제안 불가 인덱스)를 낸다.
+
+    **나눠서 동시에 돌린다.** 한 번에 다 물으면 출력 토큰이 그대로 대기시간이 된다.
+    호출 하나가 실패해도 그 조각만 조건표로 떨어지고 나머지는 산다(전엔 전부 떨어졌다).
 
     **실패하면 조건표 결과로 돌아간다.** 과금 호출이라 재시도하지 않는다(CLAUDE.md §E).
     LLM이 낸 문구는 규칙집에 다시 태워 위반이면 버린다. 만드는 쪽이 누구든
     검증 없이 내보내면 위반을 위반으로 바꿔주게 된다.
     """
+    size, workers = _batch_config()
+    chunks = [entries[i : i + size] for i in range(0, len(entries), size)]
+    if len(chunks) <= 1:
+        return _rewrite_chunk(rewriter, entries)
+
+    rewritten: dict[int, str] = {}
+    dropped: set[int] = set()
+    explanations: dict[int, str] = {}
+    gate_rejected: list[str] = []
+    with ThreadPoolExecutor(max_workers=min(workers, len(chunks))) as pool:
+        for rw, dr, ex, gr in pool.map(lambda c: _rewrite_chunk(rewriter, c), chunks):
+            rewritten.update(rw)
+            dropped |= dr
+            explanations.update(ex)
+            gate_rejected += gr
+    return rewritten, dropped, explanations, gate_rejected
+
+
+def _rewrite_chunk(
+    rewriter, entries: list[dict]
+) -> tuple[dict[int, str], set[int], dict[int, str], list[str]]:
+    """조각 하나를 LLM에 물어본다. 실패하면 그 조각만 조건표로 떨어진다."""
     gate_rejected: list[str] = []
     try:
         res = rewriter.generate_json(_build_prompt(entries), [])

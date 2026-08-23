@@ -476,3 +476,71 @@ def test_결과에_안_실린_대체표현을_알려준다():
     assert unapplied_originals(final, [rep("진피층", final)]) == []
     # 대상이 아예 없던 경우(낡은 리포트)
     assert unapplied_originals(final, [rep("없는 문장", "산뜻한 제형")]) == ["산뜻한 제형"]
+
+
+# ── 대체표현 생성 분할 (2026-08-23) ────────────────────────────────────────
+
+def test_항목이_여러_개면_나눠서_부른다():
+    """**출력 토큰이 그대로 대기시간이 된다.** 한 번에 다 물으면 /check의 57%를
+    이 호출 하나가 먹는다(실측 52.3초). 나눠서 동시에 돌리면 18.2초까지 내려간다.
+    """
+    from barum.generate.replace import build_replacements
+
+    class CountingRewriter:
+        calls = 0
+
+        def generate_json(self, prompt, images):
+            CountingRewriter.calls += 1
+            return {"items": []}
+
+    findings = [
+        _finding(span, f"{span} 표현이 든 문장", ViolationType.type_1_drug_misperception)
+        for span in ("아토피", "여드름", "건선", "치료")
+    ]
+    build_replacements(findings, rewriter=CountingRewriter())
+    assert CountingRewriter.calls > 1, "한 번에 다 물으면 대기시간이 그대로 남는다"
+
+
+def test_배치_크기를_키우면_호출이_준다(monkeypatch):
+    from barum.generate.replace import build_replacements
+
+    class CountingRewriter:
+        calls = 0
+
+        def generate_json(self, prompt, images):
+            CountingRewriter.calls += 1
+            return {"items": []}
+
+    monkeypatch.setenv("REPLACEMENT_BATCH_SIZE", "10")
+    findings = [
+        _finding(span, f"{span} 표현이 든 문장", ViolationType.type_1_drug_misperception)
+        for span in ("아토피", "여드름", "건선", "치료")
+    ]
+    build_replacements(findings, rewriter=CountingRewriter())
+    assert CountingRewriter.calls == 1
+
+
+def test_한_조각이_실패해도_나머지는_산다():
+    """전엔 호출 하나가 실패하면 전부 조건표로 떨어졌다. 이제 그 조각만 떨어진다."""
+    from barum.generate.replace import build_replacements
+
+    class FlakyRewriter:
+        calls = 0
+
+        def generate_json(self, prompt, images):
+            FlakyRewriter.calls += 1
+            if FlakyRewriter.calls == 1:
+                raise RuntimeError("첫 조각 실패")
+            return {
+                "items": [
+                    {"index": i, "can_suggest": True, "suggestion": "산뜻하게 발리는 제형"}
+                    for i in range(10)
+                ]
+            }
+
+    findings = [
+        _finding(span, f"{span} 표현이 든 문장", ViolationType.type_1_drug_misperception)
+        for span in ("아토피", "여드름", "건선")
+    ]
+    reps = build_replacements(findings, rewriter=FlakyRewriter())
+    assert any(r.basis == _BASIS_LLM for r in reps), "성공한 조각이 살아야 한다"
