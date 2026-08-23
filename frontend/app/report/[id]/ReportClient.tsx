@@ -27,6 +27,31 @@ const TYPE_LABEL = {
   "5호_거짓과장기만": "5호 · 거짓·과장·기만",
 };
 
+// 근거 등급(evidence_grade) → 점 채움 개수·라벨. 색이 아니라 채움 개수(형태)로만
+// 구분한다 - 등급이 낮다고 "안전"으로 읽히면 안 된다(팀장 승인, 2026-08-23).
+// 표시 라벨은 디디 확정 전 잠정본(2026-08-23) - 바뀌어도 이 테이블만 고치면 된다.
+const EVIDENCE_GRADE_DOTS: Record<string, { dots: number; label: string }> = {
+  rule_confirmed: { dots: 3, label: "규칙문서 확정" },
+  citation_verified: { dots: 2, label: "원문 인용 확인" },
+  unverified: { dots: 1, label: "근거 미확인" },
+};
+
+function EvidenceGradeBadge({ grade }: { grade: string | null | undefined }) {
+  const entry = grade ? EVIDENCE_GRADE_DOTS[grade] : undefined;
+  if (!entry) return null;
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0 text-[10.5px] text-[var(--ink-3)] font-medium leading-none">
+      {/* 점은 장식(●●●가 "확정된 위반"처럼 심각도로 오독될 수 있어 라벨 텍스트를
+          항상 같이 보여준다 - 디디 최종안, 2026-08-23) */}
+      <span className="font-mono tracking-[1px]" aria-hidden="true">
+        {"●".repeat(entry.dots)}
+        {"○".repeat(3 - entry.dots)}
+      </span>
+      {entry.label}
+    </span>
+  );
+}
+
 interface FindingCardProps {
   finding: Finding; // 그룹 대표(첫 항목). span+violation_type이 같으면 근거·설명도 같다(결정론적 규칙 매칭)
   index: number; // 대표 idx
@@ -262,20 +287,16 @@ function FindingCard({
               </div>
             </div>
 
-            {/* 2행: 위반/검토필요 유형 + 확신도/규칙확정 배지. flag가 검토필요인데 "위반"이라고
-                적으면 확정 위반과 헷갈린다 */}
-            <div className="flex items-center justify-between gap-2 mt-1.5">
+            {/* 2행: 위반/검토필요 유형 + 근거 등급(점 채움). 근거 등급은 flag(위반/검토필요)와
+                다른 축이라 ftype 바로 옆에 붙인다(디디 안, 2026-08-23) - "검토필요 +
+                규칙문서 확정"처럼 flag는 낮아도 등급은 최고인 조합이 나올 수 있는데,
+                이 배치는 그걸 모순으로 안 보이게 한다(규칙문서에 실려 있다는 사실 자체는
+                확실하고, 다만 실증자료 유무로 위반/검토필요가 갈릴 뿐이라는 뜻). */}
+            <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[11.5px] text-[var(--ink-3)] font-medium leading-none">
                 {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
               </span>
-              {/* 규칙 경로(confidence=null, 지적 다수)와 VLM 경로를 같은 자리·같은
-                  스타일로 표시한다(디디 A안, 2026-08-22). 규칙 경로에 배지를 생략하면
-                  가장 단단한 위반이 오히려 제일 약해 보인다(OCR 실패 무표시 사건과 같은
-                  패턴). 숫자는 등급이 아니라 원값 그대로 - 색으로 고/저를 나누지 않는다
-                  (낮은 확신도가 "안전"으로 읽히면 안 된다, 실측상 60%대도 1/3은 실제 위반). */}
-              <span className="shrink-0 font-mono text-[10.5px] text-[var(--ink-3)] border border-[var(--line-2)] rounded-sm px-1.5 py-0.5">
-                {typeof finding.confidence === "number" ? `확신도 ${finding.confidence}%` : "규칙 확정"}
-              </span>
+              <EvidenceGradeBadge grade={finding.evidence_grade} />
             </div>
           </div>
         </div>
@@ -722,6 +743,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
               <span className="font-mono">{findGroups.length}</span>건
             </span>
           </div>
+          {/* 근거 등급 범례. "검토필요 + 규칙문서 확정"처럼 flag와 등급이 어긋나 보이는
+              조합이 나올 수 있어 두 축이 다르다는 걸 카드 밖에서 한 번 짚어준다
+              (디디 최종안, 2026-08-23). */}
+          <p className="m-0 mb-2.5 text-[11px] text-[var(--ink-3)]">
+            근거 확인 단계: 규칙문서 확정 › 원문 인용 확인 › 근거 미확인. 위반·검토필요 여부와는 다른 축입니다.
+          </p>
           <div className="flex flex-col gap-3">
             {findGroups.map((g, orderIndex) => {
               if (flagFilter && g.representative.flag !== flagFilter) return null;
