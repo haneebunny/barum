@@ -474,14 +474,12 @@ function InspectContent() {
                   status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
                 onClick={status === "running" ? undefined : triggerAdFileSelect}
+                // 드래그오버 시각 효과는 위 큰 드롭존에만 준다 - 여기까지 같이 반응하면
+                // 두 영역이 동시에 반짝여 헷갈린다(팀장 지시, 2026-08-23). 드롭 자체는
+                // 계속 받는다(핸들러는 유지).
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                style={{
-                  borderColor: isDragging ? "var(--brand)" : undefined,
-                  borderStyle: isDragging ? "solid" : undefined,
-                  backgroundColor: isDragging ? "var(--surface-sub)" : undefined,
-                }}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
                 aria-label="광고 이미지 파일 추가"
@@ -518,6 +516,35 @@ function InspectContent() {
             </div>
             <div className="flex items-center gap-2.5 text-[var(--ink-3)] font-mono text-[10.5px] m-[13px_0_11px] before:content-[''] before:flex-1 before:border-t before:border-[var(--line)] after:content-[''] after:flex-1 after:border-t after:border-[var(--line)]">
               <span>또는 파일 첨부</span>
+            </div>
+            <div
+              className={`border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-center p-[15px_16px] transition-all duration-[120ms] ${
+                status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              }`}
+              onClick={status === "running" ? undefined : triggerPFileSelect}
+              onDragOver={handleDragOverP}
+              onDragLeave={handleDragLeaveP}
+              onDrop={handleDropP}
+              style={{
+                borderColor: isDraggingP ? "var(--brand)" : undefined,
+                borderStyle: isDraggingP ? "solid" : undefined,
+                backgroundColor: isDraggingP ? "var(--surface)" : undefined,
+              }}
+              tabIndex={status === "running" ? -1 : 0}
+              role="button"
+              aria-label="제품 정보/참고자료 첨부 영역"
+              onKeyDown={(e) => {
+                if (status === "running") return;
+                handleKeyDown(e, triggerPFileSelect);
+              }}
+            >
+              <div className="text-[var(--brand-ink)] mb-2.25 flex justify-center">
+                <UploadSimple size={24} weight="regular" />
+              </div>
+              <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">전성분표 · 참고자료 던져넣기</h3>
+              <span className="inline-block font-mono text-[11.5px] text-[var(--brand-ink)] bg-[var(--surface)] border border-[var(--line)] p-[7px_11px]">
+                drop or click · xlsx txt pdf
+              </span>
             </div>
             <input
               type="file"
@@ -561,14 +588,11 @@ function InspectContent() {
                   status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
                 onClick={status === "running" ? undefined : triggerPFileSelect}
+                // 드래그오버 시각 효과는 위 큰 드롭존에만 준다(팀장 지시, 2026-08-23 -
+                // 왼쪽과 같은 이유). 드롭 자체는 계속 받는다.
                 onDragOver={handleDragOverP}
                 onDragLeave={handleDragLeaveP}
                 onDrop={handleDropP}
-                style={{
-                  borderColor: isDraggingP ? "var(--brand)" : undefined,
-                  borderStyle: isDraggingP ? "solid" : undefined,
-                  backgroundColor: isDraggingP ? "var(--surface-sub)" : undefined,
-                }}
                 tabIndex={status === "running" ? -1 : 0}
                 role="button"
                 aria-label="제품 정보 파일 추가"
