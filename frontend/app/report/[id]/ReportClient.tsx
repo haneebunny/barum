@@ -477,29 +477,58 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const d = activeEnvelope.report;
 
   // 판정 로직 중복 제거(화면 워크어라운드, 근본 원인은 발표 후 과제 - PM 8대
-  // 루루 지시 2026-08-22). 같은 문장이 규칙 경로(span=문구 일부)와 VLM 경로
-  // (span=문장 전체)에서 둘 다 finding으로 나오면 sentence+violation_type이
-  // 같은 두 finding이 생긴다. 이건 1번의 span 그룹핑(§ 아래)으로는 안 걸린다
-  // (span 값 자체가 다르다) - 별도 단계로 먼저 걸러야 한다. 규칙 경로 쪽 span이
-  // 더 좁고 구체적이라 사용자에게 더 유용하므로 그쪽을 남긴다(span이 sentence
-  // 전체와 다르면 규칙 경로로 본다). 이 중복은 같은 지적을 두 번 센 것이므로
-  // (1번과 달리) 상단 요약 건수에서도 함께 뺀다.
-  const sentenceDedupBestIdx = new Map<string, number>();
+  // 루루 지시 2026-08-22). 같은 문장이 규칙 경로와 VLM 경로에서 둘 다 finding으로
+  // 나오면 sentence+violation_type이 같은 finding들이 생긴다. 이건 1번의 span
+  // 그룹핑(§ 아래)으로는 안 걸린다(span 값 자체가 다르다) - 별도 단계로 먼저 걸러야
+  // 한다.
+  //
+  // **2026-08-23 f.source 기준으로 재작성.** 원래는 "span이 문장 전체면 VLM"이라는
+  // 휴리스틱으로 그룹당 대표 1개만 남겼는데, #296(문장당 규칙 지적 전건 매칭) 이후
+  // 전제가 깨졌다 - 한 문장에서 같은 유형의 규칙 지적이 여러 개 나올 수 있게 됐는데
+  // (예: '세포재생'·'진피층' 둘 다 1호), 대표 1개만 남기는 로직이 나머지를 화면과
+  // 상단 요약 건수에서 지워버렸다(베베 감사로 발견). f.source("rule"|"vlm", 스키마에
+  // 이미 있음)로 판단하면 정확하다:
+  //   - 규칙 경로가 하나라도 있으면 전부 남긴다(문장당 여러 건 가능) + VLM은 버린다
+  //     (규칙 경로가 더 구체적이라는 원래 의도는 유지)
+  //   - VLM만 있으면 기존처럼 대표 1개만(VLM 중복은 같은 문구를 다시 잡은 것에
+  //     가깝다)
+  //   - source가 없는 예전 리포트는 안전하게 예전 span 휴리스틱으로 폴백
+  const dedupGroups = new Map<string, number[]>();
   d.findings.forEach((f, i) => {
     const key = `${f.sentence}\0${f.violation_type}`;
-    const currentIdx = sentenceDedupBestIdx.get(key);
-    if (currentIdx === undefined) {
-      sentenceDedupBestIdx.set(key, i);
-      return;
+    if (!dedupGroups.has(key)) dedupGroups.set(key, []);
+    dedupGroups.get(key)!.push(i);
+  });
+  const visibleFindingIdx = new Set<number>();
+  dedupGroups.forEach((idxs) => {
+    const ruleIdxs = idxs.filter((i) => d.findings[i].source === "rule");
+    const vlmIdxs = idxs.filter((i) => d.findings[i].source === "vlm");
+    const unknownIdxs = idxs.filter((i) => d.findings[i].source !== "rule" && d.findings[i].source !== "vlm");
+
+    if (ruleIdxs.length > 0) {
+      ruleIdxs.forEach((i) => visibleFindingIdx.add(i));
+    } else if (vlmIdxs.length > 0) {
+      visibleFindingIdx.add(vlmIdxs[0]);
     }
-    const current = d.findings[currentIdx];
-    const currentIsWholeSentence = current.span === current.sentence;
-    const candidateIsWholeSentence = f.span === f.sentence;
-    if (currentIsWholeSentence && !candidateIsWholeSentence) {
-      sentenceDedupBestIdx.set(key, i); // 후보가 규칙 경로(좁은 span)로 보임 - 교체
+
+    if (ruleIdxs.length === 0 && vlmIdxs.length === 0 && unknownIdxs.length > 0) {
+      // source 없는 예전 리포트 폴백: 예전 span 휴리스틱(좁은 span=규칙 경로로 추정)
+      let bestIdx = unknownIdxs[0];
+      for (const i of unknownIdxs.slice(1)) {
+        const current = d.findings[bestIdx];
+        const candidate = d.findings[i];
+        const currentIsWholeSentence = current.span === current.sentence;
+        const candidateIsWholeSentence = candidate.span === candidate.sentence;
+        if (currentIsWholeSentence && !candidateIsWholeSentence) {
+          bestIdx = i;
+        }
+      }
+      visibleFindingIdx.add(bestIdx);
+    } else if (unknownIdxs.length > 0) {
+      // rule/vlm이 이미 있는 그룹에 source 없는 것도 섞여 있으면(드묾) 안전하게 다 남긴다.
+      unknownIdxs.forEach((i) => visibleFindingIdx.add(i));
     }
   });
-  const visibleFindingIdx = new Set(sentenceDedupBestIdx.values());
 
   const findByOrder = d.findings
     .map((f, i) => ({ f, idx: i, num: 0 }))
