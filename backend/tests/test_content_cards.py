@@ -235,3 +235,67 @@ def test_레이아웃_방향이_없으면_톤만_낸다():
 
     tone = _resolve_tone(GenerateRequest(mode="create", color_tone="베이지 톤"), None)
     assert tone == "베이지 톤"
+
+
+# ── create 모드 성분 데이터가 카피 프롬프트에 들어가는가 (2026-08-23) ─────────
+
+def test_create_모드_성분이_카피_프롬프트에_들어간다():
+    """**create 모드는 ingredients가 아니라 ingredient_amounts에 성분을 담는다.**
+
+    그걸 안 보면 사업자가 성분을 입력했는데도 프롬프트엔 "(미상)"이 들어가고,
+    LLM이 "전성분 표기는 제공되지 않습니다" 같은 사과문을 쓴다(2026-08-23 실측).
+    """
+    from barum.generate.content import _ingredients_for_prompt
+    from barum.models import GenerateRequest, IngredientAmount
+
+    req = GenerateRequest(
+        mode="create",
+        ingredient_amounts=[
+            IngredientAmount(name="나이아신아마이드", amount="3%"),
+            IngredientAmount(name="히알루론산", amount="1%"),
+        ],
+    )
+    out = _ingredients_for_prompt(req)
+    assert "나이아신아마이드" in out and "3%" in out
+    assert "히알루론산" in out
+
+
+def test_improve_모드_전성분이_우선한다():
+    from barum.generate.content import _ingredients_for_prompt
+    from barum.models import GenerateRequest, IngredientAmount
+
+    req = GenerateRequest(
+        content="x",
+        ingredients="정제수, 글리세린",
+        ingredient_amounts=[IngredientAmount(name="나이아신아마이드", amount="3%")],
+    )
+    assert _ingredients_for_prompt(req) == "정제수, 글리세린"
+
+
+def test_성분이_아예_없으면_미상이다():
+    """지어내지 않는다."""
+    from barum.generate.content import _ingredients_for_prompt
+    from barum.models import GenerateRequest
+
+    assert _ingredients_for_prompt(GenerateRequest(content="x")) == "(미상)"
+
+
+def test_모듈_프롬프트가_줄바꿈_분리를_요구한다():
+    """줄바꿈이 없으면 split_headline이 첫 마침표까지 삼켜 헤드라인이 문장이 된다.
+
+    실측(2026-08-23): 6장 중 4장의 헤드라인이 30자 넘는 문장이 되고 hero는 본문이
+    비었다. 프롬프트가 "첫 문장은 20자 이내"만 요구하고 구분자를 안 정했던 탓이다.
+    """
+    from barum.generate.content import _MODULE_PROMPT
+
+    assert "줄을 바꾼 뒤" in _MODULE_PROMPT
+    assert "\\n" in _MODULE_PROMPT  # 예시에 줄바꿈 문자 표기가 들어 있다
+
+
+def test_줄바꿈이_있으면_그게_헤드라인_경계다():
+    """마침표보다 줄바꿈이 우선이라 긴 첫 문장도 안 삼킨다."""
+    from barum.generate.content import split_headline
+
+    head, body = split_headline("발림성부터 다릅니다\n젤-세럼 타입입니다. 끈적임이 없습니다.")
+    assert head == "발림성부터 다릅니다"
+    assert body.startswith("젤-세럼")
