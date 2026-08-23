@@ -567,7 +567,11 @@ def build_cards(
     cards: list[ContentCard] = []
     for module in plan.modules:
         sec = by_kind.get(module.kind)
-        if sec is None or not (sec.text or "").strip():
+        if sec is None:
+            continue
+        # **표만 있는 카드가 있다.** 상품 스펙표는 문장이 없고 table_rows만 있다.
+        # 문장 유무로만 거르면 그 카드가 통째로 사라진다(2026-08-23 실측).
+        if not (sec.text or "").strip() and not sec.table_rows:
             continue
         img = images.get(module.kind)
         head, body = split_headline(sec.text)
@@ -582,6 +586,7 @@ def build_cards(
                 text_source=sec.source,
                 image_url=img.image_url if img else None,
                 image_status=img.status if img else "skipped",
+                table_rows=sec.table_rows,
             )
         )
     return cards
@@ -623,7 +628,6 @@ def _generate_create_content(
     #    실제 export에서 표가 히어로보다 앞에 나오던 결함, 팀장 지시로 즉시 수정).
     safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     clinical_planned = any(m.kind.startswith("clinical") for m in plan.modules)
-    product_spec_planned = any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules)
     sections = list(claim_sections)
     if clinical_planned and evidence:
         sections.append(
@@ -644,14 +648,24 @@ def _generate_create_content(
     # (select_top_modules docstring 참고: 순서가 어긋나면 카드가 4장으로 줄거나
     # 버릴 모듈의 배경 이미지까지 과금해서 만든다).
     # 이미 내용이 붙은 모듈은 우선순위가 낮아도 보호한다. 버리면 섹션이 갈 곳을 잃는다.
+    #
+    # **상품 스펙표도 보호한다.** 사업자가 직접 입력한 제형·용량을 그대로 옮기는
+    # 표라 LLM도 안 태우고 지어낼 것도 없다. 그런데 우선순위가 낮아 상한에 잘렸고,
+    # 그러면서 섹션은 그대로 만들어져 **갈 곳 없는 섹션**이 됐다. `build_cards`가
+    # `plan.modules`를 도니 카드가 안 생기고, 화면에서 표가 통째로 사라진다
+    # (2026-08-23 실측: 제형·용량을 입력했는데 표가 안 나옴).
     filled_kinds = tuple(s.module_kind for s in sections if s.module_kind)
-    plan, over_limit_skipped = select_top_modules(plan, protected=filled_kinds)
+    plan, over_limit_skipped = select_top_modules(
+        plan, protected=filled_kinds + (PRODUCT_SPEC_KIND,)
+    )
     skipped += over_limit_skipped
     # 추린 뒤에 다시 계산한다. 위에서 잡은 safe_modules에는 버린 모듈이 남아 있어,
     # 그대로 쓰면 카드로 안 나갈 모듈의 문장까지 LLM에 시킨다.
     safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
     sections += generate_module_sections(req, safe_modules, vlm)
-    if product_spec_planned:
+    # **추린 뒤의 계획으로 다시 확인한다.** 위에서 잡은 값은 추리기 전 것이라,
+    # 모듈이 잘렸는데도 섹션만 만들어져 화면에 안 나오는 섹션이 생긴다.
+    if any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules):
         sections.append(build_product_spec_section(req))
 
     # 4. PII 제거

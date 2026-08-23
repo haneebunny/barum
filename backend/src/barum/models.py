@@ -668,6 +668,10 @@ class ContentCard(BaseModel):
     # 대체표현이 실증대상일 때 붙는 고지. 카드에 같이 안 실으면 사용자가 위반에서
     # 벗어난 줄 알고 그대로 쓴다(2026-08-20 팀장 지시와 같은 이유).
     note: str | None = None
+    # 표 카드(상품 스펙표)의 행. **문장이 아니라 표로만 이뤄진 카드가 있다.**
+    # 이게 없으면 사업자가 입력한 제형·용량이 섹션에만 남고 카드엔 안 실려,
+    # 화면에서 표가 통째로 사라진다(2026-08-23 실측).
+    table_rows: list[TableRow] | None = None
 
 
 class GenerateResponse(BaseModel):
