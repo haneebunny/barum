@@ -491,7 +491,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // (1번과 달리) 상단 요약 건수에서도 함께 뺀다.
   const sentenceDedupBestIdx = new Map<string, number>();
   d.findings.forEach((f, i) => {
-    const key = `${f.sentence} ${f.violation_type}`;
+    const key = `${f.sentence}\0${f.violation_type}`;
     const currentIdx = sentenceDedupBestIdx.get(key);
     if (currentIdx === undefined) {
       sentenceDedupBestIdx.set(key, i);
@@ -519,7 +519,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 자동으로 같은 그룹은 같은 번호를 쓰게 된다.
   const groupItemsByKey = new Map<string, number[]>();
   findByOrder.forEach((o) => {
-    const key = `${o.f.span} ${o.f.violation_type}`;
+    const key = `${o.f.span}\0${o.f.violation_type}`;
     if (!groupItemsByKey.has(key)) groupItemsByKey.set(key, []);
     groupItemsByKey.get(key)!.push(o.idx);
   });
