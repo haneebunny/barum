@@ -205,6 +205,11 @@ export const RecheckSummarySchema = z.object({
   n_findings: z.number(),
   n_violation: z.number().default(0),
   n_needs_review: z.number().default(0),
+  // 재검증에서 남은 지적 원본(PR #300, 백엔드). 개수만으로는 "재검증 실패"를
+  // 정확히 못 그린다 - 검토필요는 정상 동작(실증자료 요구)인데 위반과 뭉치면
+  // 안 낸 위반까지 실패로 물든다(2026-08-23 팀장 실측). flag로 위반/검토필요를
+  // 바로 걸러 쓴다. 예전 응답엔 없을 수 있어 default([]).
+  findings: z.array(FindingSchema).default([]),
 });
 export type RecheckSummary = z.infer<typeof RecheckSummarySchema>;
 

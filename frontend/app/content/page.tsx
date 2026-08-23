@@ -1601,24 +1601,43 @@ function ContentGeneratorContent() {
         {/* 생성 결과 (게이트 통과 후 표시) */}
         {isGenerated && genResult && (
           <div id="resultWrap">
-            <div
-              className={`inline-flex items-center gap-1.75 font-mono text-[11.5px] p-[5px_10px] border mb-3.5 ${
-                genResult.recheck.safe
-                  ? "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                  : "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-              }`}
-              id="recheckBadge"
-            >
-              {genResult.recheck.safe ? (
-                <>
-                  <Check size={14} weight="bold" className="text-[var(--brand-ink)] mr-1" />
-                  재검증 통과 · 위반 0건 · 검토필요 0건
-                </>
-              ) : (
-                <>
-                  <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
-                  재검증 실패 · 위반 {genResult.recheck.n_violation}건 · 검토필요 {genResult.recheck.n_needs_review}건
-                </>
+            {/* recheck.safe(=n_findings===0)는 위반·검토필요를 안 갈랐다. 검토필요는
+                실증자료를 요구하는 정상 동작이지 실패가 아닌데, safe 기준으로 배지를
+                그리면 "위반 0건, 검토필요만 있음"도 "재검증 실패"로 떴다(팀장 실측,
+                2026-08-23). 위반 유무만으로 통과/실패를 가르고, 검토필요는 경고색
+                없이 별도 정보로 안내한다. 구조적 불가/재판정 3분류는 백엔드
+                dropped 노출이 아직 없어 보류(베베 후속 PR 예정) - 이번엔 위반
+                유무 기준까지만. */}
+            <div className="mb-3.5">
+              {(() => {
+                const hasViolation = genResult.recheck.n_violation > 0;
+                return (
+                  <div
+                    className={`inline-flex items-center gap-1.75 font-mono text-[11.5px] p-[5px_10px] border ${
+                      hasViolation
+                        ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+                        : "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                    }`}
+                    id="recheckBadge"
+                  >
+                    {hasViolation ? (
+                      <>
+                        <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
+                        재검증 실패 · 위반 {genResult.recheck.n_violation}건
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} weight="bold" className="text-[var(--brand-ink)] mr-1" />
+                        재검증 통과
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+              {genResult.recheck.n_needs_review > 0 && (
+                <p className="m-0 mt-1.5 text-[11px] text-[var(--ink-3)]">
+                  검토필요 {genResult.recheck.n_needs_review}건 - 실증자료 확인이 필요한 표현입니다(재검증 실패 아님).
+                </p>
               )}
             </div>
 
