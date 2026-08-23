@@ -84,6 +84,26 @@ _MULTIPLIER_RE = re.compile(r"\d+(\.\d+)?배")
 _COMPARISON_MARKERS = ("대비", "보다")
 
 
+# 정밀 침투·흡수 메커니즘 주장. **팩이 "판정 기준은 단어가 아니라 메커니즘"이라고
+# 못박아서**(prohibited_expressions.md:41) 단어 하나로 잡지 않고 동시출현으로 본다.
+# 근거: type_1_drug_misperception.md:18이 "진피층·근막에 직접 전달 등 생리구조 영향
+# 표현"을 1호로 들고, cases.md에 실제 적발 사례가 셋 있다(121·50·69행).
+#
+# **맨 "침투"·"흡수"를 키워드로 넣는 안은 실측으로 기각했다**(2026-08-23, 963셋):
+# 매칭 17건 중 12건이 오탐이었다(합법 9·대상외 3). "면도로 생긴 상처를 통해 세균이
+# 침투"처럼 제품 효능 주장이 아닌 용례가 많다. 깊이 표지가 같이 있어야 "정밀하게
+# 파고든다"는 주장이 된다. 동시출현 조건은 963셋에서 오탐 0건이다.
+_DEPTH_MARKERS = ("깊숙", "깊은", "깊이", "진피", "표피", "속까지", "층까지", "세포속")
+_PENETRATION_MARKERS = ("침투", "흡수", "전달", "도달")
+
+
+def _is_penetration_mechanism_claim(norm: str) -> bool:
+    """깊이 표지와 침투·흡수 표현이 같은 문장에 있으면 메커니즘 주장으로 본다."""
+    if not any(d in norm for d in _DEPTH_MARKERS):
+        return False
+    return any(m in norm for m in _PENETRATION_MARKERS)
+
+
 def _is_unsubstantiated_comparison(norm: str) -> bool:
     """비교표지(대비/보다)와 배수(N배)가 같은 문장에 있으면 근거 없는 비교수치로 본다."""
     if not _MULTIPLIER_RE.search(norm):
@@ -220,8 +240,127 @@ def _match_synonyms(norm: str, rules: dict) -> RuleMatch | None:
     return None
 
 
+def _dedupe(matches: list[RuleMatch]) -> list[RuleMatch]:
+    """같은 문장 안 중복 지적을 없앤다.
+
+    두 가지를 지운다.
+    1. 같은 (유형, span) 재등장.
+    2. **다른 매칭 span에 포함되는 span.** "세포재생의 시작"은 `세포재생`과 `재생`에
+       둘 다 걸리는데 같은 자리를 두 번 지적하는 셈이라 사용자에겐 노이즈다.
+       긴 쪽(더 구체적인 쪽)을 남긴다.
+    """
+    seen: set[tuple] = set()
+    out: list[RuleMatch] = []
+    spans = [m.span for m in matches]
+    for m in matches:
+        key = (m.violation_type, m.span)
+        if key in seen:
+            continue
+        # 다른(더 긴) span에 포함되면 버린다.
+        if any(m.span != other and m.span in other for other in spans):
+            continue
+        seen.add(key)
+        out.append(m)
+    return out
+
+
+def match_all_rules(sentence: str) -> list[RuleMatch]:
+    """문장의 규칙 매칭을 **같은 갈래 안에서 전부** 낸다. 미매칭이면 빈 리스트.
+
+    `match_rule`은 첫 매칭 하나만 냈다. 그래서 한 문장에 위반이 여러 개면 하나만
+    지적됐다 — 122자 한 줄에 줄기세포·세포재생·진피층·재생이 다 있어도 지적은
+    1건이었다(2026-08-23 실측). 미탐이 최우선 위험인 서비스에서 이건 그냥 놓친 것이다.
+
+    **갈래를 넘나들며 모으지는 않는다.** violation이 하나라도 걸리면 violation만
+    전부 내고 needs_review 이하는 안 본다. 갈래 우선순위는 경계표현 조합을 처리하는
+    장치라("시술 후 진정"에서 시술이 진정보다 먼저 hit) 그걸 풀면 한 표현이
+    위반과 검토필요로 동시에 잡히는 오탐이 생긴다.
+    """
+    norm = _normalize(sentence)
+    rules = _load()
+
+    if _is_unsubstantiated_comparison(norm):
+        return [
+            RuleMatch(
+                RuleOutcome.violation, "비교수치", ViolationType.type_5_deception, JudgmentFlag.violation
+            )
+        ]
+
+    if _is_unsubstantiated_verification_claim(norm):
+        return [
+            RuleMatch(
+                RuleOutcome.violation, "검증방법단정", ViolationType.type_5_deception, JudgmentFlag.violation
+            )
+        ]
+
+    violations: list[RuleMatch] = []
+    for type_label, keywords in rules["violation"].items():
+        vtype = ViolationType(type_label)
+        for kw in keywords:
+            if not _keyword_present(kw, norm):
+                continue
+            if _has_context_exception(norm, kw, rules):
+                continue
+            violations.append(RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation))
+    if violations:
+        return _dedupe(violations)
+
+    conditional = _match_conditional_violation(norm, rules)
+    if conditional is not None:
+        return [conditional]
+
+    reviews: list[RuleMatch] = []
+    for type_label, keywords in rules["needs_review"].items():
+        vtype = ViolationType(type_label)
+        for kw in keywords:
+            if _keyword_present(kw, norm):
+                reviews.append(
+                    RuleMatch(RuleOutcome.needs_review, kw, vtype, JudgmentFlag.needs_review)
+                )
+    # 정밀 침투·흡수 메커니즘 주장. **검토필요 티어 안에 넣는다** — 따로 빼서 먼저
+    # 반환하면 같은 문장의 다른 검토필요 키워드에 가려져 영원히 안 뜬다(실측: 정답셋
+    # 유일 해당 문장이 "다크서클"에 먼저 걸려 이 규칙이 죽어 있었다).
+    # 위반 단정은 안 한다 — 팩이 맥락 판단을 요구하고, 실증자료가 있으면 예외다.
+    if _is_penetration_mechanism_claim(norm):
+        reviews.append(
+            RuleMatch(
+                RuleOutcome.needs_review,
+                "침투메커니즘",
+                ViolationType.type_1_drug_misperception,
+                JudgmentFlag.needs_review,
+            )
+        )
+    if reviews:
+        return _dedupe(reviews)
+
+    if _is_exclusive_rank_claim(norm):
+        return [
+            RuleMatch(
+                RuleOutcome.needs_review, "배타적순위", ViolationType.type_5_deception, JudgmentFlag.needs_review
+            )
+        ]
+
+
+    # 합법·대상외는 "이 문장은 여기서 끝"이라는 확정이라 여러 건일 이유가 없다.
+    for kw in rules["legal_allow"]:
+        if not _keyword_present(kw, norm):
+            continue
+        if kw in rules.get("context_exceptions", {}) and not _has_context_exception(norm, kw, rules):
+            continue
+        return [RuleMatch(RuleOutcome.legal_allow, kw, None, None)]
+
+    for kw in rules.get("out_of_scope", []):
+        if _keyword_present(kw, norm):
+            return [RuleMatch(RuleOutcome.out_of_scope, kw, None, None)]
+
+    syn = _match_synonyms(norm, rules)
+    return [syn] if syn is not None else []
+
+
 def match_rule(sentence: str) -> RuleMatch | None:
-    """문장을 규칙집과 대조해 첫 매칭 한 건을 낸다. 미매칭이면 None.
+    """문장의 첫 규칙 매칭 한 건. 미매칭이면 None.
+
+    `match_all_rules`의 첫 건이다. 여러 건이 필요한 곳은 그쪽을 쓴다.
 
     가장 먼저 근거 없는 비교수치(정규식, "대비/보다"+"N배")와 근거 없는 검증방법 주장
     ("임상시험"+"검증" 공출현)을 본다. 그다음 키워드 갈래를 우선순위대로 스캔한다:
@@ -243,58 +382,8 @@ def match_rule(sentence: str) -> RuleMatch | None:
     그때 "리들+침투" 조합을 잡던 경로까지 같이 사라진 회귀가 있었다(2026-08-19 실측).
     지금은 `conditional_violation`(judge_rules.json)으로 되살렸다.
     """
-    norm = _normalize(sentence)
-    rules = _load()
-
-    if _is_unsubstantiated_comparison(norm):
-        return RuleMatch(
-            RuleOutcome.violation, "비교수치", ViolationType.type_5_deception, JudgmentFlag.violation
-        )
-
-    if _is_unsubstantiated_verification_claim(norm):
-        return RuleMatch(
-            RuleOutcome.violation, "검증방법단정", ViolationType.type_5_deception, JudgmentFlag.violation
-        )
-
-    for type_label, keywords in rules["violation"].items():
-        vtype = ViolationType(type_label)
-        for kw in keywords:
-            if not _keyword_present(kw, norm):
-                continue
-            if _has_context_exception(norm, kw, rules):
-                continue
-            return RuleMatch(RuleOutcome.violation, kw, vtype, JudgmentFlag.violation)
-
-    conditional = _match_conditional_violation(norm, rules)
-    if conditional is not None:
-        return conditional
-
-    for type_label, keywords in rules["needs_review"].items():
-        vtype = ViolationType(type_label)
-        for kw in keywords:
-            if _keyword_present(kw, norm):
-                return RuleMatch(
-                    RuleOutcome.needs_review, kw, vtype, JudgmentFlag.needs_review
-                )
-
-    if _is_exclusive_rank_claim(norm):
-        return RuleMatch(
-            RuleOutcome.needs_review, "배타적순위", ViolationType.type_5_deception, JudgmentFlag.needs_review
-        )
-
-    for kw in rules["legal_allow"]:
-        if not _keyword_present(kw, norm):
-            continue
-        if kw in rules.get("context_exceptions", {}) and not _has_context_exception(norm, kw, rules):
-            continue
-        return RuleMatch(RuleOutcome.legal_allow, kw, None, None)
-
-    for kw in rules.get("out_of_scope", []):
-        if _keyword_present(kw, norm):
-            return RuleMatch(RuleOutcome.out_of_scope, kw, None, None)
-
-    # 대표어로 안 걸렸으면 동의어 변형으로 재시도
-    return _match_synonyms(norm, rules)
+    matches = match_all_rules(sentence)
+    return matches[0] if matches else None
 
 
 # 2호(기능성오인) 표방을 가리키는 표지. judge_rules.json의 legal_allow 문맥예외

@@ -68,3 +68,66 @@ def test_span_없이도_인용만_맞으면_통과한다():
 def test_normalize는_구두점과_대소문자를_지운다():
     assert normalize("살균·소독") == normalize("살균 소독") == "살균소독"
     assert normalize("Pin") == "pin"
+
+
+# ── 축약 인용 (2026-08-23 실측으로 필요성 확인) ────────────────────────────
+
+_LONG = Chunk(
+    id="L04",
+    label="type_5_deception.md",
+    text="**완벽한·최적의·파워·탁월한·최고·최상 등 절대적·과장 표현은 객관적 근거가 없으면 검토필요(위반후보), 있으면 예외.**",
+)
+
+
+def test_원문을_줄여_옮긴_인용은_통과한다():
+    """실측 실패 4건이 전부 이 경우였다. 지어낸 게 아니라 조사·괄호를 뺀 축약이었다."""
+    r = verify_citation(
+        "L04",
+        "완벽한·최적의·파워·탁월한·최고·최상 등 절대적·과장 표현은 객관적 근거 없으면 검토필요, 있으면 예외.",
+        None,
+        "문장",
+        (_LONG,),
+    )
+    assert r.ok and r.mode == "partial"
+
+
+def test_축자로_맞으면_exact로_구분된다():
+    """두 경로를 갈라야 '지어냈다'와 '줄여 옮겼다'를 나눠 보고할 수 있다."""
+    r = verify_citation("L04", "객관적 근거가 없으면 검토필요", None, "문장", (_LONG,))
+    assert r.ok and r.mode == "exact"
+
+
+def test_지어낸_인용은_축약_관용에도_안_걸린다():
+    """관용이 너무 넓으면 게이트가 아무것도 막지 못한다."""
+    r = verify_citation(
+        "L04", "제13조 제7항에 따라 즉시 회수 대상으로 규정한다", None, "문장", (_LONG,)
+    )
+    assert not r.ok and "최장 일치" in r.reason
+
+
+def test_짧게_겹치는_것만으로는_못_통과한다():
+    """원문 어절 몇 개를 물고 나머지를 지어낸 인용은 막아야 한다.
+
+    (축자로 들어맞는 짧은 인용은 통과한다 — 짧아도 원문에 실재하는 문자열이다.)
+    """
+    r = verify_citation("L04", "절대적·과장 표현은 즉시 회수 대상이다", None, "문장", (_LONG,))
+    assert not r.ok and "최장 일치" in r.reason
+
+
+def test_마크다운_강조는_대조를_방해하지_않는다():
+    """팩은 md라 `**...**`로 강조가 붙는데 모델은 별표를 빼고 인용한다.
+
+    실측에서 실제로 이 이유로 실재하는 인용이 실패했다(2026-08-23).
+    """
+    chunk = Chunk(id="L06", label="approved", text='- 효능·효과: **"피부의 미백에 도움을 준다."**')
+    r = verify_citation("L06", '효능·효과: "피부의 미백에 도움을 준다."', None, "문장", (chunk,))
+    assert r.ok and r.mode == "exact"
+
+
+def test_실패는_항목별로_구분된다():
+    """'0건'이라고 말하려면 무엇이 0건인지 드러나야 한다."""
+    assert verify_citation(None, "살균·소독", None, _SENTENCE, _CHUNKS).category == "source"
+    assert verify_citation("L09", "살균·소독", None, _SENTENCE, _CHUNKS).category == "source"
+    assert verify_citation("L01", "없는 문구입니다 정말로", None, _SENTENCE, _CHUNKS).category == "quote"
+    assert verify_citation("L01", "살균·소독", "발모", _SENTENCE, _CHUNKS).category == "span"
+    assert verify_citation("L01", "살균·소독", "아토피", _SENTENCE, _CHUNKS).category is None

@@ -545,7 +545,10 @@ def test_needle_stays_unconditional_violation():
     m = match_rule("니들샷 앰플 추천")
     assert m is not None
     assert m.outcome == RuleOutcome.violation
-    assert m.span == "니들"
+    # span이 "니들"에서 "니들샷"으로 바뀌었다(2026-08-23, 문장당 전체 매칭 도입).
+    # 두 키워드가 같은 자리에 겹쳐 걸리면 더 구체적인 쪽을 남긴다. 리포트에 뜨는
+    # 표현이 실제 문구와 같아지고, 대체표현 후보도 둘이 동일하다(실측 확인).
+    assert m.span == "니들샷"
 
 
 def test_penetration_context_alone_is_not_violation():
@@ -753,3 +756,79 @@ def test_audit_tool_surfaces_pack_conditions():
     # 조건이 없는 행은 빈 문자열
     assert _condition_hint("—") == ""
     assert _condition_hint("") == ""
+
+
+# ── 문장당 전체 매칭 (2026-08-23) ─────────────────────────────────────────
+
+def test_한_문장의_위반을_전부_지적한다():
+    """OCR로 이어붙은 긴 줄에 위반이 여러 개면 예전엔 하나만 잡혔다."""
+    from barum.reference.rules import match_all_rules
+
+    line = "줄기세포 배양 기술 안티에이징 세포재생의 시작 진피층까지 침투하여"
+    spans = {m.span for m in match_all_rules(line)}
+    assert {"줄기세포", "세포재생", "진피층"} <= spans
+
+
+def test_갈래를_넘나들며_모으지는_않는다():
+    """violation이 걸리면 needs_review는 안 본다. 안 그러면 한 표현이 두 갈래로 잡힌다."""
+    from barum.reference.rules import match_all_rules
+
+    matches = match_all_rules("아토피 치료에 좋고 피부 진정에 탁월한 크림")
+    assert matches
+    assert all(m.outcome == RuleOutcome.violation for m in matches)
+
+
+def test_같은_자리를_두_번_지적하지_않는다():
+    """'세포재생'과 '재생'은 같은 자리다. 둘 다 내면 사용자에겐 노이즈다."""
+    from barum.reference.rules import match_all_rules
+
+    spans = [m.span for m in match_all_rules("피부 깊숙이, 세포재생의 시작")]
+    assert spans == ["세포재생"]
+
+
+def test_first_매칭은_전체_매칭의_첫_건이다():
+    """match_rule은 match_all_rules의 첫 건이다. 두 경로가 갈라지면 안 된다."""
+    from barum.reference.rules import match_all_rules
+
+    for text in ["아토피 크림", "촉촉한 로션", "피부 진정에 좋은 세럼", "니들샷 앰플"]:
+        first = match_rule(text)
+        allm = match_all_rules(text)
+        assert (first.span if first else None) == (allm[0].span if allm else None)
+
+
+def test_침투_메커니즘은_깊이표지가_같이_있을_때만_잡는다():
+    """팩이 "판정 기준은 단어가 아니라 메커니즘"이라고 못박았다.
+
+    맨 '침투'·'흡수'를 키워드로 넣는 안은 실측으로 기각했다(963셋 매칭 17건 중
+    12건이 오탐: 합법 9·대상외 3).
+    """
+    from barum.reference.rules import match_all_rules
+
+    def spans(t):
+        return [m.span for m in match_all_rules(t)]
+
+    assert "침투메커니즘" in spans("피부 깊숙이 침투하여")
+    assert "침투메커니즘" in spans("진피 속까지 전달되는 앰플")
+    # 깊이 표지가 없으면 안 잡는다.
+    assert spans("흡수가 빠른 제형") == []
+    assert spans("면도로 생긴 상처를 통해 세균이 침투") == []
+    # 메커니즘 주장이 없으면 안 잡는다.
+    assert spans("피부 깊숙이 수분을 채워줍니다") == []
+
+
+def test_침투_메커니즘이_다른_키워드에_가려지지_않는다():
+    """따로 빼서 먼저 반환하면 같은 문장의 다른 검토필요 키워드에 가려져 죽는다."""
+    from barum.reference.rules import match_all_rules
+
+    s = "피부 속 깊이 빠르게 침투하여 다크서클에 도움을 줍니다"
+    spans = {m.span for m in match_all_rules(s)}
+    assert {"다크서클", "침투메커니즘"} <= spans
+
+
+def test_위반이_있으면_침투_메커니즘은_안_뜬다():
+    """갈래 우선순위는 유지한다. 위반이 걸리면 검토필요 티어는 안 본다."""
+    from barum.reference.rules import match_all_rules
+
+    spans = {m.span for m in match_all_rules("진피층까지 침투하여 세포재생")}
+    assert "침투메커니즘" not in spans
+    assert "진피층" in spans

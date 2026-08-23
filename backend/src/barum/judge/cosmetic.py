@@ -37,7 +37,7 @@ from barum.reference.rules import (
     RuleOutcome,
     has_exaggeration,
     has_functional_claim,
-    match_rule,
+    match_all_rules,
 )
 from barum.vlm import VLM
 
@@ -54,6 +54,17 @@ class JudgeResult:
 
     findings: list[Finding] = field(default_factory=list)
     unjudged: list[UnjudgedSentence] = field(default_factory=list)
+    # 인용 대조 실패 기록. 판정 동작에는 안 쓰고 측정에만 쓴다.
+    # 등급(evidence_grade)만으로도 실패율은 세지만 **왜** 실패했는지는 못 센다.
+    #
+    # 실패한 quote 원문까지 남기는 이유가 중요하다. 실패율만 보면 "모델이 N% 확률로
+    # 근거를 지어냈다"로 읽히는데, **대조기가 빡빡해서 실패한 것과 구분이 안 된다.**
+    # 팩이 표현을 열거형으로 묶어 쓰는 자리가 있어 실제로 그 위험이 있다. 원문을
+    # 남겨야 사람이 두 경우를 갈라볼 수 있다.
+    verify_failures: list[dict] = field(default_factory=list)
+    # 통과한 인용이 축자 일치("exact")였는지 축약 인용("partial")이었는지.
+    # 측정 전용. 두 경로를 갈라야 "지어냈다"와 "줄여 옮겼다"를 구분해 보고할 수 있다.
+    verify_modes: list[str] = field(default_factory=list)
 
 
 class CosmeticJudge(Protocol):
@@ -446,10 +457,20 @@ class PromptJudge:
                     )
                     if verdict.ok:
                         grade = GRADE_VERIFIED
+                        result.verify_modes.append(verdict.mode or "exact")
                     else:
                         # **지적은 안 버린다.** 진짜 위반이 설명 검증 실패로 사라지면
                         # 그게 더 위험하다. 검증 안 된 설명만 떼고 지적은 남긴다.
                         grade = GRADE_UNVERIFIED
+                        result.verify_failures.append(
+                            {
+                                "reason": verdict.reason or "사유 불명",
+                                "category": verdict.category or "unknown",
+                                "source_id": item.get("source_id"),
+                                "quote": item.get("quote"),
+                                "sentence": s["text"],
+                            }
+                        )
                         print(f"    [verify] 인용 대조 실패({verdict.reason}): {s['text'][:40]}")
                         # **모델이 쓴 설명만 뗀다.** 성분표 대조처럼 코드가 확인한
                         # 근거는 남긴다. 그것까지 지우면 사용자가 "고시원료가
@@ -683,33 +704,40 @@ class RagJudge:
         remaining: list[dict] = []  # 규칙 미확정 → 1차 필터로 넘길 문장
 
         for s in sentences:
-            match = match_rule(s["text"])
-            if match is None:
+            matches = match_all_rules(s["text"])
+            if not matches:
                 remaining.append(s)
                 continue
-            if match.outcome in (RuleOutcome.legal_allow, RuleOutcome.out_of_scope):
+            if matches[0].outcome in (RuleOutcome.legal_allow, RuleOutcome.out_of_scope):
                 # 합법 확정 또는 대상외. finding도 없고 VLM에도 안 넘긴다.
+                # (이 두 갈래는 언제나 한 건만 나온다 — 문장 판정을 끝내는 확정이라
+                #  여러 건일 이유가 없다.)
                 continue
-            result.findings.append(
-                Finding(
-                    span=match.span,
-                    sentence=s["text"],
-                    violation_type=match.violation_type,
-                    legal_basis=legal_basis_for(match.violation_type),
-                    legal_basis_text=legal_basis_text_for(match.violation_type),
-                    flag=match.flag,
-                    explanation=_rule_explanation(
-                        match.outcome, match.span, match.violation_type
-                    ),
-                    location=_loc(s),
-                    source="rule",
-                    # 규칙 매칭은 팩에 등재된 표현과의 일치라 근거가 가장 단단하다.
-                    # 전건이 팩 근거를 갖는다는 건 CI가 지킨다
-                    # (tests/test_rule_evidence_audit.py). 런타임 조회를 안 하는
-                    # 이유는, 근거 없는 키워드는 애초에 머지되면 안 되기 때문이다.
-                    evidence_grade=GRADE_RULE,
+            # **한 문장의 매칭을 전부 지적한다.** 예전엔 첫 매칭 하나만 냈는데,
+            # OCR로 이어붙은 긴 줄에 위반이 여러 개면 하나만 잡히고 나머지는
+            # 지적도 치환도 안 됐다(2026-08-23 실측: 122자 한 줄에 줄기세포·
+            # 세포재생·진피층이 다 있어도 지적 1건). 미탐이 최우선 위험이라 전부 낸다.
+            for match in matches:
+                result.findings.append(
+                    Finding(
+                        span=match.span,
+                        sentence=s["text"],
+                        violation_type=match.violation_type,
+                        legal_basis=legal_basis_for(match.violation_type),
+                        legal_basis_text=legal_basis_text_for(match.violation_type),
+                        flag=match.flag,
+                        explanation=_rule_explanation(
+                            match.outcome, match.span, match.violation_type
+                        ),
+                        location=_loc(s),
+                        source="rule",
+                        # 규칙 매칭은 팩에 등재된 표현과의 일치라 근거가 가장 단단하다.
+                        # 전건이 팩 근거를 갖는다는 건 CI가 지킨다
+                        # (tests/test_rule_evidence_audit.py). 런타임 조회를 안 하는
+                        # 이유는, 근거 없는 키워드는 애초에 머지되면 안 되기 때문이다.
+                        evidence_grade=GRADE_RULE,
+                    )
                 )
-            )
             # 규칙이 실증대상(검토필요)으로 확정했는데 같은 문장에 2호 표방까지
             # 섞여 있으면 VLM에도 함께 넘긴다. 안 넘기면 "진정에 도움을 주는 미백
             # 크림"이 needs_review(진정, 1호)에서 끝나 미백 클레임이 평가될 기회를
@@ -720,9 +748,9 @@ class RagJudge:
             # 규칙 finding을 빼고 VLM에 넘기는 방식은 안 쓴다. VLM이 합법이라고 하면
             # 통째로 놓치기 때문이다. 규칙 판정은 그대로 두고 VLM 판정을 더한다
             # (한 문장에 실제로 두 갈래 위반이 있으니 둘 다 보고하는 게 맞다).
-            if match.outcome == RuleOutcome.needs_review and has_functional_claim(
-                s["text"]
-            ):
+            if any(
+                m.outcome == RuleOutcome.needs_review for m in matches
+            ) and has_functional_claim(s["text"]):
                 remaining.append(s)
 
         if remaining:
@@ -740,5 +768,7 @@ class RagJudge:
                 )
                 result.findings.extend(vlm_result.findings)
                 result.unjudged.extend(vlm_result.unjudged)
+                result.verify_failures.extend(vlm_result.verify_failures)
+                result.verify_modes.extend(vlm_result.verify_modes)
 
         return result

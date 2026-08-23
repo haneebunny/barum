@@ -16,9 +16,12 @@
 안 된다.** 조건표에서 배운 그대로다. LLM이 낸 문구도 규칙집을 다시 통과시킨다.
 """
 
+import os
 import re
 
 from barum.models import Finding, JudgmentFlag, Replacement, ViolationType
+from barum.reference.case_phrases import reuses_sanctioned_phrase
+from barum.reference.context import build_rewrite_context
 from barum.reference.remediation import get_remediation
 from barum.reference.rules import RuleOutcome, match_rule
 
@@ -55,6 +58,11 @@ def first_safe(suggestions: list[str]) -> str | None:
     """
     fallback = None  # 위반은 아니지만 검토필요인 후보. 더 나은 게 없을 때만 쓴다.
     for s in suggestions:
+        # 적발 사례 문구의 축자 재사용은 조건표 후보라도 거른다. 지금 팩 기준으로는
+        # 걸리는 후보가 0건이지만(2026-08-23 실측), 조건표가 늘어날 때를 위한 잠금이다.
+        if reuses_sanctioned_phrase(s):
+            print(f"[replace] 조건표 후보가 적발 사례 문구를 재사용, 건너뜀: {s!r}")
+            continue
         m = match_rule(s)
         if m is not None and m.outcome is RuleOutcome.violation:
             continue
@@ -104,10 +112,25 @@ def _note_for(text: str, original: str, *, source_flag) -> str | None:
     return None
 
 
-def _accept(text: str) -> bool:
-    """대체표현으로 내보내도 되는지. 위반으로 걸리면 안 내보낸다."""
-    m = match_rule(text)
-    return not (m is not None and m.outcome is RuleOutcome.violation)
+def _accept(text: str, original: str | None = None) -> bool:
+    """대체표현으로 내보내도 되는지. 규칙에 걸리면(위반이든 검토필요든) 안 내보낸다.
+
+    **게이트는 판정보다 엄격하다(2026-08-23 팀장 승인).** 기준이 다르기 때문이다.
+      판정: "사업자가 쓴 이 표현을 지적할 것인가" → 애매하면 검토필요로 남긴다
+      게이트: "우리가 이 문구를 써 주라고 권할 것인가" → 애매하면 안 권한다
+    우리가 저작하는 문구에 "자료가 있으면 쓸 수 있는 표현"을 굳이 넣을 이유가 없다.
+    넣으면 사업자에게 새 실증 부담을 지우는 제안이 된다.
+
+    `first_safe`(조건표 후보 선별)가 검토필요를 허용하는 것과 어긋나지 않는다.
+    조건표는 팩이 승인한 목록이고, 이쪽은 LLM이 새로 지은 문장이다.
+    """
+    if match_rule(text) is not None:
+        return False
+    # 3층: 적발 사례 문구의 축자 재사용. 규칙집이 못 덮는 구멍을 사례 자료로 메운다.
+    if reuses_sanctioned_phrase(text, original):
+        print(f"[replace] 적발 사례 문구 재사용, 제안 제외: {text!r}")
+        return False
+    return True
 
 
 _REWRITE_PROMPT = """너는 화장품 광고 문구를 화장품법에 맞게 고쳐 주는 도우미다.
@@ -129,6 +152,10 @@ _REWRITE_PROMPT = """너는 화장품 광고 문구를 화장품법에 맞게 �
 - 참고 표현(reference)이 있으면 방향으로 삼되 그대로 넣을 필요는 없다
 - 의학적 효능(치료·재생·항염 등), 기능성 심사 대상 표현(미백·주름개선·자외선차단),
   절대적 표현(완벽·최고·100%)을 새로 넣지 마라
+- **정밀 침투·흡수 메커니즘 표현을 쓰지 마라.** "피부 깊숙이 침투", "진피층까지 전달",
+  "속까지 흡수" 같은 표현은 화장품이 생리구조에 작용한다는 주장이 되어 적발 대상이다
+  (실제 적발 사례 있음). 흡수·침투 대신 "발림성", "산뜻하게 발린다" 같은 사용감으로 쓰라
+- **인정문구 목록에 있는 표현을 우선 써라.** 목록에 맞는 표현이 있으면 새로 짓지 마라
 - **원문에 있는 수치는 지우지 마라.** "38% 증가", "4주 사용", "1000ppm" 같은 값은
   사업자가 실제로 측정한 것일 수 있고, 실증자료가 있으면 쓸 수 있다. 임의로 빼면
   사업자가 가진 근거를 우리가 없애는 셈이다. 수치는 그대로 두고 표현만 다듬어라
@@ -158,7 +185,25 @@ can_suggest가 false면 suggestion은 넣지 마라. **explanation은 그 경우
 
 
 def _build_prompt(entries: list[dict]) -> str:
-    """LLM에 넘길 배치 프롬프트. 항목마다 원문·위반부분·유형·참고표현을 준다."""
+    """LLM에 넘길 배치 프롬프트. 근거 문서 + 항목별 원문·위반부분·유형·참고표현.
+
+    **근거 문서를 앞에 붙인다(2026-08-23).** 그 전까진 재작성기가 규칙문서를 한 번도
+    못 본 채로 "합법으로 고쳐라"를 요구받았다. 판정기는 팩을 다 받는데 재작성기는
+    프롬프트에 하드코딩된 금지어 몇 개가 전부였고, 거기 없는 표현이 그대로 나왔다
+    (`깊숙이 침투`). 출력을 거르는 층만 쌓으면 거를 게 계속 나온다.
+
+    **추가 호출은 없다.** 같은 배치 호출의 입력 토큰만 늘어난다. 배치에 등장한
+    유형의 문서만 실어 크기를 줄인다(전체 팩 45KB → 9~14KB).
+    """
+    # A/B 측정용 스위치. 끄고 켜서 grounding의 효과를 잴 수 있게 남긴다.
+    # 변형을 코드에 안 남기면 다음 세션이 재실행이 아니라 재구현을 하게 된다.
+    if os.getenv("BARUM_REWRITE_GROUNDING", "1") == "0":
+        grounding = ""
+    else:
+        vtypes = tuple(
+            dict.fromkeys(e["violation_type"] for e in entries if e["violation_type"])
+        )
+        grounding = build_rewrite_context(vtypes) if vtypes else ""
     lines = []
     for e in entries:
         lines.append(
@@ -171,7 +216,15 @@ def _build_prompt(entries: list[dict]) -> str:
             f"     판정: {e['flag']}\n"
             f"     참고 표현: {e['reference'] or '(없음)'}"
         )
-    return _REWRITE_PROMPT.format(items="\n".join(lines))
+    base = _REWRITE_PROMPT.format(items="\n".join(lines))
+    if not grounding:
+        return base
+    return (
+        "아래 [판정 근거]는 화장품법 규정·합법 인정문구·실제 적발 사례다. "
+        "**대체 문구는 반드시 이 근거에 비추어 만들어라.** 특히 인정문구 목록에 있는 "
+        "표현을 우선 쓰고, 적발 사례에 나온 표현은 절대 쓰지 마라.\n\n"
+        f"[판정 근거]\n{grounding}\n\n[작업 지시]\n{base}"
+    )
 
 
 def build_replacements(
@@ -215,7 +268,7 @@ def build_replacements(
     dropped: set[int] = set()
     explanations: dict[int, str] = {}
     if rewriter is not None and entries:
-        rewritten, dropped, explanations = _rewrite(rewriter, entries)
+        rewritten, dropped, explanations, _ = _rewrite(rewriter, entries)
 
     if explain:
         _apply_explanations(findings, explanations)
@@ -272,19 +325,24 @@ def _vtype_value(vtype) -> str:
     return vtype.value if isinstance(vtype, ViolationType) else str(vtype)
 
 
-def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int], dict[int, str]]:
+def _rewrite(
+    rewriter, entries: list[dict]
+) -> tuple[dict[int, str], set[int], dict[int, str], list[str]]:
     """LLM에 배치로 한 번 물어 (다듬은 문구, 제안 불가 인덱스)를 낸다.
 
     **실패하면 조건표 결과로 돌아간다.** 과금 호출이라 재시도하지 않는다(CLAUDE.md §E).
     LLM이 낸 문구는 규칙집에 다시 태워 위반이면 버린다. 만드는 쪽이 누구든
     검증 없이 내보내면 위반을 위반으로 바꿔주게 된다.
     """
+    gate_rejected: list[str] = []
     try:
         res = rewriter.generate_json(_build_prompt(entries), [])
     except Exception as exc:  # 과금 호출이라 재시도 없이 조건표로 폴백
         print(f"[replace] 문장 다듬기 실패, 조건표 결과로 진행: {exc}")
-        return {}, set(), {}
+        return {}, set(), {}, gate_rejected
 
+    # 게이트가 "물려받은 위험"을 가려내려면 원본 문장이 필요하다(case_phrases 참고).
+    by_index = {e["index"]: e for e in entries}
     rewritten: dict[int, str] = {}
     dropped: set[int] = set()
     explanations: dict[int, str] = {}
@@ -305,13 +363,23 @@ def _rewrite(rewriter, entries: list[dict]) -> tuple[dict[int, str], set[int], d
         if not text:
             dropped.add(idx)
             continue
-        if not _accept(text):
-            # LLM이 위반 문구를 냈다. 조건표로 되돌리지 않고 제안 자체를 뺀다.
-            print(f"[replace] 다듬은 문구가 위반으로 걸림, 제안 제외: {text!r}")
-            dropped.add(idx)
+        if not _accept(text, original=by_index.get(idx, {}).get("sentence")):
+            # **제안을 통째로 버리지 않고 조건표 후보로 폴백한다(2026-08-23).**
+            # 예전엔 여기서 dropped에 넣어 제안 자체를 없앴는데, improve 모드에선
+            # 그게 곧 "원문 위반 문구가 그대로 남는다"였다. 게이트를 엄격하게
+            # 하면서 이걸 같이 안 고치면 막은 만큼 원문이 그대로 나간다.
+            # rewritten에 안 담으면 build_replacements가 e["reference"](조건표)를 쓴다.
+            gate_rejected.append(text)
             continue
         rewritten[idx] = text
-    return rewritten, dropped, explanations
+    if gate_rejected:
+        # 폴백 빈도가 높으면 0층(grounding)이 제 역할을 못 한다는 신호다.
+        print(
+            f"[replace] 게이트에 걸려 조건표로 폴백 {len(gate_rejected)}/{len(entries)}건"
+        )
+        for t in gate_rejected:
+            print(f"    - {t[:60]}")
+    return rewritten, dropped, explanations, gate_rejected
 
 
 def apply_replacements(content: str, reps: list[Replacement]) -> str:
