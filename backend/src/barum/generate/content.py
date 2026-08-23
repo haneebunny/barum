@@ -246,12 +246,23 @@ def generate_module_sections(
     return _template_sections(req)
 
 
+def _copy_by_module(sections: list[Section] | None) -> dict[str, str]:
+    """모듈 kind → 그 모듈에 실릴 카피. 이미지 프롬프트에 참고로 넘긴다."""
+    out: dict[str, str] = {}
+    for sec in sections or []:
+        key = sec.module_kind or sec.kind
+        if key and sec.text and key not in out:
+            out[key] = sec.text
+    return out
+
+
 def build_image_plan(
     req: GenerateRequest,
     plan: LayoutPlan | None = None,
     image_generator=None,
     image_sink=None,
     photo_resolver=None,
+    sections: list[Section] | None = None,
 ) -> ImagePlan:
     """업로드 이미지 배치 + 생성요청 사칭 가드레일(FR-13).
 
@@ -265,6 +276,11 @@ def build_image_plan(
     photo_resolver: `(product_photo_ids) -> 참조 이미지 바이트 목록`. image_sink와 같은
     이유로 저장소 접근은 여기서 안 하고 주입만 받는다. `generate_module_images`로
     그대로 넘긴다.
+
+    sections: 이미 만들어진 카피. **주면 그 모듈에 실제로 실릴 문장을 이미지
+    프롬프트가 알게 된다.** 안 주면 플래너가 정한 한 줄 목적만 보고 그려서 배경이
+    카피와 겉돈다. 텍스트가 이미지보다 먼저 만들어지니 순서상 문제는 없고, 그동안
+    그냥 안 넘기고 있었다(2026-08-23).
     """
     placed: list[PlacedImage] = []
     if req.result_id:
@@ -280,7 +296,11 @@ def build_image_plan(
     canvas: CanvasBackground | None = None
     if plan is not None and image_generator is not None:
         module_images, blobs = generate_module_images(
-            plan, req, image_generator, photo_resolver=photo_resolver
+            plan,
+            req,
+            image_generator,
+            photo_resolver=photo_resolver,
+            copy_by_kind=_copy_by_module(sections),
         )
         _store_module_images(module_images, blobs, image_sink)
         # 긴 배경은 옵트인이다. 모듈 이미지를 대신하지 않고 더해지므로 과금이 는다.
@@ -861,7 +881,9 @@ def _generate_create_content(
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
     # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
-    image_plan = build_image_plan(req, plan, image_generator, image_sink, photo_resolver)
+    image_plan = build_image_plan(
+        req, plan, image_generator, image_sink, photo_resolver, sections=cleaned
+    )
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
     # 7. 실증자료·설문조사는 미검증이라 사용자 확인 항목으로 남긴다

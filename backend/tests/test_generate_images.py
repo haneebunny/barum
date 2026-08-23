@@ -615,3 +615,56 @@ def test_참조사진의_배경_카피는_옮겨_그리지_않게_한다():
 
 def test_참조사진_유무에_따라_글자_규칙이_갈린다():
     assert _prompt_with(True) != _prompt_with(False)
+
+
+# ── 이미지가 실제 카피를 알게 한다 (2026-08-23) ────────────────────────────
+
+def test_카피를_주면_프롬프트에_실린다():
+    """전엔 플래너가 정한 한 줄 목적만 보고 그려서 배경이 카피와 겉돌았다.
+    텍스트가 이미지보다 먼저 만들어지는데 그냥 안 넘기고 있었다."""
+    from barum.generate.images import build_image_prompt
+    from barum.models import GenerateRequest, LayoutModule
+
+    module = LayoutModule(kind="texture_visual", purpose="제형 질감", layout_type="mood_macro")
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    prompt = build_image_prompt(module, req, copy_text="가볍게 흐르는 젤-세럼\n부드럽게 퍼집니다.")
+    assert "가볍게 흐르는 젤-세럼" in prompt
+
+
+def test_카피를_글자로_쓰지_말라고_같이_못박는다():
+    """**방어 없이 넣으면 그 문장이 이미지에 구워진다.** 맨 위 글자 금지 규칙과
+    정면으로 충돌하는 입력이라 반드시 같이 가야 한다."""
+    from barum.generate.images import build_image_prompt
+    from barum.models import GenerateRequest, LayoutModule
+
+    module = LayoutModule(kind="texture_visual", purpose="제형 질감", layout_type="mood_macro")
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    prompt = build_image_prompt(module, req, copy_text="가볍게 흐르는 젤-세럼")
+    assert "글자로 쓰지 마라" in prompt
+
+
+def test_카피가_없으면_프롬프트가_안_바뀐다():
+    """기존 동작 회귀 없음."""
+    from barum.generate.images import build_image_prompt
+    from barum.models import GenerateRequest, LayoutModule
+
+    module = LayoutModule(kind="texture_visual", purpose="제형 질감", layout_type="mood_macro")
+    req = GenerateRequest(mode="create", product_name="테스트 세럼")
+    assert "이 자리에 실릴 카피" not in build_image_prompt(module, req)
+    assert "이 자리에 실릴 카피" not in build_image_prompt(module, req, copy_text="   ")
+
+
+def test_섹션에서_모듈별_카피를_뽑는다():
+    from barum.generate.content import _copy_by_module
+    from barum.models import Section
+
+    secs = [
+        Section(kind="광고문구", text="인정문구다.", source="approved_claim", module_kind="hero_intro"),
+        Section(kind="texture_visual", text="가벼운 제형", source="llm", module_kind="texture_visual"),
+        Section(kind="how_to_use", text="이렇게 쓰세요", source="llm"),  # module_kind 없음 → kind로
+    ]
+    out = _copy_by_module(secs)
+    assert out["hero_intro"] == "인정문구다."
+    assert out["texture_visual"] == "가벼운 제형"
+    assert out["how_to_use"] == "이렇게 쓰세요"
+    assert _copy_by_module(None) == {}
