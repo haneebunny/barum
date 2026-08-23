@@ -9,6 +9,7 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
 import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
+import { Modal } from "@/components/Modal/Modal";
 
 const FIXTURE_OPTIONS: TabOption<"unjudged" | "text" | "image">[] = [
   { value: "image", label: "이미지 예시" },
@@ -77,13 +78,12 @@ interface FindingCardProps {
   onToggle: () => void;
   onScrollToPosition: (idx: number) => void;
   tier: "FREE" | "BASIC" | "PRO";
-  remediationCount: number;
-  onFetchRemediation: () => void;
   // 판정할 때 배치로 만들어져 리포트에 실려온 대체표현(PR #265). 있으면 그대로 쓰고
   // 새로 호출하지 않는다. hasReportReplacements가 false일 때만(옛 리포트·생성 실패)
   // /remediate 실시간 조회로 폴백한다.
   replacement: Replacement | undefined;
   hasReportReplacements: boolean;
+  onOpenPricingModal: () => void;
 }
 
 function getRemediationText(violationType: string, suggestionsNode: React.ReactNode) {
@@ -108,6 +108,55 @@ function getRemediationText(violationType: string, suggestionsNode: React.ReactN
   );
 }
 
+// 잠긴 대체표현 자물쇠 클릭 시 뜨는 요금제 안내. 결제 연동 없이 티어
+// 비교+업그레이드 CTA만 있는 가벼운 모달(시연용, 팀장 지시 2026-08-23).
+// 실제 결제 대신 이 화면의 티어 미리보기 스위치를 바로 바꿔 데모 흐름을
+// 끊지 않는다.
+function PricingModal({
+  isOpen,
+  onClose,
+  onSelectTier,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelectTier: (tier: "BASIC" | "PRO") => void;
+}) {
+  return (
+    <Modal isOpen={isOpen} title="요금제 업그레이드" onClose={onClose} size="sm">
+      <div className="flex flex-col gap-3">
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] leading-[1.6]">
+          FREE는 지적 3건까지만 근거·조문·대체표현을 볼 수 있어요. 업그레이드하면 전체 지적을 제한 없이 확인할 수 있습니다.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => onSelectTier("BASIC")}
+            className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
+          >
+            <span>
+              <span className="block font-bold text-[13px] text-[var(--ink)]">Basic</span>
+              <span className="block text-[11.5px] text-[var(--ink-3)]">전체 지적 근거·조문·대체표현 무제한</span>
+            </span>
+            <span className="font-mono text-[11px] font-bold text-[var(--brand-ink)] whitespace-nowrap">선택 →</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectTier("PRO")}
+            className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
+          >
+            <span>
+              <span className="block font-bold text-[13px] text-[var(--ink)]">Pro</span>
+              <span className="block text-[11.5px] text-[var(--ink-3)]">Basic 전체 + 콘텐츠 생성·이력 대시보드</span>
+            </span>
+            <span className="font-mono text-[11px] font-bold text-[var(--brand-ink)] whitespace-nowrap">선택 →</span>
+          </button>
+        </div>
+        <p className="m-0 text-[10.5px] text-[var(--ink-3)]">결제 연동 전 데모입니다 - 선택하면 이 화면의 티어 미리보기가 바뀝니다.</p>
+      </div>
+    </Modal>
+  );
+}
+
 function FindingCard({
   finding,
   index,
@@ -122,95 +171,45 @@ function FindingCard({
   onToggle,
   onScrollToPosition,
   tier,
-  remediationCount,
-  onFetchRemediation,
   replacement,
   hasReportReplacements,
+  onOpenPricingModal,
 }: FindingCardProps) {
   const { showError } = useError();
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [hasFetched, setHasFetched] = useState(false);
-  const [showSuggestionsArea, setShowSuggestionsArea] = useState(false);
+  // 옛 리포트(hasReportReplacements=false)만 쓰는 폴백. 배치 데이터가 있으면
+  // (표준 경로) replacement prop을 렌더 시점에 그대로 읽으면 되고 fetch가
+  // 필요 없다 - 버튼 클릭으로 트리거하던 걸 없앴다(팀장 지시, 2026-08-23:
+  // "버튼 눌렀는데 결과가 없음이면 그 버튼 자체가 낚시"). null=아직 안 불러옴.
+  const [legacySuggestions, setLegacySuggestions] = useState<string[] | null>(null);
+  const [legacyLoading, setLegacyLoading] = useState(false);
 
   useEffect(() => {
-    setSuggestions([]);
-    setLoading(false);
-    setHasFetched(false);
-
-    if (tier === "FREE") {
-      setShowSuggestionsArea(false);
-      return;
-    }
-
-    if (hasReportReplacements) {
-      // 판정할 때 배치로 이미 만들어져 리포트에 실려왔다(PR #265). 호출 0회.
-      // replacement가 없으면 이 finding엔 제안할 수 없었다는 뜻(제안 불가 시
-      // 제안하지 않는다, 2026-08-20 팀장 지시) - 재조회 대상이 아니다.
-      setShowSuggestionsArea(true);
-      setSuggestions(replacement ? [replacement.replaced] : []);
-      setHasFetched(true);
-      onFetchRemediation();
-      return;
-    }
-
-    // 폴백: 이 필드가 생기기 전에 저장된 옛 리포트이거나 생성 자체가 실패한 경우만
-    // 기존처럼 /remediate를 실시간으로 부른다.
-    setShowSuggestionsArea(true);
-    setLoading(true);
+    if (hasReportReplacements) return;
+    setLegacyLoading(true);
+    setLegacySuggestions(null);
     getRemediation({
       sentence: finding.sentence,
       violation_type: finding.violation_type,
       span: finding.span,
     })
       .then((res) => {
-        setSuggestions(res.suggestions);
-        setHasFetched(true);
-        setLoading(false);
-        onFetchRemediation();
+        setLegacySuggestions(res.suggestions);
+        setLegacyLoading(false);
       })
       .catch((err) => {
         console.error("Failed to fetch remediation suggestion", err);
         showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
-        setLoading(false);
+        setLegacyLoading(false);
       });
-  }, [finding, tier, hasReportReplacements, replacement]);
-
-  const handleFetchSuggestions = () => {
-    setLoading(true);
-    getRemediation({
-      sentence: finding.sentence,
-      violation_type: finding.violation_type,
-      span: finding.span,
-    })
-      .then((res) => {
-        setSuggestions(res.suggestions);
-        setHasFetched(true);
-        setLoading(false);
-        onFetchRemediation();
-      })
-      .catch((err) => {
-        console.error("Failed to fetch remediation suggestion", err);
-        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
-        setLoading(false);
-      });
-  };
-
-  const handleShowAndFetchSuggestions = () => {
-    setShowSuggestionsArea(true);
-    if (hasReportReplacements) {
-      setSuggestions(replacement ? [replacement.replaced] : []);
-      setHasFetched(true);
-      onFetchRemediation();
-      return;
-    }
-    handleFetchSuggestions();
-  };
+  }, [finding, hasReportReplacements]);
 
   const cls = finding.flag === "위반" ? "violation" : "review";
   const isExcluded = act === "exclude";
   const isAccepted = act === "accept";
   const accentColor = cls === "violation" ? "var(--crit)" : "var(--ink-3)";
+  // FREE 티어도 첫 3건은 근거·조문·대체표현 전부 잠금 없이(팀장 지시,
+  // 2026-08-23) - num===1 한정 "체험 1회" 클릭 방식은 폐기.
+  const isUnlocked = tier !== "FREE" || num <= 3;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -218,6 +217,14 @@ function FindingCard({
     }
     onToggle();
   };
+
+  // 대체 표현 3상태: 1) 표현 있음 2) 없음(구조적 제안 불가, 지어내지 않는다)
+  // 3) 로딩 중(폴백 경로만 해당) - undefined면 아직 판단 불가(로딩).
+  const replacementSuggestions: string[] | null | undefined = hasReportReplacements
+    ? (replacement ? [replacement.replaced] : null)
+    : legacyLoading
+      ? undefined
+      : (legacySuggestions && legacySuggestions.length > 0 ? legacySuggestions : null);
 
   return (
     <div
@@ -234,15 +241,18 @@ function FindingCard({
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
-      {/* 토글 헤더 (상시 노출): 번호·flag·유형·신뢰도 한 줄 + 표현·수용/제외 한 줄 */}
+      {/* 토글 헤더 (상시 노출): 번호·flag·유형·신뢰도 한 줄 + 표현·수용/제외 한 줄.
+          번호는 pill 밖 - pill 안엔 flag 텍스트만(팀장 지시, 2026-08-23). */}
       <div className="cursor-pointer" onClick={handleHeaderClick}>
         <div className="flex items-center gap-2.25 flex-wrap pt-3.5">
           <span className="font-mono text-[12px] font-bold text-[var(--ink-3)]">[{num}]</span>
           <span className="font-extrabold text-[13px] tracking-[0.2px]" style={{ color: accentColor }}>
             {cls === "violation" ? "위반" : "검토필요"}
           </span>
+          {/* "위반 유형"/"검토 필요 유형" 접두어 제거 - 바로 앞 flag 텍스트와
+              중복이었다(팀장 지시, 2026-08-23). */}
           <span className="text-[11.5px] text-[var(--ink-3)]">
-            {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+            유형 {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
           </span>
           <EvidenceGradeBadge grade={finding.evidence_grade} />
           <span
@@ -252,8 +262,10 @@ function FindingCard({
           </span>
         </div>
 
-        {/* 표현(밑줄 인용) + 수용/제외. 표현이 길어지면 줄어들며 줄바꿈되고
-            버튼 묶음은 shrink-0으로 항상 제 폭을 지킨다(#292·#295 교훈 유지). */}
+        {/* 표현(밑줄 인용) + 수용/제외. 잠긴 카드는 이 자리에 "유료 요금제 전용"을
+            반복하지 않는다 - 접힌 헤더에서 아예 뺐다(팀장 지시, 카드당 문구는
+            본문 안 한 곳으로 통일). 표현이 길어지면 줄어들며 줄바꿈되고 버튼
+            묶음은 shrink-0으로 항상 제 폭을 지킨다(#292·#295 교훈 유지). */}
         <div className="flex items-center justify-between gap-3 mt-2.25">
           <span
             className={`font-bold text-[15px] text-[var(--ink)] pb-[3px] border-b-2 min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}
@@ -265,34 +277,27 @@ function FindingCard({
             )}
           </span>
 
-          <div className="flex items-center gap-3 shrink-0 font-mono text-[11.5px]">
-            {tier === "FREE" ? (
-              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-[var(--ink-3)] whitespace-nowrap">
-                <Lock size={11} weight="bold" />
-                유료 요금제 전용
-              </span>
-            ) : (
-              <>
-                {/* 수용 = 유일한 상태변경 주액션이라 항상 채움(CTA와 같은 급) -
-                    §4.1 검증 조합 재사용(라이트 --brand-deep 9.36:1 / 다크 --brand
-                    6.48:1). 이미 수용된 상태는 텍스트로 알린다(색만으로 상태를
-                    구분하지 않는다, §F). */}
-                <button
-                  className="font-bold whitespace-nowrap shrink-0 px-2.5 py-1 rounded-sm cursor-pointer text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] hover:opacity-90 transition-opacity duration-[120ms]"
-                  onClick={() => onAction(positionIdxs, orderIndex, "accept")}
-                >
-                  {isAccepted ? "✓ 수용됨" : "[ 수용 ]"}
-                </button>
-                {/* 제외 = 보조 액션, 채움 없이 텍스트만. 선택 상태는 밑줄로 구분 */}
-                <button
-                  className={`font-semibold whitespace-nowrap shrink-0 cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] ${isExcluded ? "underline" : ""}`}
-                  onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
-                >
-                  {isExcluded ? "제외됨 · 되돌리기" : "제외"}
-                </button>
-              </>
-            )}
-          </div>
+          {isUnlocked && (
+            <div className="flex items-center gap-3 shrink-0 font-mono text-[11.5px]">
+              {/* 수용 = 유일한 상태변경 주액션이라 항상 채움(CTA와 같은 급) -
+                  §4.1 검증 조합 재사용(라이트 --brand-deep 9.36:1 / 다크 --brand
+                  6.48:1). 이미 수용된 상태는 텍스트로 알린다(색만으로 상태를
+                  구분하지 않는다, §F). */}
+              <button
+                className="font-bold whitespace-nowrap shrink-0 px-2.5 py-1 rounded-sm cursor-pointer text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] hover:opacity-90 transition-opacity duration-[120ms]"
+                onClick={() => onAction(positionIdxs, orderIndex, "accept")}
+              >
+                {isAccepted ? "✓ 수용됨" : "[ 수용 ]"}
+              </button>
+              {/* 제외 = 보조 액션, 채움 없이 텍스트만. 선택 상태는 밑줄로 구분 */}
+              <button
+                className={`font-semibold whitespace-nowrap shrink-0 cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] ${isExcluded ? "underline" : ""}`}
+                onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
+              >
+                {isExcluded ? "제외됨 · 되돌리기" : "제외"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -318,21 +323,23 @@ function FindingCard({
               </div>
             )}
 
-            {/* [근거] 설명을 조문보다 먼저 - "어디가 왜 위반인지"를 먼저 보여주고
-                법령 원문은 뒤로 미룬다(디디 확정, 2026-08-23). */}
+            {/* 순서: [근거] → 조문 → 대체표현 - "왜 위반인지 먼저, 대응은 마지막"
+                (팀장 지시, 2026-08-23). 대체표현을 맨 위에 두면 근거를 보기도
+                전에 해결책부터 보여주는 셈이라 뒤로 옮겼다. */}
             <p className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] m-0 font-sans max-w-[62ch]">
               {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
                   LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
               <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
             </p>
 
-            {/* 조문 원문 인용. 카드당 상시 남는 테두리 둘 중 하나(왼쪽 심각도선 +
-                이 옅은 왼쪽선) - <blockquote> 태그 자체가 인용 느낌을 주므로
-                배경·전체 테두리 없이도 구분된다(디디 확정, 2026-08-23). */}
+            {/* 조문 원문 인용. 잠긴 카드는 자물쇠 아이콘만(문구 반복 제거 -
+                카드당 "유료 요금제 전용"은 대체표현 자리 한 곳에만, 팀장 지시). */}
             {(finding.legal_basis || finding.legal_basis_text) && (
               <blockquote className="m-0 border-l border-[var(--line-2)] pl-3 max-w-[62ch]">
-                {tier === "FREE" && num > 1 ? (
-                  <span className="text-[12.5px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
+                {!isUnlocked ? (
+                  <span className="inline-flex items-center py-1 text-[var(--ink-3)]">
+                    <Lock size={13} weight="bold" />
+                  </span>
                 ) : (
                   <>
                     {finding.legal_basis && (
@@ -350,23 +357,17 @@ function FindingCard({
               </blockquote>
             )}
 
-            {/* Pro 기능: 대체 표현 제안. CTA 버튼은 카드의 유일한 실제 조작
-                버튼이라 채움 스타일을 유지한다(팀장 확정, 2026-08-23 - 규칙선
-                재설계에서도 안 건드리는 예외). 블러+자물쇠 티저는 목업 그대로
-                실제 프론트 구현(기존 페이월)을 재사용한다. */}
-            {(tier !== "FREE" || num === 1) ? (
-              !showSuggestionsArea && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleShowAndFetchSuggestions}
-                    className="font-sans text-[12px] font-bold p-[6px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer inline-flex items-center gap-1.5 transition-all duration-[120ms] rounded-sm shadow-sm"
-                  >
-                    대체 표현 제안 보기 {tier === "FREE" ? "(체험 1회)" : ""}
-                  </button>
-                </div>
-              )
-            ) : (
-              <div className="relative max-w-[62ch]">
+            {/* 대체 표현: 버튼·클릭·fetch 흐름 없이 항상 렌더, 3상태로 분기
+                (팀장 지시, 2026-08-23). CTA 버튼을 없앤다 - "버튼 눌렀는데
+                결과가 없음이면 낚시"라는 지적을 그대로 반영. */}
+            {!isUnlocked ? (
+              // 상태 3: 잠금 - 블러+자물쇠, 클릭하면 요금제 모달. 카드당 유일한
+              // "유료 요금제 전용" 문구가 여기 있다.
+              <button
+                type="button"
+                onClick={onOpenPricingModal}
+                className="relative max-w-[62ch] text-left cursor-pointer"
+              >
                 <div
                   className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] blur-[3.5px] select-none"
                   aria-hidden="true"
@@ -384,47 +385,33 @@ function FindingCard({
                     유료 요금제 전용
                   </span>
                 </div>
+              </button>
+            ) : replacementSuggestions === undefined ? (
+              // 상태: 로딩(옛 리포트 폴백 경로만)
+              <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12.5px] max-w-[62ch]">
+                <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
+                대체 표현 제안을 불러오는 중...
               </div>
-            )}
-
-            {/* 대체 표현 제안 결과: 점선 테두리가 "버튼 눌러서 나타난 것" 신호라
-                다른 실선 요소와 다른 카테고리로 그대로 둔다(디디 확정, 2026-08-23). */}
-            {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
-              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm transition-all duration-300">
-                <div className="flex items-center gap-1.75 mb-2">
-                  <b className="text-[12px] text-[var(--ink-2)] font-bold">대체 표현 제안</b>
-                  {tier === "FREE" && (
-                    <span className="font-mono text-[10px] text-[var(--ink-3)] border border-[var(--line-2)] p-[1px_6px] ml-2">
-                      FREE 요금제 체험 (1/1)
-                    </span>
-                  )}
-                </div>
-                <div className="text-[14px] text-[var(--ink-2)] leading-1.6">
-                  {loading ? (
-                    <div className="flex items-center gap-2 text-[var(--ink-3)] font-mono text-[12.5px]">
-                      <CircleNotch size={14} className="animate-spin text-[var(--brand-ink)]" />
-                      대체 표현 제안을 불러오는 중...
-                    </div>
-                  ) : hasFetched ? (
-                    suggestions.length > 0 ? (
-                      <>
-                        {getRemediationText(
-                          finding.violation_type,
-                          <span className="font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] px-1.5 py-0.5 rounded-[3px] mx-1">
-                            {suggestions.join(", ")}
-                          </span>
-                        )}
-                        {replacement?.note && (
-                          <div className="mt-2 text-[12px] text-[var(--ink-3)] border-t border-dashed border-[var(--line-2)] pt-2">
-                            ⓘ {replacement.note}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-[var(--ink-3)]">대체 표현 없음</span>
-                    )
-                  ) : null}
-                </div>
+            ) : replacementSuggestions === null ? (
+              // 상태 2: 제안 불가 - 지어내지 않고 정직하게 알린다(구조적으로
+              // 자동 수정이 안 되는 문구, 예: 제품명·유통채널).
+              <p className="text-[13.5px] text-[var(--ink-3)] leading-[1.7] m-0 max-w-[62ch]">
+                자동 수정하지 못했습니다.
+              </p>
+            ) : (
+              // 상태 1: 대체표현 있음 - 바로 표시
+              <div className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] max-w-[62ch]">
+                {getRemediationText(
+                  finding.violation_type,
+                  <span className="font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] px-1.5 py-0.5 rounded-[3px] mx-1">
+                    {replacementSuggestions.join(", ")}
+                  </span>
+                )}
+                {replacement?.note && (
+                  <div className="mt-2 text-[12px] text-[var(--ink-3)] border-t border-dashed border-[var(--line-2)] pt-2">
+                    ⓘ {replacement.note}
+                  </div>
+                )}
               </div>
             )}
 
@@ -494,7 +481,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [viewMode, setViewMode] = useState<"image" | "tile">("image");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
-  const [remediationCount, setRemediationCount] = useState<number>(0);
+  // 대체표현 열람 "체험 1회" 클릭 카운트는 폐기(FREE도 첫 3건은 전부 잠금
+  // 없이 보이는 구조로 바뀌어 더 이상 필요 없다, 2026-08-23).
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
   const [flagFilter, setFlagFilter] = useState<"위반" | "검토필요" | null>(null);
 
@@ -582,7 +571,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     : findGroups;
 
   useEffect(() => {
-    setRemediationCount(0);
     setOpenOrderIndex(0);
     setFlagFilter(null);
     setBulkUndoSnapshot(null);
@@ -867,10 +855,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   }}
                   onScrollToPosition={(idx) => scrollToBox(idx, false)}
                   tier={tier}
-                  remediationCount={remediationCount}
-                  onFetchRemediation={() => setRemediationCount((prev) => prev + 1)}
                   replacement={replacementByFindingIndex.get(g.repIdx)}
                   hasReportReplacements={hasReportReplacements}
+                  onOpenPricingModal={() => setPricingModalOpen(true)}
                 />
               );
             })}
@@ -1072,6 +1059,15 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       <PageFooter basis={envelope.report.basis ?? null} snapshot />
+
+      <PricingModal
+        isOpen={pricingModalOpen}
+        onClose={() => setPricingModalOpen(false)}
+        onSelectTier={(t) => {
+          setTier(t);
+          setPricingModalOpen(false);
+        }}
+      />
     </>
   );
 }
