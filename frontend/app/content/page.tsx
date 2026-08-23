@@ -8,6 +8,8 @@ import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount,
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
+import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
+import { GenerationLoading } from "@/components/GenerationLoading/GenerationLoading";
 import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
 import { useError } from "@/lib/error/ErrorContext";
 
@@ -153,6 +155,10 @@ function ContentGeneratorContent() {
 
   const [report, setReport] = useState<CheckReport | null>(null);
   const [loading, setLoading] = useState(!!id);
+  // 클릭 후 /generate 응답을 기다리는 동안. 초기 리포트 로딩(loading)과 분리한다 -
+  // 하나로 묶으면 "리포트 불러오는 중"이라는 문구가 생성 대기에도 그대로 뜬다
+  // (팀장 지시로 로딩 UI 분리, 2026-08-23).
+  const [generating, setGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [checks, setChecks] = useState({ ck1: false, ck2: false });
@@ -416,7 +422,7 @@ function ContentGeneratorContent() {
 
   const handleConfirm = async () => {
     setIsModalOpen(false);
-    setLoading(true);
+    setGenerating(true);
     try {
       let res: GenerateResponse;
       if (mode === "create") {
@@ -486,7 +492,7 @@ function ContentGeneratorContent() {
       console.error(err);
       showError("콘텐츠 생성 오류", "콘텐츠 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
@@ -1004,7 +1010,16 @@ function ContentGeneratorContent() {
   };
 
   if (loading) {
-    return <div className="devnote" style={{ padding: "40px 20px" }}>리포트를 불러오는 중입니다…</div>;
+    return <RouteLoading message="리포트를 불러오는 중" />;
+  }
+
+  if (generating) {
+    return (
+      <GenerationLoading
+        mode={mode === "create" ? "create" : "improve"}
+        imagesRequested={mode === "create" && createGenerateImages}
+      />
+    );
   }
 
   return (
@@ -1767,7 +1782,7 @@ function ContentPageWrapper() {
 
 export default function ContentPage() {
   return (
-    <Suspense fallback={<div className="devnote" style={{ padding: "20px" }}>로딩 중…</div>}>
+    <Suspense fallback={<RouteLoading />}>
       <ContentPageWrapper />
     </Suspense>
   );
