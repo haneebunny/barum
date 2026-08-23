@@ -153,6 +153,42 @@ def generate_sections(req: GenerateRequest, vlm) -> list[Section]:
     return _template_sections(req)
 
 
+def _ingredients_for_judge(req: GenerateRequest) -> str | None:
+    """판정기에 넘길 전성분. **없으면 None이다 — 자리표시자를 넘기면 안 된다.**
+
+    create 모드는 성분을 `ingredient_amounts`에 담는다(`ingredients`는 improve
+    모드 입력이라 항상 비어 있다). 그래서 재검증이 `req.ingredients`를 그대로 쓰면
+    사업자가 성분을 입력했는데도 "전성분 미입력"으로 읽고, 어렵게 검증해 배치한
+    인정문구를 **스스로 검토필요로 만든다**(2026-08-23 PM 발견).
+
+    **`_ingredients_for_prompt`를 그대로 쓰면 안 된다.** 그쪽은 사람이 읽는
+    프롬프트용이라 없을 때 "(미상)"을 낸다. 그 문자열을 판정기에 넘기면 성분명으로
+    읽어서 "고시원료가 전성분에 없음"으로 보고 **검토필요를 위반으로 격상시킨다**
+    (실측 확인). 없으면 없다고 해야 판정기가 "확인 못 함"으로 정직하게 남긴다.
+    """
+    if req.ingredients:
+        return req.ingredients
+    amounts = req.ingredient_amounts or []
+    # **이름만 넘긴다.** 함량은 아래 `_amounts_for_judge`가 따로 넘긴다. 이름 칸에
+    # "나이아신아마이드 3%"처럼 함량을 붙여 넣으면 성분표 대조가 이름을 못 찾아
+    # "고시원료가 전성분에 없음"으로 읽고 **검토필요를 위반으로 격상시킨다**(실측).
+    if amounts:
+        return ", ".join(a.name for a in amounts if a.name)
+    return None
+
+
+def _amounts_for_judge(req: GenerateRequest) -> str | None:
+    """판정기가 기대하는 `"성분:함량,성분:함량"` 형식. 없으면 None.
+
+    함량까지 줘야 성분표 대조가 "기준 충족"까지 확인한다. 이름만 주면 거기서
+    멈춰 검토필요로 남는다(그것도 정직한 결과이긴 하다).
+    """
+    amounts = [a for a in (req.ingredient_amounts or []) if a.name and a.amount]
+    if not amounts:
+        return None
+    return ",".join(f"{a.name}:{a.amount}" for a in amounts)
+
+
 def _ingredients_for_prompt(req: GenerateRequest) -> str:
     """카피 프롬프트에 실을 전성분 문자열.
 
@@ -311,7 +347,19 @@ def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
 def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[RecheckSummary, list[RiskConfirmation]]:
     """생성물을 재검증하고 (요약, 남은 위반 확인항목)을 낸다."""
     combined = " ".join(s.text for s in sections)
-    rc = run_check("KR", combined, None, None, None, judge, ingredients=req.ingredients)
+    # **판정용 헬퍼를 쓴다.** create 모드 성분은 ingredient_amounts에 있어서,
+    # req.ingredients를 그대로 쓰면 성분을 입력했는데도 "전성분 미입력"으로 읽고
+    # 인정문구를 스스로 검토필요로 만든다.
+    rc = run_check(
+        "KR",
+        combined,
+        None,
+        None,
+        None,
+        judge,
+        ingredients=_ingredients_for_judge(req),
+        ingredient_amounts=_amounts_for_judge(req),
+    )
     recheck = RecheckSummary(
         safe=rc.summary.n_findings == 0,
         n_findings=rc.summary.n_findings,
