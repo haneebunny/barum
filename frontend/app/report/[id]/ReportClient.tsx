@@ -532,15 +532,32 @@ export function ReportClient({ envelope }: ReportClientProps) {
     .filter((o) => visibleFindingIdx.has(o.idx))
     .sort((a, b) => a.f.location.order - b.f.location.order);
 
-  // 지적 카드 그룹핑(팀장 확정 A안): span+violation_type이 완전히 같으면 카드
-  // 하나로 묶는다. 같은 span+유형은 규칙 매칭이라 결정론적이라 근거 문구
-  // (finding.explanation)가 항상 같다 - 그룹 대표(첫 항목)만 보여줘도 근거가 갈리지
-  // 않는다. 원문 하이라이트(원본 idx 기준)는 그대로 두고, 카드 번호만 그룹 단위로
-  // 매긴다 - 아래서 findByOrder의 num을 그룹 번호로 되쓰면 원문 하이라이트 배지도
-  // 자동으로 같은 그룹은 같은 번호를 쓰게 된다.
+  // finding_index로 지적 카드와 짝짓는다(PR #265). original은 경로마다(조건표=단어,
+  // LLM=문장) 값이 달라 키가 못 된다. 아래 그룹 키가 이 값을 써야 해서 그룹핑보다
+  // 앞으로 옮겼다(PR #269 이후 버그 수정, 상세는 바로 아래 그룹핑 주석).
+  const hasReportReplacements = d.replacements.length > 0;
+  const replacementByFindingIndex = new Map<number, (typeof d.replacements)[number]>();
+  d.replacements.forEach((r) => {
+    if (typeof r.finding_index === "number") {
+      replacementByFindingIndex.set(r.finding_index, r);
+    }
+  });
+
+  // 지적 카드 그룹핑(팀장 확정 A안): span+violation_type이 같으면 카드 하나로
+  // 묶는다. **대체표현 유무도 키에 포함한다** - PR #269로 근거 문구가 고정
+  // 템플릿이 아니라 LLM이 문장마다 생성하는 값이 되면서 "같은 span+유형이면
+  // 설명도 항상 같다"는 가정이 깨졌다. 특히 상품명에서 잡힌 occurrence는 "고유
+  // 명사라 대체 제안을 안 한다"는 설명인데, 대표(첫 항목)가 하필 이 경우면 본문
+  // occurrence까지 대체표현이 통째로 안 보이게 된다(실사례: "재생" 4곳 중 상품명
+  // 1곳이 대표가 돼 나머지 3곳 대체표현이 묻힘). 대체표현 유무로 한 번 더 가르면
+  // 상품명 occurrence와 본문 occurrence가 서로 다른 카드로 갈려 각자 맞는 설명을
+  // 보여준다("대체표현 있는 쪽을 대표로" 하는 안은 기각 - 그러면 상품명 카드가
+  // 자기한테 안 맞는 본문용 설명 밑에 깔린다). 원문 하이라이트(원본 idx 기준)는
+  // 그대로 두고, 카드 번호만 그룹 단위로 매긴다 - 아래서 findByOrder의 num을 그룹
+  // 번호로 되쓰면 원문 하이라이트 배지도 자동으로 같은 그룹은 같은 번호를 쓰게 된다.
   const groupItemsByKey = new Map<string, number[]>();
   findByOrder.forEach((o) => {
-    const key = `${o.f.span}\0${o.f.violation_type}`;
+    const key = `${o.f.span}\0${o.f.violation_type}\0${replacementByFindingIndex.has(o.idx)}`;
     if (!groupItemsByKey.has(key)) groupItemsByKey.set(key, []);
     groupItemsByKey.get(key)!.push(o.idx);
   });
@@ -565,16 +582,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const visibleFindGroups = flagFilter
     ? findGroups.filter((g) => g.representative.flag === flagFilter)
     : findGroups;
-
-  // finding_index로 지적 카드와 짝짓는다(PR #265). original은 경로마다(조건표=단어,
-  // LLM=문장) 값이 달라 키가 못 된다.
-  const hasReportReplacements = d.replacements.length > 0;
-  const replacementByFindingIndex = new Map<number, (typeof d.replacements)[number]>();
-  d.replacements.forEach((r) => {
-    if (typeof r.finding_index === "number") {
-      replacementByFindingIndex.set(r.finding_index, r);
-    }
-  });
 
   useEffect(() => {
     setRemediationCount(0);
@@ -766,11 +773,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
                   onHover={(h) => setHoveredIndex(h ? g.repIdx : null)}
                   open={openOrderIndex === orderIndex}
                   onToggle={() => {
-                    const nextOpen = openOrderIndex === orderIndex ? null : orderIndex;
-                    setOpenOrderIndex(nextOpen);
-                    if (nextOpen !== null) {
-                      scrollToBox(g.repIdx, false);
-                    }
+                    setOpenOrderIndex(openOrderIndex === orderIndex ? null : orderIndex);
                   }}
                   onScrollToPosition={(idx) => scrollToBox(idx, false)}
                   tier={tier}

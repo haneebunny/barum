@@ -228,6 +228,18 @@ const MOCK_REPORTS: Record<string, CheckReport> = {
         finding_index: 1,
         note: null,
       },
+      {
+        // finding_index=1과 같은 span+유형(그룹핑 데모, 위 주석). 그룹 키에
+        // "대체표현 유무"가 들어가면서(2026-08-23, 상품명 그룹핑 버그 수정) 그룹
+        // 대표가 아닌 쪽도 실제로 대체표현을 갖고 있어야 같은 그룹으로 묶인다 -
+        // 실제 배치 생성(build_replacements)도 finding별로 도니 항상 이렇다.
+        original: "매일 사용으로 아토피 피부염을 완화하고 손상된 피부를 재생해보세요.",
+        replaced: "매일 사용으로 건조하고 예민한 피부에 진정 케어를 더해보세요.",
+        violation_type: "1호_의약품오인",
+        basis: "합법 표기 틀(조건표) + 문장 다듬기",
+        finding_index: 3,
+        note: null,
+      },
     ] as any,
   },
   text: {
