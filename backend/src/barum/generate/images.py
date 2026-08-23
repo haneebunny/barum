@@ -78,6 +78,7 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 
 제품 종류: {product_name}{product_type_line}
 이 배경의 역할: {purpose}
+{copy_line}
 
 **전체 컬러톤·분위기(이 상세페이지의 다른 배경 이미지들과 반드시 통일할 것): {tone}**
 
@@ -308,12 +309,33 @@ _COMPOSITE_PRODUCT_INSTRUCTION = (
 )
 
 
+def _copy_line(copy_text: str | None) -> str:
+    """이 모듈에 실제로 실릴 카피를 프롬프트에 알려준다.
+
+    전엔 플래너가 정한 한 줄 목적(`module.purpose`)만 보고 그렸다. 실제 문장은
+    이미지보다 먼저 만들어지는데 넘기질 않아서 배경이 카피와 겉돌았다.
+
+    **글자로 쓰라는 뜻이 아니라는 걸 같이 못박는다.** 안 그러면 모델이 이 문장을
+    이미지에 그려 넣는다 — 참조 사진 라벨 건에서 확인한 것과 같은 함정이고,
+    맨 위 글자 금지 규칙과 정면으로 충돌하는 입력이 된다.
+    """
+    text = (copy_text or "").strip().replace("\n", " ")
+    if not text:
+        return ""
+    return (
+        f"이 자리에 실릴 카피(참고용): {text[:200]}\n"
+        "**이 카피는 어떤 장면을 그릴지 알려주는 정보일 뿐이다. "
+        "이 문장을 이미지 안에 글자로 쓰지 마라.**"
+    )
+
+
 def build_image_prompt(
     module: LayoutModule,
     req: GenerateRequest,
     product_type: str | None = None,
     has_product_photo: bool = False,
     variation_index: int = 0,
+    copy_text: str | None = None,
 ) -> str:
     """모듈 하나의 이미지 프롬프트를 만든다.
 
@@ -351,6 +373,7 @@ def build_image_prompt(
         staged_look_forbidden=_staged_look_forbidden_line(module.layout_type),
         product_instruction=_COMPOSITE_PRODUCT_INSTRUCTION if has_product_photo else _NO_PRODUCT_INSTRUCTION,
         text_rule=_KEEP_LABEL_TEXT_RULE if has_product_photo else _NO_TEXT_RULE,
+        copy_line=_copy_line(copy_text),
     )
 
 
@@ -447,6 +470,7 @@ def generate_module_images(
     generator,
     max_images: int = DEFAULT_MAX_IMAGES,
     photo_resolver=None,
+    copy_by_kind: dict[str, str] | None = None,
 ) -> tuple[list[ModuleImage], dict[str, bytes]]:
     """계획된 모듈마다 이미지를 만든다.
 
@@ -534,6 +558,7 @@ def generate_module_images(
             plan.product_type,
             has_product_photo=bool(reference_images),
             variation_index=variation_index,
+            copy_text=(copy_by_kind or {}).get(module.kind),
         )
         allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
         if not allowed:
