@@ -33,7 +33,12 @@ from barum.reference.scope import check_product_scope
 from barum.vlm import VLM, get_vlm
 
 # 문장 분리: 줄바꿈과 문장부호(한/영) 기준. 광고 카피라 완벽한 분리보다 단순·안정을 택한다.
-_SENT_SPLIT = re.compile(r"[\n。.!?！？]+")
+# **마침표 뒤 숫자는 문장 끝이 아니라 소수점이다.** 이 예외가 없으면 사업자가 입력한
+# 실증 수치가 문장 한가운데서 잘린다 — "피부결 개선 2.1배"가 "피부결 개선 2" + "1배"로
+# 쪼개져 판정기가 깨진 조각을 문장으로 보고 판정하고, 리포트에도 그렇게 뜬다
+# (2026-08-23 실측). 같은 방어가 `generate/content.py`의 헤드라인 분리엔 이미
+# 있었는데(2026-08-20) 문장 분리기엔 없었다.
+_SENT_SPLIT = re.compile(r"(?:[\n。!?！？]|\.(?!\d))+")
 
 
 def _split_ingredients(text: str) -> list[str]:
