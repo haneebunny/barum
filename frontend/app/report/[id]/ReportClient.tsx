@@ -8,11 +8,17 @@ import { getReport, getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
 import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 
 const FIXTURE_OPTIONS: TabOption<"unjudged" | "text" | "image">[] = [
   { value: "image", label: "이미지 예시" },
   { value: "text", label: "텍스트 예시" },
   { value: "unjudged", label: "미판정 포함" },
+];
+
+const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
+  { value: "image", label: "원본 보기" },
+  { value: "tile", label: "타일 보기" },
 ];
 
 const TIER_OPTIONS: TabOption<"FREE" | "BASIC" | "PRO">[] = [
@@ -518,6 +524,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 아파서 되돌리기가 있어야 한다, 2026-08-23).
   const [bulkUndoSnapshot, setBulkUndoSnapshot] = useState<Record<number, "accept" | "exclude" | null> | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<"image" | "tile">("image");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
   const [remediationCount, setRemediationCount] = useState<number>(0);
@@ -712,6 +719,21 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const isImageMode = findByOrder.some((o) => o.f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
+
+  // "원본 보기" 토글·이미지 URL 결정에 둘 다 필요해서 헤더보다 앞서 계산해둔다.
+  // 목업 result_id는 백엔드에 실제 이미지가 없어 원본 보기 자체를 못 띄운다(버그 아님,
+  // PM 8대 루루 확인, 2026-08-23).
+  const sampleLoc = findByOrder[0]?.f.location || ujByOrder[0]?.location;
+  const srcW = sampleLoc?.source_w;
+  const srcH = sampleLoc?.source_h;
+  const hasCoords = typeof srcW === "number" && typeof srcH === "number" && srcW > 0 && srcH > 0;
+  const isMockId =
+    activeEnvelope.result_id === "demo-image-id" ||
+    activeEnvelope.result_id === "image" ||
+    activeEnvelope.result_id === "demo-id-1" ||
+    activeEnvelope.result_id === "demo-id-3" ||
+    activeEnvelope.result_id === "demo-id-5";
+  const canShowRealImage = hasCoords && !isMockId && !imageErrors.global;
 
   const hasInteracted = Object.keys(actions).length > 0;
   const acceptedIndices = hasInteracted
@@ -926,9 +948,15 @@ export function ReportClient({ envelope }: ReportClientProps) {
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            <span className="text-[var(--ink-3)] font-mono text-[11px]">
-              {isImageMode ? "이미지 모드 · 타일 오버레이" : "텍스트 모드 · 스팬 밑줄"}
-            </span>
+            {isImageMode ? (
+              canShowRealImage ? (
+                <TabSwitch options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
+              ) : (
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">타일 오버레이</span>
+              )
+            ) : (
+              <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
+            )}
           </div>
           <div id="origPanel">
             {loading ? (
@@ -936,286 +964,17 @@ export function ReportClient({ envelope }: ReportClientProps) {
                 로딩 중...
               </p>
             ) : isImageMode ? (
-              (() => {
-                const byTile: Record<
-                  string,
-                  Array<
-                    | { type: "find"; num: number; idx: number; item: typeof d.findings[number] }
-                    | { type: "uj"; letter: string; item: typeof d.unjudged[number] }
-                  >
-                > = {};
-
-                findByOrder.forEach((o) => {
-                  const t = o.f.location.tile;
-                  if (t) {
-                    if (!byTile[t]) byTile[t] = [];
-                    byTile[t].push({ type: "find", num: o.num, idx: o.idx, item: o.f });
-                  }
-                });
-
-                ujByOrder.forEach((u, i) => {
-                  const t = u.location.tile;
-                  if (t) {
-                    if (!byTile[t]) byTile[t] = [];
-                    byTile[t].push({ type: "uj", letter: String.fromCharCode(65 + i), item: u });
-                  }
-                });
-
-                const tiles = Object.keys(byTile).sort();
-
-                const sampleLoc = findByOrder[0]?.f.location || ujByOrder[0]?.location;
-                const srcW = sampleLoc?.source_w;
-                const srcH = sampleLoc?.source_h;
-
-                const hasCoords =
-                  typeof srcW === "number" &&
-                  typeof srcH === "number" &&
-                  srcW > 0 &&
-                  srcH > 0;
-
-                const isMockId =
-                  activeEnvelope.result_id === "demo-image-id" ||
-                  activeEnvelope.result_id === "image" ||
-                  activeEnvelope.result_id === "demo-id-1" ||
-                  activeEnvelope.result_id === "demo-id-3" ||
-                  activeEnvelope.result_id === "demo-id-5";
-
-                const showRealImage = hasCoords && !isMockId && !imageErrors.global;
-                const imageUrl = getReportImageUrl(activeEnvelope.result_id);
-
-                if (showRealImage) {
-                  return (
-                    <div className="border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
-                      <div className="font-mono text-[11px] text-[var(--ink-3)] mb-1">
-                        원본 광고 검증 이미지 ({srcW}x{srcH} px)
-                      </div>
-                      <div
-                        className="relative w-full"
-                        style={{
-                          aspectRatio: `${srcW} / ${srcH}`,
-                          overflow: "hidden",
-                          backgroundColor: "var(--surface)",
-                        }}
-                      >
-                        <img
-                          src={imageUrl}
-                          alt="원본 광고"
-                          onError={() => {
-                            setImageErrors((prev) => ({ ...prev, global: true }));
-                          }}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "block",
-                          }}
-                        />
-
-                        {/* 실제 좌표 기반 하이라이트 박스 오버레이 */}
-                        <div className="absolute inset-0 z-10 pointer-events-none">
-                          {(() => {
-                            // 같은 위치(문장 order 또는 y_start)를 공유하는 항목들의 서브 인덱스 계산 (배지 겹침 방지)
-                            const locCounts: Record<string, number> = {};
-                            const itemSubIndices: Record<number, number> = {};
-
-                            findByOrder.forEach((o) => {
-                              const key = `${o.f.location.tile}_${o.f.location.order}_${o.f.location.y_start}_${o.f.location.x_start ?? 0}`;
-                              itemSubIndices[o.idx] = locCounts[key] || 0;
-                              locCounts[key] = (locCounts[key] || 0) + 1;
-                            });
-
-                            return findByOrder.map((o) => {
-                              const loc = o.f.location;
-                              if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-                              const isExcluded = actions[o.idx] === "exclude";
-                              if (isExcluded) return null;
-
-                              const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
-
-                              // 시각적 여백(패딩): 좌우 6px, 상하 4px 확장
-                              const padXPct = hasX ? (10 / srcW) * 100 : 0;
-                              const padYPct = (10 / srcH) * 100;
-
-                              const rawTopPct = (loc.y_start / srcH) * 100;
-                              const rawHeightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                              const rawLeftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
-                              const rawWidthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
-
-                              const leftPct = Math.max(0, rawLeftPct - padXPct);
-                              const widthPct = hasX ? Math.min(100 - leftPct, rawWidthPct + padXPct * 2) : 100;
-                              const topPct = Math.max(0, rawTopPct - padYPct);
-                              const heightPct = Math.min(100 - topPct, rawHeightPct + padYPct * 2);
-
-                              const isViolation = o.f.flag === "위반";
-                              const isHovered = hoveredIndex === o.idx;
-                              const badgeOffset = (itemSubIndices[o.idx] || 0) * 22; // 4, 5번 등 같은 문장 항목 나란히 배치
-
-                              return (
-                                <div
-                                  id={`highlight-box-${o.idx}`}
-                                  key={`find-${o.idx}`}
-                                  style={{
-                                    position: "absolute",
-                                    left: `${leftPct}%`,
-                                    width: `${widthPct}%`,
-                                    top: `${topPct}%`,
-                                    height: `${heightPct}%`,
-                                    border: isViolation
-                                      ? `2px solid ${isHovered ? "var(--crit)" : "rgba(239, 68, 68, 0.85)"}`
-                                      : `2px dashed ${isHovered ? "var(--ink)" : "rgba(100, 116, 139, 0.6)"}`,
-                                    backgroundColor: isViolation
-                                      ? (isHovered ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.08)")
-                                      : (isHovered ? "rgba(100, 116, 139, 0.15)" : "rgba(100, 116, 139, 0.04)"),
-                                    borderRadius: "4px",
-                                    pointerEvents: "auto",
-                                    cursor: "pointer",
-                                    transition: "all 0.15s ease-in-out",
-                                    boxShadow: isHovered ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : "none",
-                                  }}
-                                  onMouseEnter={() => setHoveredIndex(o.idx)}
-                                  onMouseLeave={() => setHoveredIndex(null)}
-                                >
-                                  <span
-                                    style={{
-                                      position: "absolute",
-                                      left: `${-8 + badgeOffset}px`,
-                                      top: "-10px",
-                                      width: "19px",
-                                      height: "19px",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontFamily: "monospace",
-                                      fontSize: "10.5px",
-                                      fontWeight: "bold",
-                                      borderRadius: "50%",
-                                      border: `1.5px solid ${isViolation ? "var(--crit)" : "var(--ink-3)"}`,
-                                      color: isViolation ? "var(--crit)" : "var(--ink-3)",
-                                      backgroundColor: "var(--surface)",
-                                      boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
-                                      zIndex: 10 + (itemSubIndices[o.idx] || 0),
-                                    }}
-                                  >
-                                    {o.num}
-                                  </span>
-                                </div>
-                              );
-                            });
-                          })()}
-
-                          {ujByOrder.map((u, i) => {
-                            const loc = u.location;
-                            if (typeof loc.y_start !== "number" || typeof loc.y_end !== "number") return null;
-
-                            const topPct = (loc.y_start / srcH) * 100;
-                            const heightPct = ((loc.y_end - loc.y_start) / srcH) * 100;
-                            const hasX = typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
-                            const leftPct = hasX ? (loc.x_start! / srcW) * 100 : 0;
-                            const widthPct = hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100;
-                            const letter = String.fromCharCode(65 + i);
-
-                            return (
-                              <div
-                                id={`highlight-box-uj-${i}`}
-                                key={`uj-${i}`}
-                                style={{
-                                  position: "absolute",
-                                  left: `${leftPct}%`,
-                                  width: `${widthPct}%`,
-                                  top: `${topPct}%`,
-                                  height: `${heightPct}%`,
-                                  border: "2px dashed rgba(100, 116, 139, 0.4)",
-                                  backgroundColor: "rgba(100, 116, 139, 0.04)",
-                                  borderRadius: "3px",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    position: "absolute",
-                                    right: "-8px",
-                                    top: "-8px",
-                                    width: "18px",
-                                    height: "18px",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontFamily: "monospace",
-                                    fontSize: "10px",
-                                    fontWeight: "bold",
-                                    borderRadius: "50%",
-                                    border: "1px dashed var(--ink-3)",
-                                    color: "var(--ink-3)",
-                                    backgroundColor: "var(--surface)",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                                    zIndex: 2,
-                                  }}
-                                >
-                                  {letter}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <>
-                    {tiles.map((t) => {
-                      const rows = byTile[t].sort(
-                        (a, b) => a.item.location.order - b.item.location.order
-                      );
-                      return (
-                        <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
-                          <div className="font-mono text-[11px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
-                          <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
-                            {rows.map((r, ri) => {
-                              if (r.type === "find") {
-                                const isExcluded = actions[r.idx] === "exclude";
-                                const cls = r.item.flag === "위반" ? "violation" : "review";
-                                const isRowHovered = hoveredIndex === r.idx;
-                                return (
-                                  <div
-                                    className={`relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border transition-all duration-[120ms] ${isExcluded
-                                      ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                                      : cls === "violation"
-                                        ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
-                                        : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
-                                      }`}
-                                    onMouseEnter={() => setHoveredIndex(r.idx)}
-                                    onMouseLeave={() => setHoveredIndex(null)}
-                                    key={ri}
-                                  >
-                                    <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
-                                      ? "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                      : cls === "violation"
-                                        ? "text-[var(--crit)] border-[var(--crit)]"
-                                        : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                                      }`}>{r.num}</span>
-                                    <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
-                                      }`}>{r.item.span}</span>
-                                  </div>
-                                );
-                              } else {
-                                return (
-                                  <div className="relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
-                                    <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
-                                    <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
-                                  </div>
-                                );
-                              }
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <p className="text-[var(--ink-3)] text-[10.5px] mt-2">
-                      실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
-                    </p>
-                  </>
-                );
-              })()
+              <ReportImageViewer
+                viewMode={viewMode}
+                findByOrder={findByOrder}
+                ujByOrder={ujByOrder}
+                imageUrl={canShowRealImage ? getReportImageUrl(activeEnvelope.result_id) : null}
+                imageErrorGlobal={!!imageErrors.global}
+                onImageError={() => setImageErrors((prev) => ({ ...prev, global: true }))}
+                actions={actions}
+                hoveredIndex={hoveredIndex}
+                onHoverChange={setHoveredIndex}
+              />
             ) : (
               (() => {
                 const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
