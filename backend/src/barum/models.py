@@ -93,6 +93,18 @@ class Finding(BaseModel):
     # 별개 문제라, 화면에 쓰기 전에 캘리브레이션을 확인해야 한다
     # (2026-08-22 실측 결과는 docs/result 참고). 파싱 실패·범위 밖이면 None.
     confidence: int | None = None
+    # 이 판정의 **근거가 확인된 정도**. 위반 확실성이 아니다(그건 `flag`가 말한다).
+    #
+    #   rule_confirmed    규칙 경로. 팩에 등재된 표현과 일치한다.
+    #   citation_verified VLM 경로 + 인용 대조 통과. 모델이 인용한 근거가 실재한다.
+    #   unverified        VLM 경로 + 인용 대조 실패. 설명을 떼고 지적만 남긴 상태.
+    #
+    # 규칙 경로가 항상 rule_confirmed일 수 있는 근거는 런타임 조회가 아니라
+    # `tests/test_rule_evidence_audit.py`가 지키는 불변식이다 — 규칙 키워드 전건이
+    # 팩 근거를 갖는지 CI에서 확인하고, 근거 없는 키워드가 들어오면 빌드가 깨진다.
+    #
+    # 값이 없을 수 있다(게이트를 껐거나 옛 리포트). 프론트는 None을 허용해야 한다.
+    evidence_grade: str | None = None
     location: Location
     # 어느 층이 이 판정을 냈는지. "rule"=규칙집 확정, "vlm"=모델 판정.
     # 설명 문장을 LLM으로 다시 쓸 대상을 고르는 데 쓴다(규칙 경로만 템플릿이라서).

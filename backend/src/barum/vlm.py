@@ -467,6 +467,32 @@ class OpenAIImageGenerator:
         return base64.b64decode(b64)
 
 
+# 역할별 모델 오버라이드 환경변수. **없으면 None을 돌려 기존 동작을 그대로 둔다.**
+#
+# 지금까지 모델명이 역할이 아니라 provider에 묶여 있었다. 판정·1차 필터·생성이
+# 같은 provider면 모델을 못 나눈다. 특히 1차 필터는 "싼 모델로 이진 분류"가 설계
+# 의도인데 실제로는 판정과 같은 모델을 쓰고 있었다. 나눌 수 있게만 열어 두고
+# 값은 안 바꾼다(기본 동작 무변경).
+_ROLE_MODEL_ENV = {
+    "judge": "JUDGE_MODEL",
+    "prescreen": "PRESCREEN_MODEL",
+    "ocr": "OCR_MODEL",
+    "generate": "GENERATE_MODEL",
+    "image": "IMAGE_MODEL",
+}
+
+
+def role_model(role: str) -> str | None:
+    """역할별 모델명 오버라이드를 읽는다. 미설정이면 None(= provider 기본값 유지).
+
+    None을 그대로 어댑터에 넘기면 어댑터가 기존 환경변수(OPENAI_MODEL·MODEL_NAME·
+    IMAGE_MODEL_NAME)로 폴백한다. 그래서 아무것도 안 정하면 지금과 100% 같다.
+    """
+    if role not in _ROLE_MODEL_ENV:
+        raise ValueError(f"모르는 역할: {role}")
+    return os.environ.get(_ROLE_MODEL_ENV[role]) or None
+
+
 def get_vlm(provider: str = "gemini", **kwargs) -> VLM:
     """provider 이름으로 어댑터를 만든다."""
     if provider == "gemini":

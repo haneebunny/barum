@@ -8,6 +8,7 @@
 규칙집(레퍼런스팩)이 오면 `RagJudge`를 여기 추가해 슬롯만 갈아끼운다.
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -19,8 +20,11 @@ from barum.models import (
     ViolationType,
 )
 from barum.reference.context import (
+    Chunk,
+    build_judgment_chunks,
     build_judgment_context,
-    build_regulation_context,
+    build_regulation_chunks,
+    render_chunks,
 )
 from barum.reference.ingredients import (
     check_amount_threshold,
@@ -36,6 +40,8 @@ from barum.reference.rules import (
     match_rule,
 )
 from barum.vlm import VLM
+
+from .verify import verify_citation
 
 
 @dataclass
@@ -206,11 +212,37 @@ JUDGE_PROMPT = """너는 한국 화장품 광고 문구가 화장품법 표시·
 문장:
 {items}
 
+근거 인용(source_id, quote):
+- 위 [판정 근거]에서 이 판정의 바탕이 된 조각 하나를 골라 그 id를 `source_id`에 적어라
+  (예: "L01", "C03"). 조각 머리에 `[L01]`처럼 붙어 있다.
+- 그 조각에서 판정 근거가 되는 대목을 **원문 그대로 한 구절 복사**해 `quote`에 넣어라.
+  요약·바꿔쓰기 금지. 복사한 그대로여야 한다.
+- 근거 조각에서 해당 대목을 못 찾겠으면 지어내지 말고 `source_id`를 빈 문자열로 둬라.
+  인용이 없다고 판정이 버려지지는 않는다.
+
 확신도(confidence, 0~100 정수):
 - 이 판정이 맞을 가능성을 스스로 매겨라. 근거가 분명하면 높게, 애매하면 낮게.
 - 습관적으로 높은 값을 쓰지 마라. 낮은 확신도는 잘못이 아니라 정보다.
 
-JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "flag": "위반|검토필요", "confidence": 0, "reason": "..."}}]}}"""
+JSON으로만 답하라: {{"results": [{{"n": 1, "label": "...", "flag": "위반|검토필요", "confidence": 0, "source_id": "L01", "quote": "근거 조각에서 그대로 복사한 구절", "reason": "..."}}]}}"""
+
+
+# 근거 등급. 위반 확실성이 아니라 **근거가 확인된 정도**다(models.Finding 주석 참고).
+GRADE_RULE = "rule_confirmed"
+GRADE_VERIFIED = "citation_verified"
+GRADE_UNVERIFIED = "unverified"
+
+# 인용 대조 실패 시 모델이 쓴 설명 대신 내보내는 문구. 설명은 떼되 지적은 남긴다.
+_UNVERIFIED_NOTE = "근거 인용을 원문에서 확인하지 못해 설명을 표시하지 않습니다. 지적 자체는 유효합니다."
+
+
+def _verify_gate_on() -> bool:
+    """인용 대조 게이트 스위치. 기본 켜짐, `BARUM_VERIFY_GATE=0`이면 끈다.
+
+    끄고 켜서 이 게이트의 효과를 잴 수 있게 남긴다(A/B 변형을 코드에 남기는 규칙).
+    끄면 모델 설명이 대조 없이 그대로 나가고 등급도 안 붙는다.
+    """
+    return os.getenv("BARUM_VERIFY_GATE", "1") != "0"
 
 
 def _parse_confidence(value) -> int | None:
@@ -303,10 +335,19 @@ class PromptJudge:
     프롬프트 그대로라 score_eval·기존 동작에 영향 없다.
     """
 
-    def __init__(self, vlm: VLM, batch_size: int = 12, context: str = ""):
+    def __init__(
+        self,
+        vlm: VLM,
+        batch_size: int = 12,
+        context: str = "",
+        chunks: tuple[Chunk, ...] = (),
+    ):
         self.vlm = vlm
         self.batch_size = batch_size
         self.context = context
+        # 인용 대조의 기준. **이 판정에 실제로 실린 조각들**이어야 한다.
+        # 비어 있으면 대조를 안 한다(제로샷 경로엔 근거 조각 자체가 없다).
+        self.chunks = chunks
 
     def _build_prompt(self, numbered: str) -> str:
         """판정 프롬프트를 만든다. context가 있으면 근거 블록을 앞에 붙인다."""
@@ -376,6 +417,9 @@ class PromptJudge:
                 if vtype in _NON_VIOLATION:
                     continue  # 합법·대상외 → finding 없음
                 explanation = item.get("reason") or f"{vtype.value} 소지"
+                # 코드가 계산한 근거(성분표 대조)는 모델 설명과 따로 들고 있는다.
+                # 인용 대조에 실패해도 이건 지우면 안 된다 — 우리가 직접 확인한 사실이다.
+                evidence_note: str | None = None
                 # 확정도는 모델이 직접 답한다(2026-08-19). 예전엔 1호·5호를 무조건
                 # 위반으로 고정했는데, 근거 문서는 §3 실증대상을 "검토필요, 위반 단정
                 # 금지"로 안내하는 반면 답변 라벨엔 그 선택지가 없어 모델이 합법(미탐)
@@ -388,8 +432,31 @@ class PromptJudge:
                     if flag is None:
                         # 고시원료·기준함량이 다 맞음 = 합법 확정. finding을 안 만든다.
                         continue
+                    evidence_note = note
                     if note:
                         explanation = f"{explanation} {note}"
+                grade = None
+                if self.chunks and _verify_gate_on():
+                    verdict = verify_citation(
+                        item.get("source_id"),
+                        item.get("quote"),
+                        None,  # 이 프롬프트는 문장 단위라 span=문장 전체, 대조가 무의미
+                        s["text"],
+                        self.chunks,
+                    )
+                    if verdict.ok:
+                        grade = GRADE_VERIFIED
+                    else:
+                        # **지적은 안 버린다.** 진짜 위반이 설명 검증 실패로 사라지면
+                        # 그게 더 위험하다. 검증 안 된 설명만 떼고 지적은 남긴다.
+                        grade = GRADE_UNVERIFIED
+                        print(f"    [verify] 인용 대조 실패({verdict.reason}): {s['text'][:40]}")
+                        # **모델이 쓴 설명만 뗀다.** 성분표 대조처럼 코드가 확인한
+                        # 근거는 남긴다. 그것까지 지우면 사용자가 "고시원료가
+                        # 전성분에 없음" 같은 가장 단단한 근거를 못 보게 된다.
+                        explanation = _UNVERIFIED_NOTE
+                        if evidence_note:
+                            explanation = f"{explanation} {evidence_note}"
                 result.findings.append(
                     Finding(
                         span=s["text"],  # 이 프롬프트는 문장 단위 라벨 = span은 문장 전체
@@ -401,6 +468,7 @@ class PromptJudge:
                         explanation=explanation,
                         # VLM 경로만 채운다. 규칙 경로는 None으로 남는다(Finding 주석 참고).
                         confidence=_parse_confidence(item.get("confidence")),
+                        evidence_grade=grade,
                         source="vlm",
                         location=_loc(s),
                     )
@@ -478,10 +546,10 @@ def _rule_explanation(outcome: RuleOutcome, span: str, vtype: ViolationType) -> 
     """
     if outcome == RuleOutcome.needs_review:
         return (
-            f"규칙집 대조: '{span}'은 실증대상 표현이다. "
+            f"규칙문서 대조: '{span}'은 실증대상 표현이다. "
             f"실증자료가 있으면 합법, 없으면 {vtype.value}. 확인 필요."
         )
-    return f"규칙집 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정)."
+    return f"규칙문서 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정)."
 
 
 class RagJudge:
@@ -502,24 +570,43 @@ class RagJudge:
     따라 달라지므로 context를 judge()마다 만들어 PromptJudge를 그때 구성한다.
     """
 
-    def __init__(self, vlm: VLM, batch_size: int = 12, case_retriever=None):
+    def __init__(
+        self,
+        vlm: VLM,
+        batch_size: int = 12,
+        case_retriever=None,
+        prescreen_vlm: VLM | None = None,
+    ):
         self._vlm = vlm
         self._batch_size = batch_size
         self._retriever = case_retriever
+        # 1차 필터는 "판정 대상인가"만 묻는 이진 분류라 더 싼 모델로 나눌 수 있다.
+        # None이면 판정 VLM을 쓴다(기존 동작 그대로, 클라이언트도 하나만).
+        # 여기서 `or vlm`으로 굳히지 않는 이유는 `_vlm`을 나중에 갈아끼우는 코드가
+        # 있어서다. 굳히면 그 교체가 1차 필터에만 안 먹혀 조용히 어긋난다.
+        self._prescreen_vlm = prescreen_vlm
         # 직전 judge()에서 1차 필터가 버린 문장. 판정기가 못 본 문장이라 미탐이
         # 여기서 샐 수 있어 관측용으로 남긴다(판정 동작에는 안 쓴다).
         self.last_dropped: list[dict] = []
 
-    def _context_for(self, remaining: list[dict]) -> str:
-        """fallback LLM에 실을 grounding 컨텍스트를 만든다.
+    def _grounding_for(self, remaining: list[dict]) -> tuple[str, tuple[Chunk, ...]]:
+        """fallback LLM에 실을 grounding을 (문자열, 조각들)로 만든다.
 
         retriever 없으면 Phase1(규정 + cases.md 통째). 있으면 규정 + 검색된 유사 사례.
+
+        조각을 같이 내는 이유는 인용 대조 때문이다. 대조는 **그 판정에 실제로 실린
+        조각**을 기준으로 해야 한다. 전체 팩으로 대조하면 모델이 안 본 문서를
+        인용해도 통과해서 게이트가 아무것도 막지 못한다.
         """
         if self._retriever is None:
-            return build_judgment_context()
-        cases_block = self._retriever.context_for(remaining)
-        reg = build_regulation_context()
-        return f"{reg}\n\n{cases_block}" if cases_block else reg
+            chunks = build_judgment_chunks()
+        else:
+            chunks = build_regulation_chunks() + self._retriever.retrieve(remaining)
+        return render_chunks(chunks), chunks
+
+    def _context_for(self, remaining: list[dict]) -> str:
+        """grounding 컨텍스트 문자열만. (하위호환 — 기존 호출부·테스트가 쓴다)"""
+        return self._grounding_for(remaining)[0]
 
     def _prescreen(self, sentences: list[dict]) -> list[dict]:
         """1차 필터: 효능/효과 주장인 문장만 골라낸다 (RAG 없는 싼 VLM 호출).
@@ -547,7 +634,7 @@ class RagJudge:
                 f"{start + j}. {s['text']}" for j, s in enumerate(batch)
             )
             try:
-                res = self._vlm.generate_json(
+                res = (self._prescreen_vlm or self._vlm).generate_json(
                     PRESCREEN_PROMPT.format(items=numbered), []
                 )
                 raw = res.get("results", [])
@@ -616,6 +703,11 @@ class RagJudge:
                     ),
                     location=_loc(s),
                     source="rule",
+                    # 규칙 매칭은 팩에 등재된 표현과의 일치라 근거가 가장 단단하다.
+                    # 전건이 팩 근거를 갖는다는 건 CI가 지킨다
+                    # (tests/test_rule_evidence_audit.py). 런타임 조회를 안 하는
+                    # 이유는, 근거 없는 키워드는 애초에 머지되면 안 되기 때문이다.
+                    evidence_grade=GRADE_RULE,
                 )
             )
             # 규칙이 실증대상(검토필요)으로 확정했는데 같은 문장에 2호 표방까지
@@ -639,10 +731,9 @@ class RagJudge:
 
             if efficacy_claims:
                 # 2차 판정: 효능 주장인 것만 RAG + VLM으로 판정.
+                context, chunks = self._grounding_for(efficacy_claims)
                 prompt_judge = PromptJudge(
-                    self._vlm,
-                    self._batch_size,
-                    context=self._context_for(efficacy_claims),
+                    self._vlm, self._batch_size, context=context, chunks=chunks
                 )
                 vlm_result = prompt_judge.judge(
                     efficacy_claims, region, ingredients, ingredient_amounts

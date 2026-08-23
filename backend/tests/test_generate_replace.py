@@ -6,6 +6,7 @@ get_remediation은 remediation_rules.json을 읽는 결정적 로직이라 VLM �
 """
 
 from barum.generate.replace import apply_replacements, build_replacements
+from barum.judge.cosmetic import _rule_explanation
 from barum.reference.rules import RuleOutcome, match_rule
 from barum.models import (
     Finding,
@@ -340,7 +341,7 @@ def _rule_finding(span, sentence, vtype, flag=JudgmentFlag.violation):
     return Finding(
         span=span, sentence=sentence, violation_type=vtype,
         legal_basis="화장품법 제13조", flag=flag,
-        explanation=f"규칙집 대조: '{span}' 표현이 {vtype.value}에 해당한다(금지표현 확정).",
+        explanation=_rule_explanation(RuleOutcome.violation, span, vtype),
         location=Location(order=0), source="rule",
     )
 
@@ -355,7 +356,7 @@ def test_규칙_경로_설명이_llm_문장으로_바뀐다():
 
     build_replacements([f], rewriter=rewriter, explain=True)
 
-    assert not f.explanation.startswith("규칙집 대조:")
+    assert not f.explanation.startswith("규칙문서 대조:")
     assert "인체 유래" in f.explanation
 
 

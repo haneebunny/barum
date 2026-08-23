@@ -14,6 +14,7 @@
 """
 
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -47,10 +48,24 @@ _CASES_FILE = "cases.md"
 _CHECKLIST_SECTION = ("cases.md", "**KCA 실증자료 구비서류 체크리스트**")
 
 
-def _read_block(rel: str) -> str:
-    """근거 문서 하나를 읽어 헤더 붙인 블록으로. 없으면 FileNotFoundError(삼키지 않음)."""
+@dataclass(frozen=True)
+class Chunk:
+    """프롬프트에 실리는 근거 조각 하나.
+
+    `id`는 모델이 근거를 인용할 때 쓰는 짧은 꼬리표다(규정 `L01`, 사례 `C01`).
+    판정이 돌아온 뒤 이 id로 원문을 되찾아 인용이 진짜인지 대조한다(judge/verify.py).
+    id가 없으면 모델이 "규정에 따르면"이라고만 답해도 확인할 방법이 없다.
+    """
+
+    id: str
+    label: str  # 사람이 읽는 출처 표기(파일명·절 이름)
+    text: str  # 원문. 인용 대조의 기준이 되므로 가공하지 않는다
+
+
+def _read_block(rel: str) -> Chunk:
+    """근거 문서 하나를 조각으로 읽는다. 없으면 FileNotFoundError(삼키지 않음)."""
     text = (_REF_DIR / rel).read_text(encoding="utf-8").strip()
-    return f"### 근거 문서: {rel}\n{text}"
+    return Chunk(id="", label=rel, text=text)
 
 
 def _read_section(rel: str, marker: str) -> str:
@@ -70,12 +85,25 @@ def _read_section(rel: str, marker: str) -> str:
         j = rest.find(stop, len(marker))
         if j > 0:
             end = min(end, j)
-    return f"### 근거 문서: {rel} ({marker})\n{rest[:end].strip()}"
+    return Chunk(id="", label=f"{rel} ({marker})", text=rest[:end].strip())
+
+
+def _numbered(chunks: list[Chunk], prefix: str) -> tuple[Chunk, ...]:
+    """조각에 순번 id를 매긴다(L01, L02 …). 순서는 프롬프트에 붙는 순서 그대로."""
+    return tuple(
+        Chunk(id=f"{prefix}{i:02d}", label=c.label, text=c.text)
+        for i, c in enumerate(chunks, start=1)
+    )
+
+
+def render_chunks(chunks: tuple[Chunk, ...]) -> str:
+    """조각들을 프롬프트 블록 문자열로. 헤더에 id를 노출해 모델이 인용할 수 있게 한다."""
+    return "\n\n".join(f"### [{c.id}] 근거 문서: {c.label}\n{c.text}" for c in chunks)
 
 
 @lru_cache(maxsize=1)
-def build_regulation_context() -> str:
-    """규정·판정기준 문서만 합친 컨텍스트(cases.md 제외).
+def build_regulation_chunks() -> tuple[Chunk, ...]:
+    """규정·판정기준 조각들(cases.md 제외). id는 L01부터.
 
     검색 경로(Phase3)는 여기에 '검색된 사례'만 덧붙인다(cases.md 통째 안 넣음).
     """
@@ -84,14 +112,28 @@ def build_regulation_context() -> str:
     # 변형을 코드에 안 남기면 다음 세션이 재실행이 아니라 재구현을 하게 된다(⑲ 교훈).
     if os.getenv("BARUM_GROUNDING_CHECKLIST", "1") != "0":
         blocks.append(_read_section(*_CHECKLIST_SECTION))
-    return "\n\n".join(blocks)
+    return _numbered(blocks, "L")
+
+
+def build_regulation_context() -> str:
+    """규정 컨텍스트 문자열. 조각 id가 헤더에 붙는다."""
+    return render_chunks(build_regulation_chunks())
 
 
 @lru_cache(maxsize=1)
-def build_judgment_context() -> str:
-    """규정 + 실사례(cases.md 통째)를 합친 컨텍스트(Phase1 기본 grounding).
+def build_judgment_chunks() -> tuple[Chunk, ...]:
+    """규정 + 실사례(cases.md 통째) 조각들(Phase1 기본 grounding).
 
-    Phase3에서 사례를 pgvector 검색으로 바꾸면 이건 안 쓰이고 build_regulation_context
-    + 검색결과 조합으로 넘어간다. 결과는 캐시(md는 런타임에 안 바뀜).
+    Phase3에서 사례를 pgvector 검색으로 바꾸면 이건 안 쓰이고 규정 조각 +
+    검색결과 조합으로 넘어간다. 결과는 캐시(md는 런타임에 안 바뀜).
+
+    cases.md는 통째로 실리므로 조각 하나(`C01`)다. 검색 경로는 사례마다 조각을
+    쪼개므로 C01, C02 …로 늘어난다.
     """
-    return build_regulation_context() + "\n\n" + _read_block(_CASES_FILE)
+    cases = _numbered([_read_block(_CASES_FILE)], "C")
+    return build_regulation_chunks() + cases
+
+
+def build_judgment_context() -> str:
+    """규정 + 실사례 컨텍스트 문자열(Phase1 기본 grounding)."""
+    return render_chunks(build_judgment_chunks())

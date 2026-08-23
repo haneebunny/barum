@@ -179,3 +179,59 @@ def test_복합_꼬리표는_첫_유형코드를_대표로_센다():
     assert primary_type("T6 천연·유기농 오인(별표5 나)") == "T6"
     assert primary_type("판정불명확") == "기타"
     assert primary_type(None) == "기타"
+
+
+# ── 사례 조각 id (인용 대조의 전제) ────────────────────────────────────────
+
+def _retriever_with(cases):
+    return CaseRetriever(
+        embed_fn=lambda texts: [[0.0, 0.1] for _ in texts],
+        search_fn=lambda vec, k: cases,
+        k=3,
+    )
+
+
+def _chunk_case(text, sim=0.9):
+    return {
+        "text": text,
+        "violation": "T1 의약품 오인",
+        "disposition": "광고업무정지 3개월",
+        "similarity": sim,
+    }
+
+
+def test_검색된_사례마다_C_id가_붙는다():
+    """사례도 규정과 똑같이 인용 대상이다. id가 없으면 대조할 수 없다."""
+    r = _retriever_with([_chunk_case("아토피 완화 크림"), _chunk_case("발모 촉진 토닉", 0.8)])
+    chunks = r.retrieve(_sentences(["문장1"]))
+
+    assert [c.id for c in chunks] == ["C01", "C02"]
+    assert all(c.id.startswith("C") for c in chunks)
+
+
+def test_사례_조각_원문이_프롬프트_문자열과_같다():
+    """프롬프트엔 처분까지 실리는데 조각엔 본문만 담으면, 처분을 인용했을 때
+    실제로는 봤는데도 검증 실패로 나온다."""
+    r = _retriever_with([_chunk_case("아토피 완화 크림")])
+    sentences = _sentences(["문장1"])
+    chunks = r.retrieve(sentences)
+    block = r.context_for(sentences)
+
+    for c in chunks:
+        assert c.text in block
+    assert "광고업무정지 3개월" in chunks[0].text
+
+
+def test_검색_실패해도_빈_조각으로_degrade한다():
+    """외부 호출 실패는 예상된 실패다. 판정은 규정만으로 계속 간다."""
+    def boom(texts):
+        raise RuntimeError("임베딩 실패")
+
+    r = CaseRetriever(embed_fn=boom, search_fn=lambda v, k: [])
+    assert r.retrieve(_sentences(["문장1"])) == ()
+    assert r.context_for(_sentences(["문장1"])) == ""
+
+
+def test_문장이_없으면_조각도_없다():
+    r = _retriever_with([_chunk_case("아토피 완화 크림")])
+    assert r.retrieve([]) == ()

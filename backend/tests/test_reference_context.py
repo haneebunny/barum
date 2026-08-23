@@ -42,9 +42,13 @@ def test_kca_체크리스트가_규정_컨텍스트에_실린다():
     컨텍스트에 없으면 모델은 그 기준을 아예 못 본다(⑥에서 인정문구가 안 실려 위반으로
     찍히던 것과 같은 구조).
     """
-    from barum.reference.context import build_regulation_context
+    from barum.reference.context import (
+        build_regulation_chunks,
+        build_regulation_context,
+    )
 
-    build_regulation_context.cache_clear()
+    # 캐시는 조각 빌더가 들고 있다(문자열 렌더는 매번 새로 만든다).
+    build_regulation_chunks.cache_clear()
     ctx = build_regulation_context()
     assert "KCA 실증자료 구비서류 체크리스트" in ctx
     assert "○○ 원료 함유" in ctx
@@ -59,3 +63,43 @@ def test_절을_못_찾으면_조용히_넘어가지_않는다():
 
     with pytest.raises(ValueError):
         _read_section("cases.md", "**있을 리 없는 절 제목**")
+
+
+# ── 근거 조각 id (인용 대조의 전제) ────────────────────────────────────────
+
+def test_조각마다_고유_id가_붙는다():
+    """모델이 근거를 인용하려면 조각을 가리킬 이름이 있어야 한다."""
+    from barum.reference.context import build_judgment_chunks
+
+    chunks = build_judgment_chunks()
+    ids = [c.id for c in chunks]
+    assert len(ids) == len(set(ids)), f"id가 겹친다: {ids}"
+    assert all(c.id for c in chunks), "id 없는 조각이 있다"
+
+
+def test_규정은_L_사례는_C_접두사다():
+    """규정과 사례는 근거의 성격이 달라 접두사로 갈라 둔다."""
+    from barum.reference.context import build_judgment_chunks
+
+    chunks = build_judgment_chunks()
+    assert [c.id for c in chunks if c.id.startswith("L")], "규정 조각이 없다"
+    assert [c.id for c in chunks if c.id.startswith("C")], "사례 조각이 없다"
+    assert all(c.id[0] in "LC" for c in chunks)
+
+
+def test_컨텍스트_문자열에_id가_노출된다():
+    """프롬프트에 안 보이면 모델이 그 id로 인용할 수 없다."""
+    from barum.reference.context import build_judgment_chunks, build_judgment_context
+
+    ctx = build_judgment_context()
+    for c in build_judgment_chunks():
+        assert f"[{c.id}]" in ctx, f"{c.id}가 컨텍스트에 안 보인다"
+
+
+def test_조각_원문이_컨텍스트에_그대로_실린다():
+    """인용 대조는 '실제로 실린 문자열' 기준이라 조각 text와 어긋나면 안 된다."""
+    from barum.reference.context import build_judgment_chunks, build_judgment_context
+
+    ctx = build_judgment_context()
+    for c in build_judgment_chunks():
+        assert c.text in ctx, f"{c.id} 원문이 컨텍스트와 다르다"

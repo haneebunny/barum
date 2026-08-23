@@ -31,6 +31,8 @@ import re
 from collections import Counter
 from collections.abc import Callable
 
+from .context import Chunk
+
 # 사례 꼬리표에서 유형코드를 뽑는다. 값이 자유서술이라("T2 기능성 오인 + T5 근거수치")
 # 정규화 없이 문자열 그대로 비교하면 같은 유형이 다른 유형으로 세어진다.
 _TYPE_CODE = re.compile(r"T\d+")
@@ -68,9 +70,19 @@ class CaseRetriever:
 
     def context_for(self, sentences: list[dict]) -> str:
         """문장들과 유사한 사례를 찾아 근거 블록 문자열로. 없으면 빈 문자열."""
+        return render_cases(self.retrieve(sentences))
+
+    def retrieve(self, sentences: list[dict]) -> tuple[Chunk, ...]:
+        """문장들과 유사한 사례를 찾아 id 붙은 조각들로. 없으면 빈 튜플.
+
+        조각으로 내는 이유는 인용 대조 때문이다. 사례도 규정과 똑같이 모델이
+        `[C01]`로 인용할 수 있어야 하고, 판정 뒤 그 id로 원문을 되찾아야 한다.
+        검색은 외부 호출이라 두 번 부르면 그만큼 과금된다. 그래서 조각을 내는
+        경로를 하나로 두고 `context_for`는 이걸 렌더만 한다.
+        """
         texts = [s["text"] for s in sentences]
         if not texts:
-            return ""
+            return ()
 
         # 임베딩·검색은 외부(OpenAI·Supabase) 호출이라 실패할 수 있다. 실패해도
         # 판정 자체는 살아야 하므로(규정만으로 grounding) 빈 블록으로 degrade한다.
@@ -88,14 +100,14 @@ class CaseRetriever:
             ]
         except Exception as e:
             print(f"    [skip] 사례 검색 실패 — 규정만으로 판정: {type(e).__name__}: {e}")
-            return ""
+            return ()
 
         chosen = self._select(per_sentence, self._effective_cap(len(per_sentence)))
         if not chosen:
-            return ""
+            return ()
         # 담는 순서는 배분이 정하지만 보여주는 순서는 유사도순이 읽기 좋다.
         chosen.sort(key=lambda c: c.get("similarity", 0), reverse=True)
-        return self._format(chosen)
+        return self._to_chunks(chosen)
 
     def _effective_cap(self, n_sentences: int) -> int:
         """이 배치에서 실을 사례 수. 문장이 많으면 자리를 늘린다.
@@ -157,10 +169,31 @@ class CaseRetriever:
         return chosen
 
     @staticmethod
-    def _format(cases: list[dict]) -> str:
-        lines = ["### 유사 과거 적발사례 (유사도순, 참고용)"]
-        for c in cases:
+    def _to_chunks(cases: list[dict]) -> tuple[Chunk, ...]:
+        """사례 dict들을 id 붙은 조각으로. text는 프롬프트에 실리는 줄 그대로 둔다.
+
+        인용 대조는 프롬프트에 **실제로 실린 문자열**과 맞춰야 한다. 여기서 원본
+        text만 담고 프롬프트엔 유형·처분까지 붙이면, 모델이 처분 문구를 인용했을 때
+        실제로는 봤는데도 검증 실패로 나온다.
+        """
+        out: list[Chunk] = []
+        for i, c in enumerate(cases, start=1):
             v = c.get("violation", "")
             d = c.get("disposition", "")
-            lines.append(f'- "{c["text"]}" → {v} / {d}')
-        return "\n".join(lines)
+            out.append(
+                Chunk(
+                    id=f"C{i:02d}",
+                    label="과거 적발사례",
+                    text=f'"{c["text"]}" → {v} / {d}',
+                )
+            )
+        return tuple(out)
+
+
+def render_cases(chunks: tuple[Chunk, ...]) -> str:
+    """사례 조각들을 프롬프트 블록으로. 규정 블록과 달리 한 줄씩 목록으로 싣는다."""
+    if not chunks:
+        return ""
+    lines = ["### 유사 과거 적발사례 (유사도순, 참고용)"]
+    lines += [f"- [{c.id}] {c.text}" for c in chunks]
+    return "\n".join(lines)

@@ -28,7 +28,7 @@ def test_build_judge_rag_returns_rag_judge(monkeypatch):
     from barum.api import app as app_module
     from barum.judge.cosmetic import RagJudge
 
-    monkeypatch.setattr(app_module, "get_vlm", lambda provider: object())
+    monkeypatch.setattr(app_module, "get_vlm", lambda provider, model=None: object())
     monkeypatch.setenv("JUDGE_KIND", "rag")
     assert isinstance(app_module._build_judge(), RagJudge)
 
@@ -43,7 +43,7 @@ def test_build_judge_defaults_to_rag(monkeypatch):
     from barum.api import app as app_module
     from barum.judge.cosmetic import RagJudge
 
-    monkeypatch.setattr(app_module, "get_vlm", lambda provider: object())
+    monkeypatch.setattr(app_module, "get_vlm", lambda provider, model=None: object())
     monkeypatch.setattr(app_module, "_maybe_case_retriever", lambda: None)
     monkeypatch.delenv("JUDGE_KIND", raising=False)
     assert isinstance(app_module._build_judge(), RagJudge)
@@ -54,7 +54,7 @@ def test_build_judge_prompt_still_available(monkeypatch):
     from barum.api import app as app_module
     from barum.judge.cosmetic import PromptJudge
 
-    monkeypatch.setattr(app_module, "get_vlm", lambda provider: object())
+    monkeypatch.setattr(app_module, "get_vlm", lambda provider, model=None: object())
     monkeypatch.setenv("JUDGE_KIND", "prompt")
     assert isinstance(app_module._build_judge(), PromptJudge)
 

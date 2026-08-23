@@ -6,6 +6,7 @@
     ./venv/bin/python -m pytest tests/test_rag_judge.py -q
 """
 
+from barum.reference.context import Chunk
 from barum.judge.cosmetic import JudgeResult, RagJudge
 from barum.models import JudgmentFlag, ViolationType
 
@@ -131,8 +132,10 @@ def test_rag_with_retriever_uses_regulation_plus_retrieved_cases():
     """retriever 주입 시 규정 + '검색된' 사례를 넣고, cases.md 통째는 안 넣는다."""
 
     class FakeRetriever:
-        def context_for(self, sentences):
-            return '### 유사 과거 적발사례\n- "검색된사례XYZ" → T1 / 정지'
+        # 인용 대조가 붙으면서 retriever는 조각(Chunk)을 내야 한다.
+        # 문자열만 내면 어느 사례를 인용했는지 되짚을 수 없다.
+        def retrieve(self, sentences):
+            return (Chunk(id="C01", label="과거 적발사례", text='"검색된사례XYZ" → T1 / 정지'),)
 
     vlm = RecordingVLM([{"n": 0, "label": "합법"}])
     RagJudge(vlm, case_retriever=FakeRetriever()).judge(
