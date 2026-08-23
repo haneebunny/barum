@@ -190,3 +190,41 @@ def test_대체표현_재작성기는_OCR용_VLM과_별개다(monkeypatch):
     monkeypatch.setenv("JUDGE_KIND", "rag")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     assert _replacement_rewriter() is not None
+
+
+# ── 지금 도는 서버가 어느 코드인지 (2026-08-23) ────────────────────────────
+
+def test_version_엔드포인트가_sha와_시작시각을_준다():
+    """오늘 두 번, 머지된 코드가 안 도는 상태에서 원인을 엉뚱한 데서 찾았다.
+    두 번 다 openapi.json 필드 유무로 역추적했는데 그건 우회다."""
+    from fastapi.testclient import TestClient
+
+    from barum.api import app as app_module
+
+    r = TestClient(app_module.app).get("/version")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sha"]
+    assert body["started_at"]
+
+
+def test_sha를_못_읽어도_서버는_뜬다():
+    """관측용 값 하나 때문에 서버가 안 뜨면 안 된다."""
+    from barum.api.app import _git_sha
+
+    assert isinstance(_git_sha(), str)
+
+
+def test_reload_감시에_레퍼런스_팩이_들어간다():
+    """**팩은 backend/ 밖이라 기본 감시 범위에 안 걸린다.**
+
+    팩을 읽는 함수들이 전부 lru_cache라, 감시를 안 걸면 팩을 고쳐도 서버가
+    옛 규정으로 계속 판정한다. 조용히, 무기한으로.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "run_api.py").read_text(
+        encoding="utf-8"
+    )
+    assert "reload_dirs" in src
+    assert 'ROOT.parent / "reference"' in src

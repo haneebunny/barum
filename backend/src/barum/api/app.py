@@ -6,6 +6,8 @@
 
 import os
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -52,6 +54,26 @@ from barum.vlm import get_image_generator, get_vlm, role_model
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
 _CT_TO_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 _EXT_TO_CT = {v: k for k, v in _CT_TO_EXT.items()}
+
+def _git_sha() -> str:
+    """지금 체크아웃된 커밋. 못 읽으면 'unknown'(서버는 계속 뜬다)."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parents[4],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return out.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+_GIT_SHA = _git_sha()
+_STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 app = FastAPI(title="barum 판정 백엔드", version="0.1.0")
 
@@ -538,6 +560,19 @@ def _resolve_product_photos(client):
                 print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
         return images
     return resolve
+
+
+@app.get("/version")
+def version() -> dict:
+    """지금 도는 서버가 **어느 코드인지** 알려준다.
+
+    오늘 두 번, 머지된 코드가 안 도는 상태에서 결과를 보고 원인을 엉뚱한 데서
+    찾았다(낡은 프로세스 / 캐시 의심). 두 번 다 `/openapi.json`에 특정 필드가
+    있는지로 역추적했는데 그건 우회다. 한 줄로 확정할 수 있게 노출한다.
+
+        curl -s localhost:8000/version
+    """
+    return {"sha": _GIT_SHA, "started_at": _STARTED_AT}
 
 
 @app.post("/generate", response_model=GenerateResponse)

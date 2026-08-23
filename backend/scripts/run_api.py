@@ -35,11 +35,22 @@ def main() -> None:
     ap.add_argument("--timeout-keep-alive", type=int, default=120)
     args = ap.parse_args()
 
+    # **레퍼런스 팩도 감시 대상에 넣는다.** 팩은 `backend/` 밖(저장소 루트
+    # `reference/`)에 있어서 기본 감시 범위(작업 디렉터리)에 안 걸린다. 그런데 팩을
+    # 읽는 함수들은 전부 lru_cache라, 팩을 고쳐도 서버는 **옛 규정으로 계속 판정한다.**
+    # 조용히, 무기한으로. 판정 근거가 바뀌는 것이라 응답이 낡는 것보다 훨씬 나쁘다
+    # (2026-08-23 발견).
+    reload_dirs = [str(ROOT)]
+    pack_dir = ROOT.parent / "reference"
+    if pack_dir.exists():
+        reload_dirs.append(str(pack_dir))
+
     uvicorn.run(
         "barum.api.app:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
+        reload_dirs=reload_dirs if args.reload else None,
         timeout_keep_alive=args.timeout_keep_alive,
     )
 
