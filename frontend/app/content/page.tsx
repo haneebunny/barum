@@ -467,16 +467,16 @@ function ContentGeneratorContent() {
           rawContent = "자외선 차단 100%! 피부 재생 및 기미·주근깨 완벽 치료하는 선크림 SPF50";
         }
 
-        const ingredients = report
-          ? Array.from(new Set(report.findings.map(f => f.span))).join(", ")
-          : undefined;
-
+        // 위반 span(지적된 문구 자체)을 전성분인 척 보내고 있었다. 백엔드
+        // 성분대조 로직이 이걸 실제 전성분으로 읽고 "고시원료가 전성분에
+        // 없다"는 지어낸 근거로 위반을 판정하는 사고로 이어짐(베베 확인,
+        // 2026-08-23). 실제 전성분 입력값이 없으면 그냥 안 보낸다 - 백엔드는
+        // None이면 "전성분 미입력, 확인 못 함"으로 정직하게 검토필요를 낸다.
         res = await generateContent({
           mode: "improve",
           content: rawContent,
           result_id: id || undefined,
           product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
-          ingredients: ingredients || undefined,
           certifications: [],
         });
       }
