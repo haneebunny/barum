@@ -13,7 +13,14 @@ from barum.generate.content import (
     generate_sections,
 )
 from barum.judge.cosmetic import StubJudge
-from barum.models import ClinicalEvidence, GenerateRequest, ImageGenRequest, IngredientAmount, TableRow
+from barum.models import (
+    ApprovedReplacement,
+    ClinicalEvidence,
+    GenerateRequest,
+    ImageGenRequest,
+    IngredientAmount,
+    TableRow,
+)
 
 
 class FakeVLM:
@@ -324,8 +331,13 @@ def test_싱크가_터져도_응답은_살아있다():
     assert resp.sections  # 콘텐츠 자체는 정상적으로 나온다
 
 
-def test_improve_모드는_이미지_생성을_안_한다():
-    req = GenerateRequest(mode="improve", content="촉촉한 크림", product_name="테스트크림")
+def test_improve_모드도_승인된_대체표현이_없으면_이미지가_없다():
+    """합성할 대체표현이 0건이면(게이트로 다 걸러졌거나 원래 없음) 모듈도 0개라
+    이미지도 안 만든다. approved_replacements=[]로 명시해 판정 결과에 기대지 않는다."""
+    req = GenerateRequest(
+        mode="improve", content="촉촉한 크림", product_name="테스트크림",
+        approved_replacements=[],
+    )
     resp = generate_content(
         req,
         judge=StubJudge(),
@@ -333,6 +345,56 @@ def test_improve_모드는_이미지_생성을_안_한다():
         image_generator=FakeImageGenerator(b"A"),
     )
     assert resp.image_plan.module_images == []
+
+
+def test_improve_모드는_승인된_대체표현마다_이미지를_하나씩_만든다():
+    """PM 요청(2026-08-24): improve 모드도 승인된 대체표현 개수만큼 배경 이미지를
+    만든다. LayoutPlan을 합성해 create 모드의 build_image_plan 확장 경로를 그대로 탄다."""
+    req = GenerateRequest(
+        mode="improve", content="피부가 좋아집니다", product_name="테스트크림",
+        approved_replacements=[
+            ApprovedReplacement(original="피부가 좋아집니다", replaced="산뜻한 사용감을 느껴보세요"),
+            ApprovedReplacement(original="피부가 좋아집니다", replaced="가볍게 발리는 제형입니다"),
+        ],
+    )
+    resp = generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=FakeVLM({"제품개요": "담백", "사용법": "펴 바르기", "주의사항": "이상 시 중단"}),
+        image_generator=FakeImageGenerator(b"A", b"B"),
+    )
+    images = resp.image_plan.module_images
+    assert [i.module_kind for i in images] == ["replacement_0", "replacement_1"]
+    assert [i.status for i in images] == ["generated", "generated"]
+
+
+def test_대체표현_이미지_프롬프트는_원문과_대체문구를_담고_글자로_쓰지_말라고_명시한다():
+    """PM이 건 핵심 제약: 프롬프트가 실제 대체표현 텍스트(원문·대체문구)를 반영해야
+    한다. 동시에 그 텍스트를 이미지 안 글자로 옮기면 안 된다는 방어도 있어야 한다
+    (#312·손 컷 프롬프트 자기충돌과 같은 계열 실패를 처음부터 안 만든다, 베베 지적)."""
+    captured: dict = {}
+
+    class CapturingGenerator:
+        def generate_image(self, prompt, images):
+            captured["prompt"] = prompt
+            return b"A"
+
+    req = GenerateRequest(
+        mode="improve", content="완치됩니다", product_name="테스트크림",
+        approved_replacements=[
+            ApprovedReplacement(original="완치됩니다", replaced="사용감이 편안합니다"),
+        ],
+    )
+    generate_content(
+        req,
+        judge=StubJudge(),
+        vlm=FakeVLM({"제품개요": "담백", "사용법": "펴 바르기", "주의사항": "이상 시 중단"}),
+        image_generator=CapturingGenerator(),
+    )
+    prompt = captured["prompt"]
+    assert "완치됩니다" in prompt
+    assert "사용감이 편안합니다" in prompt
+    assert "글자로 옮겨 쓰지 마라" in prompt
 
 
 # ── 상품 스펙표 (2026-08-19, 팀장 확정: table_info 지원범위 = 제형·용량) ──

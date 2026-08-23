@@ -663,8 +663,56 @@ def _accept_approved(req: GenerateRequest) -> tuple[list[Replacement], list[str]
     return approved, rejected
 
 
-def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateResponse:
-    """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM)."""
+# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type. hero_fullbleed로 고정하면
+# 손 장면 허용·사진성 있는 넓은 구도 등 create 모드의 안전규칙(_body_part_line·
+# _staged_look_forbidden_line, images.py)을 그대로 상속받는다 - 여기서 새로 정할
+# 필요가 없다.
+_REPLACEMENT_IMAGE_LAYOUT_TYPE = "hero_fullbleed"
+
+
+def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
+    """승인된 대체표현마다 이미지 1장을 만들도록 LayoutModule로 합성한다(improve 모드).
+
+    improve 모드엔 플래너가 없어 진짜 LayoutPlan이 없다. `build_image_plan`은
+    plan·image_generator를 주면 그대로 확장되게 이미 설계돼 있어서(docstring: "안
+    주면 기존 동작 그대로다, improve 모드 회귀 없음") 그 확장 지점에 맞춰 합성한다 -
+    가짜 계획을 억지로 끼우는 게 아니라 원래 예정된 사용법이다.
+
+    purpose에 원문→대체문구를 그대로 담아 이미지가 실제 대체표현 텍스트를 반영하게
+    한다(팀장 지적: "이미지가 카피를 모른다" 문제. create 모드도 같은 문제를 별도로
+    고치는 중이다, 베베). **그 문구를 그대로 읽어서 이미지에 글자로 쓰면 안 된다** -
+    `_PROMPT`의 최우선 규칙(글자 금지)이 있긴 하지만, purpose 자체에도 "이건 읽으라는
+    정보지 그리라는 글자가 아니다"를 명시해 이중으로 막는다(#312와 같은 계열 실패를
+    여기서 처음부터 안 만든다, 베베 지적).
+    """
+    modules: list[LayoutModule] = []
+    for i, r in enumerate(reps):
+        purpose = (
+            f'광고문구를 "{r.original}"에서 "{r.replaced}"로 순화했다. '
+            "이 순화된 표현이 실제로 말하는 내용과 분위기에 어울리는 장면을 그려라. "
+            "**이 문장들은 무엇을 그릴지 알려주는 정보일 뿐이다 - 절대 이미지 안에 "
+            "글자로 옮겨 쓰지 마라.**"
+        )
+        modules.append(
+            LayoutModule(
+                kind=f"replacement_{i}",
+                purpose=purpose,
+                has_claim_risk=False,
+                layout_type=_REPLACEMENT_IMAGE_LAYOUT_TYPE,
+            )
+        )
+    return modules
+
+
+def _generate_improve_content(
+    req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
+) -> GenerateResponse:
+    """개선 모드 오케스트레이션. judge·vlm 주입(테스트는 StubJudge+가짜LLM).
+
+    image_generator를 주면 승인된 대체표현마다 배경 이미지도 만든다
+    (`_replacement_image_modules` 참고). 안 주면 기존 동작 그대로다(배치·가드레일만,
+    회귀 없음).
+    """
     gate_rejected: list[str] = []
     if req.approved_replacements is not None:
         # **재계산하지 않는다.** 리포트에서 이미 판정하고 사용자가 승인한 결과를 쓴다.
@@ -688,8 +736,18 @@ def _generate_improve_content(req: GenerateRequest, *, judge, vlm) -> GenerateRe
     sections += generate_sections(req, vlm)
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
-    # 5. 이미지 배치·가드레일
-    image_plan = build_image_plan(req)
+    # 5. 이미지 배치·가드레일 + 승인된 대체표현별 배경 이미지 생성
+    image_plan = build_image_plan(
+        req,
+        plan=LayoutPlan(
+            modules=_replacement_image_modules(reps),
+            product_type=infer_product_type(req.product_name),
+            source="improve_replacements",
+        ),
+        image_generator=image_generator,
+        image_sink=image_sink,
+        photo_resolver=photo_resolver,
+    )
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
     return GenerateResponse(
@@ -928,10 +986,14 @@ def generate_content(
 ) -> GenerateResponse:
     """`POST /generate` 오케스트레이션. `req.mode`로 improve/create 분기.
 
-    image_generator·image_sink·photo_resolver는 create 모드에서만 쓴다.
     image_generator를 안 주면 이미지 생성을 건너뛴다(모델 확정 전까지 기본 비활성).
+    두 모드 다 이미지를 만든다 - create는 계획된 모듈마다, improve는 승인된
+    대체표현마다(`_replacement_image_modules`) 만든다.
     photo_resolver는 판매자가 올린 제품사진(req.product_photo_ids)을 참조 이미지로
-    바꿔주는 콜백이다(AI 배경·연출 합성). 안 주면 참조 없이 배경만 생성한다.
+    바꿔주는 콜백이다(AI 배경·연출 합성). **지금은 create 모드에서만 실제로 참조를
+    낸다** - improve 모드의 원본 제품사진은 `product_photo_ids`가 아니라 `result_id`로
+    찾는 별도 저장 위치라 이 콜백을 안 탄다(후속 작업, PM 공유함). 안 주면(또는
+    improve처럼 안 걸리면) 참조 없이 배경만 생성한다.
     """
     if req.mode == "create":
         return _generate_create_content(
@@ -942,4 +1004,11 @@ def generate_content(
             image_sink=image_sink,
             photo_resolver=photo_resolver,
         )
-    return _generate_improve_content(req, judge=judge, vlm=vlm)
+    return _generate_improve_content(
+        req,
+        judge=judge,
+        vlm=vlm,
+        image_generator=image_generator,
+        image_sink=image_sink,
+        photo_resolver=photo_resolver,
+    )
