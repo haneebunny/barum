@@ -235,3 +235,64 @@ def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘�
     body = r.json()
     assert body["image_plan"]["module_images"][0]["status"] == "generated"
     assert fake_gen.images_received == [[b"PHOTOBYTES"]]
+
+
+# ── 승인 대체표현이 HTTP 경로로 실제로 들어오는지 (2026-08-23) ────────────────
+#
+# 모델·오케스트레이션은 유닛테스트로 덮여 있지만, **엔드포인트가 이 필드를 실제로
+# 받아 넘기는지는 별개 문제다.** 출력만 보거나 우회 실행하면 배관이 안 통해도
+# 통과할 수 있어서 실제 HTTP 경로로 확인한다.
+
+def test_승인_대체표현이_엔드포인트로_들어와_치환된다():
+    r = client.post(
+        "/generate",
+        json={
+            "mode": "improve",
+            "content": "줄기세포 배양 기술로 관리합니다",
+            "product_name": "테스트크림",
+            "approved_replacements": [
+                {"original": "줄기세포 배양 기술", "replaced": "고농축 배합", "finding_index": 0}
+            ],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    text = " ".join(s["text"] for s in body["sections"])
+    assert "고농축 배합" in text
+    assert "줄기세포" not in text
+    assert body["replacements"][0]["finding_index"] == 0
+
+
+def test_엔드포인트로_들어온_위반_문구도_게이트에서_걸린다():
+    """HTTP 경계에서도 게이트가 살아 있어야 한다. 여기가 뚫리면 4층이 무의미해진다."""
+    r = client.post(
+        "/generate",
+        json={
+            "mode": "improve",
+            "content": "줄기세포 배양 기술로 관리합니다",
+            "approved_replacements": [
+                {"original": "줄기세포 배양 기술", "replaced": "아토피 치료에 좋은 크림"}
+            ],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    text = " ".join(s["text"] for s in body["sections"])
+    assert "아토피 치료" not in text, "게이트를 우회해 위반 문구가 들어갔다"
+    assert "아토피 치료에 좋은 크림" in body["unapplied_replacements"]
+
+
+def test_응답_스키마에_새_필드가_실제로_실린다():
+    """프론트가 읽을 필드가 응답 JSON에 있어야 한다(schema.ts 계약)."""
+    r = client.post("/generate", json={"content": "재생 크림입니다", "product_name": "테스트크림"})
+    body = r.json()
+    assert "unapplied_replacements" in body
+    assert "findings" in body["recheck"]
+
+
+def test_openapi에_승인_대체표현_스키마가_노출된다():
+    """프론트 타입 생성·계약 확인의 출처다."""
+    spec = client.get("/openapi.json").json()
+    props = spec["components"]["schemas"]["GenerateRequest"]["properties"]
+    assert "approved_replacements" in props
+    assert "ApprovedReplacement" in spec["components"]["schemas"]
