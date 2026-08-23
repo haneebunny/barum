@@ -5,7 +5,7 @@ get_remediation은 remediation_rules.json을 읽는 결정적 로직이라 VLM �
     ./venv/bin/python -m pytest tests/test_generate_replace.py -q
 """
 
-from barum.generate.replace import apply_replacements, build_replacements
+from barum.generate.replace import _BASIS_LLM, apply_replacements, build_replacements
 from barum.judge.cosmetic import _rule_explanation
 from barum.reference.rules import RuleOutcome, match_rule
 from barum.models import (
@@ -17,13 +17,13 @@ from barum.models import (
 )
 
 
-def _finding(span, sentence, vtype):
+def _finding(span, sentence, vtype, flag=JudgmentFlag.violation):
     return Finding(
         span=span,
         sentence=sentence,
         violation_type=vtype,
         legal_basis="화장품법 제13조",
-        flag=JudgmentFlag.violation,
+        flag=flag,
         explanation="테스트",
         location=Location(order=0),
     )
@@ -207,7 +207,12 @@ def test_llm_rewrite_is_rejected_when_it_produces_a_violation():
     )
     findings = [_finding("줄기세포", "줄기세포 배양액 세럼", ViolationType.type_5_deception)]
     reps = build_replacements(findings, rewriter=rewriter)
-    assert reps == [], f"LLM이 낸 위반 문구가 걸러져야 하는데 {reps}가 나왔다"
+    # **버리지 않고 조건표 후보로 폴백한다(2026-08-23).** 예전엔 제안 자체를 없앴는데,
+    # improve 모드에선 그게 곧 "원문 위반이 그대로 남는다"였다. 위반 문구가 안 나가는
+    # 것이 핵심이고, 안전한 대안이 있으면 주는 게 낫다.
+    assert len(reps) == 1
+    assert "줄기세포" not in reps[0].replaced, "LLM이 낸 위반 문구가 그대로 나갔다"
+    assert reps[0].basis != _BASIS_LLM, "조건표 폴백이어야 한다"
 
 
 def test_llm_failure_falls_back_to_condition_table():
@@ -228,10 +233,20 @@ def test_replacement_carries_evidence_note_for_needs_review_suggestion():
 
     2026-08-20 팀장 지시. 안 붙이면 사용자는 위반에서 벗어난 줄 알고 그대로 쓴다.
     """
+    # 게이트가 검토필요 제안을 막게 된 뒤(2026-08-23)로는 LLM 경로에서 이 상황이
+    # 안 생긴다. 고지 판단은 원래도 "다시 쓴 결과"가 아니라 **원본 finding의 flag**
+    # 기준이므로(`_note_for` docstring), 원본이 검토필요인 경우로 검사한다.
     rewriter = _FakeRewriter(
-        {"items": [{"index": 0, "can_suggest": True, "suggestion": "피부 진정에 도움"}]}
+        {"items": [{"index": 0, "can_suggest": True, "suggestion": "자극을 줄여줍니다"}]}
     )
-    findings = [_finding("염증", "염증을 가라앉힙니다", ViolationType.type_1_drug_misperception)]
+    findings = [
+        _finding(
+            "진정",
+            "피부 진정에 도움을 줍니다",
+            ViolationType.type_1_drug_misperception,
+            flag=JudgmentFlag.needs_review,
+        )
+    ]
     reps = build_replacements(findings, rewriter=rewriter)
     assert len(reps) == 1
     assert reps[0].note, "실증자료 고지가 비어 있다"

@@ -137,3 +137,58 @@ def build_judgment_chunks() -> tuple[Chunk, ...]:
 def build_judgment_context() -> str:
     """규정 + 실사례 컨텍스트 문자열(Phase1 기본 grounding)."""
     return render_chunks(build_judgment_chunks())
+
+
+# ── 대체표현 재작성용 컨텍스트 (0층 grounding) ──────────────────────────────
+#
+# **재작성기는 지금까지 규칙문서를 한 번도 못 봤다**(2026-08-23 발견). 판정기는
+# 팩 44,857자를 받는데 재작성기는 원문·span·유형·조항취지 400자와 프롬프트에
+# 하드코딩된 금지어 몇 개가 전부였다. 그 상태로 "알아서 합법으로 써봐"를 요구받으니
+# 목록에 없는 위반 표현이 나왔다(`깊숙이 침투`가 그렇게 나왔다).
+#
+# 출력만 거르는 층(게이트·사례대조)은 필요하지만, 입력이 빠진 채로 거르면 거를 게
+# 계속 나온다. 애초에 덜 틀리도록 근거를 준다. **추가 LLM 호출은 없다** — 같은
+# 배치 호출의 입력 토큰만 늘어난다.
+_APPROVED_FILE = "approved_efficacy_statements.md"
+_TYPE_DOC = {
+    "1호_의약품오인": "violation_types/type_1_drug_misperception.md",
+    "2호_기능성오인": "violation_types/type_2_functional_misperception.md",
+    "5호_거짓과장기만": "violation_types/type_5_deception.md",
+}
+# 유형별로 실을 적발 사례 수. "이렇게 쓴 게 실제로 적발됐다"가 금지 목록보다 강하다.
+_CASES_PER_TYPE = 4
+_T_CODE = {"1호_의약품오인": "T1", "2호_기능성오인": "T2", "5호_거짓과장기만": "T5"}
+
+
+@lru_cache(maxsize=8)
+def _case_lines_for(t_code: str) -> str:
+    """cases.md에서 해당 유형 적발 사례 줄을 몇 개 뽑는다."""
+    text = (_REF_DIR / _CASES_FILE).read_text(encoding="utf-8")
+    hits = [
+        line.strip()
+        for line in text.splitlines()
+        if line.startswith("|") and t_code in line and "위반유형" not in line
+    ]
+    return "\n".join(hits[:_CASES_PER_TYPE])
+
+
+@lru_cache(maxsize=16)
+def build_rewrite_context(violation_types: tuple[str, ...]) -> str:
+    """대체표현 재작성기에 실을 근거. 이 배치에 나온 유형만 좁혀 싣는다.
+
+    전체 팩(45KB)을 넣지 않는 이유는 필요가 없어서다. 재작성기가 알아야 할 건
+    ① 무엇을 써도 되는가(인정문구) ② 이 유형에서 무엇이 금지인가 ③ 실제로 뭐가
+    적발됐는가, 셋이다. 배치에 1호만 있으면 2호·5호 문서는 안 싣는다.
+    """
+    blocks = [_read_block(_APPROVED_FILE)]
+    for vtype in violation_types:
+        rel = _TYPE_DOC.get(vtype)
+        if rel:
+            blocks.append(_read_block(rel))
+    out = [f"### 근거 문서: {c.label}\n{c.text}" for c in blocks]
+    for vtype in violation_types:
+        code = _T_CODE.get(vtype)
+        lines = _case_lines_for(code) if code else ""
+        if lines:
+            out.append(f"### 실제 적발 사례 ({code}) — 이렇게 쓰면 적발된다\n{lines}")
+    return "\n\n".join(out)
