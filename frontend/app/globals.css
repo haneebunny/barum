@@ -29,17 +29,24 @@
   --nav-hover: #ffffff;
   --nav-active-bg: #e9f2ed;
 }
-/* 다크 v2 (2026-08-17): 그레이-그린 서피스 + 그린 3단 분리(네온 제거).
-   구 다크는 brand 3종이 전부 #3ee08a 단일 네온이라 형광 번짐·단조로움 문제.
-   전 값 검증 통과: 대비 contrast.mjs(본문 4.5+, 채움 글자 4.5+),
-   CVD validate_palette.js 그린 3종 x #ff5252 deutan/protan ΔE 10.4/9.4/18.9 (기준 8+).
-   다크에서 채움은 딥 그린 + 밝은 글자(on-brand가 라이트/다크에서 방향이 다름에 주의) */
+/* 다크 v3 (2026-08-23): 팀장 체감 피로 반려("너무 까맣고 형광도 심하다") 반영.
+   WCAG 대비는 v2도 전부 통과했지만 대비 수치와 "눈이 편함"은 다른 축 -
+   근접 검정(#101612) 위 완전채도 빨강(#ff5252)이 동시대비로 튀어 보이는 문제.
+   v2→v3: 배경 3종(canvas/surface/surface-sub)+line 2종+nav 2종을 v1→v2 델타의
+   절반만큼 한 단계 더 상향(사다리 전체를 한 칸 밀고 위에 새 칸 추가), crit만
+   HSL 채도 100%→75%로 완화(S=85/65/55%는 각각 CVD deutan ΔE 8.9/8.2/7.8로
+   기준 8 언저리~미달이라 75%가 안전마진 확보한 지점, contrast.mjs·
+   validate_palette.js 실측 - scratchpad 계산 기록, 2026-08-23).
+   brand 계열은 안 건드림 - HSL S 49%로 이미 순색이 아니라 "형광" 지목 대상이
+   crit(S100%)이 명확했음. 사이드바를 라이트/다크 무관 고정하는 안도 팀장이
+   반려("너무 이상하다") - 사이드바는 항상 테마를 따라간다(var(--surface-sub)),
+   되돌리지 말 것. */
 :root[data-theme="dark"] {
-  --canvas: #101612;
-  --surface: #151c17;
-  --surface-sub: #1a221c;
-  --line: #27332b;
-  --line-2: #364439;
+  --canvas: #151c17;
+  --surface: #1a221d;
+  --surface-sub: #202923;
+  --line: #2d3830;
+  --line-2: #3b463c;
   --ink: #dbe7df;
   --ink-2: #a8c0b2;
   --ink-3: #8aa294;
@@ -47,11 +54,11 @@
   --brand-ink: #66cb92;  /* 텍스트·커서·라인 그린 */
   --brand-deep: #124a2d; /* 태그·인버스 블록 */
   --on-brand: #eaf5ee;
-  --crit: #ff5252;
+  --crit: #e96868;       /* v2 #ff5252(S100%)→S75%, CVD deutan ΔE 8.5 여유 확보 */
   --crit-bg: #2a1715;
   --crit-bd: #553029;
-  --nav-hover: #1e2a22;
-  --nav-active-bg: #24322a;
+  --nav-hover: #233027;
+  --nav-active-bg: #29372e;
 }
 
 * {
