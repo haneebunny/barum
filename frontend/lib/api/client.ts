@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { RegulatoryBasisSchema } from "./schema";
+import {
+  RegulatoryBasisSchema,
+  CheckReportSchema,
+  ReportEnvelopeSchema,
+  RemediationResponseSchema,
+  USPreflightReportSchema,
+  GenerateResponseSchema,
+} from "./schema";
 import type {
   Region,
   CheckReport,
@@ -22,6 +29,22 @@ export interface CheckAdInput {
 
 function getApiUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+}
+
+// 응답을 스키마로 검증한다. 실패해도 화면은 안 죽인다 - 스키마와 실제 응답이
+// 맞는지 지금까지 한 번도 확인된 적이 없어서(zod가 그동안 아예 안 돌고 있었다,
+// 2026-08-23 콘텐츠 생성 크래시 조사), 갑자기 엄격하게 켜면 어긋난 자리마다
+// 화면이 통째로 죽는다. 대신 raw 데이터를 그대로 반환하고 콘솔에 어느
+// 엔드포인트·어느 필드(zod path)가 어긋났는지 구체적으로 남긴다 - 그게 이
+// 검증 작업의 실제 목적이다(어긋난 자리를 처음으로 보이게 하는 것).
+function validateResponse<T>(schema: z.ZodType<T>, data: unknown, endpoint: string): T {
+  const result = schema.safeParse(data);
+  if (result.success) return result.data;
+  const issues = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join(" / ");
+  console.warn(`[schema mismatch] ${endpoint} 응답이 schema.ts와 어긋남 - ${issues}`);
+  return data as T;
 }
 
 export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
@@ -52,7 +75,7 @@ export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
     throw new Error(`API check failed: ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(CheckReportSchema, await response.json(), "POST /check");
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -414,7 +437,7 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
     throw new Error(`Failed to fetch report (id=${resultId}): ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(ReportEnvelopeSchema, await response.json(), `GET /reports/${resultId}`);
 }
 
 export function getReportImageUrl(resultId: string): string {
@@ -438,8 +461,10 @@ export async function getReferenceBasis(): Promise<Record<string, RegulatoryBasi
     throw new Error(`Reference basis fetch failed: ${response.status}`);
   }
   const data = await response.json();
-  return z.record(z.string(), RegulatoryBasisSchema).parse(data);
+  return validateResponse(z.record(z.string(), RegulatoryBasisSchema), data, "GET /reference/basis");
 }
+
+const HealthResponseSchema = z.object({ status: z.string() });
 
 export async function health(): Promise<{ status: string }> {
   const url = `${getApiUrl()}/health`;
@@ -447,7 +472,7 @@ export async function health(): Promise<{ status: string }> {
   if (!response.ok) {
     throw new Error(`Health check failed: ${response.status}`);
   }
-  return response.json();
+  return validateResponse(HealthResponseSchema, await response.json(), "GET /health");
 }
 
 export async function getRemediation(req: RemediationRequest): Promise<RemediationResponse> {
@@ -465,7 +490,7 @@ export async function getRemediation(req: RemediationRequest): Promise<Remediati
     throw new Error(`Failed to remediate: ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(RemediationResponseSchema, await response.json(), "POST /remediate");
 }
 
 export interface CheckUSPreflightInput {
@@ -503,8 +528,10 @@ export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<US
     throw new Error(`US preflight check failed: ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(USPreflightReportSchema, await response.json(), "POST /check/us-sunscreen");
 }
+
+const UploadProductPhotoResponseSchema = z.object({ photo_id: z.string() });
 
 export async function uploadProductPhoto(file: File): Promise<{ photo_id: string }> {
   const url = `${getApiUrl()}/uploads/product-photo`;
@@ -521,7 +548,11 @@ export async function uploadProductPhoto(file: File): Promise<{ photo_id: string
     throw new Error(`Failed to upload product photo: ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(
+    UploadProductPhotoResponseSchema,
+    await response.json(),
+    "POST /uploads/product-photo"
+  );
 }
 
 export async function generateContent(req: GenerateRequest): Promise<GenerateResponse> {
@@ -539,5 +570,5 @@ export async function generateContent(req: GenerateRequest): Promise<GenerateRes
     throw new Error(`Failed to generate content: ${response.status} - ${errText}`);
   }
 
-  return response.json();
+  return validateResponse(GenerateResponseSchema, await response.json(), "POST /generate");
 }
