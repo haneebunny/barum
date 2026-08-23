@@ -112,7 +112,7 @@ def test_이미지생성_기본값은_비활성이다(monkeypatch):
 
 def test_이미지생성_활성화하면_생성기를_만든다(monkeypatch):
     monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
-    monkeypatch.setattr(app_module, "get_image_generator", lambda: FakeImageGenerator())
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: FakeImageGenerator())
     assert app_module._image_generator() is not None
 
 
@@ -152,7 +152,7 @@ def test_create_모드_실제로_켜면_module_images에_URL이_채워진다(mon
     """냐냐가 발견한 버그의 회귀 테스트: 라우트가 image_generator·image_sink를
     실제로 안 넘겨서 module_images가 항상 빈 배열이었다."""
     monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
-    monkeypatch.setattr(app_module, "get_image_generator", lambda: FakeImageGenerator(b"PNGBYTES"))
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: FakeImageGenerator(b"PNGBYTES"))
     monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
     monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
         "barum.judge.cosmetic", fromlist=["StubJudge"]
@@ -220,7 +220,7 @@ def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘�
 
     fake_gen = FakeImageGenerator(b"PNGBYTES")
     monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
-    monkeypatch.setattr(app_module, "get_image_generator", lambda: fake_gen)
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: fake_gen)
     monkeypatch.setattr(app_module, "_checks_client", lambda: client_fake)
     monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
         "barum.judge.cosmetic", fromlist=["StubJudge"]

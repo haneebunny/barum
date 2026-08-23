@@ -42,7 +42,7 @@ from barum.storage.checks_store import (
     sha256_hex,
     upload_image,
 )
-from barum.vlm import get_image_generator, get_vlm
+from barum.vlm import get_image_generator, get_vlm, role_model
 
 # 이미지 content-type ↔ 확장자(증거 파일 경로·프록시 응답용). 모르면 옥텟 스트림.
 _CT_TO_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
@@ -87,10 +87,21 @@ def _build_judge() -> CosmeticJudge:
     kind = os.environ.get("JUDGE_KIND", "rag")
     if kind == "stub":
         return StubJudge()
-    vlm = get_vlm(os.environ.get("JUDGE_PROVIDER", "openai"))
+    provider = os.environ.get("JUDGE_PROVIDER", "openai")
+    vlm = get_vlm(provider, model=role_model("judge"))
     if kind == "prompt":
         return PromptJudge(vlm)
-    return RagJudge(vlm, case_retriever=_maybe_case_retriever())
+    # 1차 필터는 이진 분류라 더 싼 모델로 나눌 수 있다. PRESCREEN_MODEL을 안 주면
+    # None이라 판정 VLM을 그대로 쓴다(클라이언트도 하나만 만든다).
+    prescreen_name = role_model("prescreen")
+    prescreen_vlm = (
+        get_vlm(os.environ.get("PRESCREEN_PROVIDER", provider), model=prescreen_name)
+        if prescreen_name
+        else None
+    )
+    return RagJudge(
+        vlm, case_retriever=_maybe_case_retriever(), prescreen_vlm=prescreen_vlm
+    )
 
 
 def _maybe_case_retriever():
@@ -263,7 +274,11 @@ async def check(
             return cached_report
 
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
-    ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
+    ocr_vlm = (
+        get_vlm(os.environ.get("OCR_PROVIDER", "gemini"), model=role_model("ocr"))
+        if image_bytes
+        else None
+    )
 
     report = run_check(
         region=region.value,
@@ -335,7 +350,11 @@ async def check_us_sunscreen(
             print(f"    [info] 이미지 동일, 캐시된 US 리포트 사용 (sha256={image_sha256[:8]})")
             return cached_report
 
-    ocr_vlm = get_vlm(os.environ.get("OCR_PROVIDER", "gemini")) if image_bytes else None
+    ocr_vlm = (
+        get_vlm(os.environ.get("OCR_PROVIDER", "gemini"), model=role_model("ocr"))
+        if image_bytes
+        else None
+    )
 
     report = run_us_sunscreen_check(
         ad_text=ad_text,
@@ -401,7 +420,10 @@ def _section_vlm():
 
     GENERATE_PROVIDER로 따로 지정 가능, 없으면 판정 provider(gpt-5-mini) 재사용.
     """
-    return get_vlm(os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")))
+    return get_vlm(
+        os.environ.get("GENERATE_PROVIDER", os.environ.get("JUDGE_PROVIDER", "openai")),
+        model=role_model("generate"),
+    )
 
 
 def _replacement_rewriter():
@@ -429,7 +451,7 @@ def _image_generator():
     """
     if os.environ.get("IMAGE_GENERATION_ENABLED", "0") != "1":
         return None
-    return get_image_generator()
+    return get_image_generator(model=role_model("image"))
 
 
 def _image_sink(client):
