@@ -31,10 +31,12 @@ from barum.models import (
     GenerateRequest,
     GenerateResponse,
     ImageGenResult,
+    JudgmentFlag,
     CanvasBackground,
     ImagePlan,
     LayoutModule,
     LayoutPlan,
+    Location,
     ModuleImage,
     PlacedImage,
     RecheckSummary,
@@ -50,7 +52,9 @@ from barum.reference.approved_claims import match_approved_claim
 from barum.reference.impersonation import check_impersonation
 from barum.reference.ingredients import match_ingredient_strict
 from barum.reference.layout_references import infer_product_type, select_references
+from barum.reference.mapping import legal_basis_for, legal_basis_text_for
 from barum.reference.pii import remove_pii
+from barum.reference.rules import RuleOutcome, match_all_rules
 from barum.reference.survey import is_efficacy_survey, survey_sentence
 
 _DISCLAIMER = (
@@ -318,6 +322,53 @@ def _recheck(sections: list[Section], req: GenerateRequest, judge) -> tuple[Rech
         findings=rc.findings,
     )
     return recheck, _confirmations_by_sentence(rc.findings)
+
+
+def _sanitize_generated(sections: list[Section], vlm) -> list[Section]:
+    """자유생성 카피를 규칙집에 태워, 걸리면 대체표현으로 갈아끼운다.
+
+    **프롬프트 지시만으론 안 막힌다.** `_MODULE_PROMPT`가 "효능·질병 표현을 쓰지
+    마라"라고 하지만 그건 지시일 뿐이고 뒤에 아무 장치가 없었다. 특히 사용자
+    자유서술(`notes`)에 위반 문구가 들어 있으면 모델이 그걸 그대로 옮긴다
+    (2026-08-23 재현: notes에 "줄기세포 배양 기술"을 넣으니 성분 소개 카피에
+    `줄기세포`가 그대로 나왔다. 재검증은 잡았지만 아무것도 안 고치고 내보냈다).
+
+    개선(improve) 모드의 대체표현 경로를 그대로 쓴다 — 규칙 대조·조건표·게이트가
+    이미 붙어 있어서 새로 만들 게 없다. **탐지는 규칙 매칭이라 과금이 없고**, 걸린
+    문장이 있을 때만 재작성 호출이 나간다. 안 걸리면 비용도 0이다.
+
+    규칙에 안 걸리고 VLM만 잡는 위반은 여기서 못 막는다. 그건 `_recheck`가 보고한다.
+    """
+    findings: list[Finding] = []
+    for order, sec in enumerate(sections):
+        for line in (sec.text or "").split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            for m in match_all_rules(line):
+                if m.outcome not in (RuleOutcome.violation, RuleOutcome.needs_review):
+                    continue
+                findings.append(
+                    Finding(
+                        span=m.span,
+                        sentence=line,
+                        violation_type=m.violation_type,
+                        legal_basis=legal_basis_for(m.violation_type),
+                        legal_basis_text=legal_basis_text_for(m.violation_type),
+                        flag=m.flag or JudgmentFlag.violation,
+                        explanation=f"생성 카피 자체 검사: '{m.span}'",
+                        location=Location(order=order),
+                        source="rule",
+                    )
+                )
+    if not findings:
+        return sections
+
+    print(f"[create] 생성 카피에서 위반 표현 {len(findings)}건 발견, 대체표현으로 교체")
+    reps = build_replacements(findings, rewriter=vlm)
+    for sec in sections:
+        sec.text = apply_replacements(sec.text or "", reps)
+    return sections
 
 
 def _confirmations_by_sentence(findings: list[Finding]) -> list[RiskConfirmation]:
@@ -733,7 +784,7 @@ def _generate_create_content(
     # 추린 뒤에 다시 계산한다. 위에서 잡은 safe_modules에는 버린 모듈이 남아 있어,
     # 그대로 쓰면 카드로 안 나갈 모듈의 문장까지 LLM에 시킨다.
     safe_modules = [m for m in plan.modules if not m.has_claim_risk and m.kind != PRODUCT_SPEC_KIND]
-    sections += generate_module_sections(req, safe_modules, vlm)
+    sections += _sanitize_generated(generate_module_sections(req, safe_modules, vlm), vlm)
     # **추린 뒤의 계획으로 다시 확인한다.** 위에서 잡은 값은 추리기 전 것이라,
     # 모듈이 잘렸는데도 섹션만 만들어져 화면에 안 나오는 섹션이 생긴다.
     if any(m.kind == PRODUCT_SPEC_KIND for m in plan.modules):

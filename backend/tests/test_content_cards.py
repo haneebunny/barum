@@ -422,3 +422,51 @@ def test_히어로도_없으면_스킵으로_남는다():
     _link_risky_module_sections([claim], plan)
     assert claim.module_kind is None
     assert _unplaced_claim_skips([claim])
+
+
+# ── 자유생성 카피도 게이트를 통과해야 한다 (2026-08-23) ────────────────────
+
+def test_생성_카피에_위반이_있으면_교체한다():
+    """**프롬프트 지시만으론 안 막힌다.**
+
+    `_MODULE_PROMPT`가 "효능·질병 표현을 쓰지 마라"라고 하지만 그건 지시일 뿐이고
+    뒤에 아무 장치가 없었다. 특히 사용자 자유서술(notes)에 위반 문구가 들어 있으면
+    모델이 그걸 그대로 옮긴다(재현 확인). 재검증은 잡았지만 아무것도 안 고쳤다.
+    """
+    from barum.generate.content import _sanitize_generated
+    from barum.models import Section
+
+    class Rewriter:
+        def generate_json(self, prompt, images):
+            return {"items": [{"index": 0, "can_suggest": True, "suggestion": "산뜻하게 발리는 제형"}]}
+
+    secs = [Section(kind="ingredient_highlight", text="줄기세포 배양 기반 성분입니다.", source="llm")]
+    out = _sanitize_generated(secs, Rewriter())
+    assert "줄기세포" not in out[0].text
+
+
+def test_위반이_없으면_손대지_않는다():
+    """탐지는 규칙 매칭이라 과금이 없다. 안 걸리면 재작성 호출도 안 나간다."""
+    from barum.generate.content import _sanitize_generated
+    from barum.models import Section
+
+    class NeverCalled:
+        def generate_json(self, prompt, images):
+            raise AssertionError("위반이 없는데 재작성을 불렀다")
+
+    text = "산뜻하게 발리는 가벼운 제형입니다."
+    out = _sanitize_generated([Section(kind="texture_visual", text=text, source="llm")], NeverCalled())
+    assert out[0].text == text
+
+
+def test_섹션이_비어도_안_터진다():
+    from barum.generate.content import _sanitize_generated
+    from barum.models import Section
+
+    class NeverCalled:
+        def generate_json(self, prompt, images):
+            raise AssertionError("부르면 안 된다")
+
+    assert _sanitize_generated([], NeverCalled()) == []
+    out = _sanitize_generated([Section(kind="x", text="", source="llm")], NeverCalled())
+    assert out[0].text == ""
