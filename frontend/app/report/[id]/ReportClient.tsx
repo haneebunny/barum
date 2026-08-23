@@ -209,16 +209,8 @@ function FindingCard({
 
   const cls = finding.flag === "위반" ? "violation" : "review";
   const isExcluded = act === "exclude";
-
-  // 호버 translate 제거 및 피그마 디자인 규격 적용 (rounded, overflow, flex-col)
-  const cardCls = `border border-[var(--line-2)] bg-[var(--surface)] transition-all duration-[120ms] rounded-[4px] overflow-hidden flex flex-col ${cls === "violation" ? "border-l-[3px] border-l-[var(--crit)]" : "border-l-[3px] border-l-[var(--ink-3)]"
-    } ${isExcluded ? "opacity-50" : ""}`;
-
-  // 밑줄 스타일(테두리·배경 박스 아님) - 목업 원안 복원(design/mockups/barum-report.html
-  // .fcard.violation/.review .fsent .fspan, 팀장 지시로 언젠가 테두리+배경 칩으로
-  // 바뀌어 있었다). 박스 개수를 줄이려는 목적도 있다(디디 확정, 2026-08-23).
-  const spanStyle = `font-bold border-b-2 ${cls === "violation" ? "text-[var(--crit)] border-b-[var(--crit)]" : "text-[var(--ink)] border-b-[var(--ink-3)]"
-    }`;
+  const isAccepted = act === "accept";
+  const accentColor = cls === "violation" ? "var(--crit)" : "var(--ink-3)";
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -229,97 +221,74 @@ function FindingCard({
 
   return (
     <div
-      className={cardCls}
+      // 규칙선 스타일(디디 카드 재설계 확정, design/mockups/card-terminal-redesign.html,
+      // 2026-08-23) - 카드마다 테두리+배경 박스를 두르던 걸 왼쪽 심각도선 하나로
+      // 대체한다. 항목 사이 구분선은 부모 목록 컨테이너의 [&>*+*]:border-t가 담당
+      // (첫 카드는 위 구분선이 없어야 해서 :first-child 대신 인접 형제 선택자를 씀).
+      className={`pl-4 pb-4 border-l-[3px] ${isExcluded ? "opacity-50" : ""}`}
+      style={{ borderLeftColor: accentColor }}
       data-i={index}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
-      {/* 토글 고정 헤더 (상시 노출) */}
-      <div
-        className="cursor-pointer border-b border-[var(--line)] bg-[var(--surface-sub)] p-[8px_12px_8px]"
-        onClick={handleHeaderClick}
-      >
-        <div className="flex gap-2.5">
-          {/* 컨텍스트 콘텐츠 영역 (1행: 문구와 액션 / 2행: 유형 정보) */}
-          <div className="flex-1 min-w-0">
-            {/* 1행: [번호+flag] pill + 표현(밑줄) + 수용/제외 버튼(유료 한정) 또는
-                유료 안내 + chevron. pill과 표현은 간격 없이 붙여서 시각적으로
-                하나처럼 읽히게 한다(디디 확정, 2026-08-23) - 실제 테두리 박스는
-                pill 하나뿐이라(표현은 밑줄만) #295가 고친 "짧은 제목도 억지로
-                늘어나는" 문제가 재현되지 않는다.
-                버튼 묶음은 shrink-0으로 항상 제 폭을 지키고(#292), 표현 span은
-                min-w-0만 줘서 평소엔 내용 크기대로, 공간이 부족할 때만 줄어들며
-                줄바꿈된다(flex-1은 안 씀, #295). */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                {/* [번호 flag] pill. 채움 아니고 테두리만(§F, 일괄/개별 상태색 원칙) */}
-                <span className={`shrink-0 inline-flex items-center gap-1 px-1.5 h-[22px] font-mono text-[11px] font-bold border rounded-sm ${cls === "violation" ? "text-[var(--crit)] border-[var(--crit)]" : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                  }`}>
-                  {num} {cls === "violation" ? "위반" : "검토필요"}
-                </span>
-                <span className={`${spanStyle} min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}>
-                  {finding.span}
-                  {positionIdxs.length > 1 && (
-                    <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
-                  )}
-                </span>
-              </div>
+      {/* 토글 헤더 (상시 노출): 번호·flag·유형·신뢰도 한 줄 + 표현·수용/제외 한 줄 */}
+      <div className="cursor-pointer" onClick={handleHeaderClick}>
+        <div className="flex items-center gap-2.25 flex-wrap pt-3.5">
+          <span className="font-mono text-[12px] font-bold text-[var(--ink-3)]">[{num}]</span>
+          <span className="font-extrabold text-[13px] tracking-[0.2px]" style={{ color: accentColor }}>
+            {cls === "violation" ? "위반" : "검토필요"}
+          </span>
+          <span className="text-[11.5px] text-[var(--ink-3)]">
+            {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+          </span>
+          <EvidenceGradeBadge grade={finding.evidence_grade} />
+          <span
+            className={`ml-auto text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${open ? "rotate-180" : ""}`}
+          >
+            <CaretDown size={14} weight="bold" />
+          </span>
+        </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                {tier === "FREE" ? (
-                  // 박스 줄이기(디디 확정, 2026-08-23) - 테두리 빼고 텍스트+자물쇠만
-                  <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-[var(--ink-3)] whitespace-nowrap">
-                    <Lock size={11} weight="bold" />
-                    유료 요금제 전용
-                  </span>
-                ) : (
-                  <>
-                    <button
-                      // 수용=채움, 제외=윤곽선으로 위계를 준다(새 심각도 색 없이, 팀장 지시).
-                      // 라이트는 --brand 배경이 대비 미달(3.39:1)이라 --brand-deep(9.36:1) 사용,
-                      // 다크는 --brand 그대로 통과(6.48:1) - 디디 검증 완료(DESIGN.md §4.1, PR #268)
-                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-all duration-[120ms] ${act === "accept"
-                        ? "font-bold text-[var(--on-brand)] border-[var(--brand-deep)] bg-[var(--brand-deep)] dark:border-[var(--brand)] dark:bg-[var(--brand)]"
-                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                        }`}
-                      onClick={() => onAction(positionIdxs, orderIndex, "accept")}
-                    >
-                      <Check size={11} weight="bold" />
-                      수용
-                    </button>
-                    <button
-                      className={`font-sans text-[11.5px] p-[4px_9px] border rounded-sm cursor-pointer inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-all duration-[120ms] ${act === "exclude"
-                        ? "font-bold text-[var(--ink)] border-[var(--ink-3)] bg-[var(--surface-sub)]"
-                        : "font-semibold text-[var(--ink-3)] border-[var(--line-2)] bg-transparent hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                        }`}
-                      onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
-                    >
-                      <X size={11} weight="bold" />
-                      제외
-                    </button>
-                  </>
-                )}
-                {/* 토글 chevron */}
-                <span
-                  className={`text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${open ? "rotate-180" : ""
-                    }`}
-                >
-                  <CaretDown size={14} weight="bold" />
-                </span>
-              </div>
-            </div>
+        {/* 표현(밑줄 인용) + 수용/제외. 표현이 길어지면 줄어들며 줄바꿈되고
+            버튼 묶음은 shrink-0으로 항상 제 폭을 지킨다(#292·#295 교훈 유지). */}
+        <div className="flex items-center justify-between gap-3 mt-2.25">
+          <span
+            className={`font-bold text-[15px] text-[var(--ink)] pb-[3px] border-b-2 min-w-0 ${isExcluded ? "line-through opacity-50" : ""}`}
+            style={{ borderBottomColor: accentColor }}
+          >
+            &ldquo;{finding.span}&rdquo;
+            {positionIdxs.length > 1 && (
+              <span className="ml-1 font-mono font-normal text-[10.5px] opacity-75">({positionIdxs.length}곳)</span>
+            )}
+          </span>
 
-            {/* 2행: 위반/검토필요 유형 + 근거 등급(점 채움). 근거 등급은 flag(위반/검토필요)와
-                다른 축이라 ftype 바로 옆에 붙인다(디디 안, 2026-08-23) - "검토필요 +
-                규칙문서 확정"처럼 flag는 낮아도 등급은 최고인 조합이 나올 수 있는데,
-                이 배치는 그걸 모순으로 안 보이게 한다(규칙문서에 실려 있다는 사실 자체는
-                확실하고, 다만 실증자료 유무로 위반/검토필요가 갈릴 뿐이라는 뜻). */}
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-[11.5px] text-[var(--ink-3)] font-medium leading-none">
-                {cls === "violation" ? "위반 유형" : "검토 필요 유형"} {TYPE_LABEL[finding.violation_type as keyof typeof TYPE_LABEL] || finding.violation_type}
+          <div className="flex items-center gap-3 shrink-0 font-mono text-[11.5px]">
+            {tier === "FREE" ? (
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-[var(--ink-3)] whitespace-nowrap">
+                <Lock size={11} weight="bold" />
+                유료 요금제 전용
               </span>
-              <EvidenceGradeBadge grade={finding.evidence_grade} />
-            </div>
+            ) : (
+              <>
+                {/* 수용 = 유일한 상태변경 주액션이라 항상 채움(CTA와 같은 급) -
+                    §4.1 검증 조합 재사용(라이트 --brand-deep 9.36:1 / 다크 --brand
+                    6.48:1). 이미 수용된 상태는 텍스트로 알린다(색만으로 상태를
+                    구분하지 않는다, §F). */}
+                <button
+                  className="font-bold whitespace-nowrap shrink-0 px-2.5 py-1 rounded-sm cursor-pointer text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] hover:opacity-90 transition-opacity duration-[120ms]"
+                  onClick={() => onAction(positionIdxs, orderIndex, "accept")}
+                >
+                  {isAccepted ? "✓ 수용됨" : "[ 수용 ]"}
+                </button>
+                {/* 제외 = 보조 액션, 채움 없이 텍스트만. 선택 상태는 밑줄로 구분 */}
+                <button
+                  className={`font-semibold whitespace-nowrap shrink-0 cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] ${isExcluded ? "underline" : ""}`}
+                  onClick={() => onAction(positionIdxs, orderIndex, "exclude")}
+                >
+                  {isExcluded ? "제외됨 · 되돌리기" : "제외"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -327,22 +296,18 @@ function FindingCard({
       {/* 아코디언 바디 wrapper */}
       <div className={`accordion-wrapper ${open ? "open" : ""}`}>
         <div className="accordion-content">
-          {/* 라이트는 --surface(흰색)가 더 밝지만, 다크는 순서가 반대다
-              (canvas < surface < surface-sub) - 다크에서 --surface-sub를 써야
-              "펼치면 더 밝게 튀어 보이는" 의도가 다크에서도 유지된다(디디 실측치,
-              PM 8대 루루 지시 2026-08-22). */}
-          <div className="p-[13px_14px_14px] border-t border-[var(--line)] bg-[var(--surface)] dark:bg-[var(--surface-sub)] flex flex-col gap-3.5">
+          <div className="pt-3.5 flex flex-col gap-3.5">
 
             {/* 그룹으로 묶인 카드일 때만: 발견 위치별로 원문 하이라이트로 바로 이동 */}
             {positionIdxs.length > 1 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11.5px] text-[var(--ink-3)] font-semibold">발견 위치</span>
+              <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+                <span className="text-[var(--ink-3)] font-semibold">발견 위치</span>
                 {positionIdxs.map((pidx, i) => (
                   <button
                     key={pidx}
                     type="button"
                     onClick={() => onScrollToPosition(pidx)}
-                    className="font-mono text-[11px] px-1.5 py-0.5 border border-[var(--line-2)] rounded-sm bg-[var(--surface-sub)] text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:border-[var(--ink-3)] cursor-pointer"
+                    className="px-1.5 py-0.5 border border-[var(--line-2)] rounded-sm text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:border-[var(--ink-3)] cursor-pointer"
                   >
                     {i + 1}
                   </button>
@@ -350,7 +315,42 @@ function FindingCard({
               </div>
             )}
 
-            {/* Pro 기능: 대체 표현 제안 보기 버튼을 수용 / 제외 아래(바디 최상단)로 배치 */}
+            {/* [근거] 설명을 조문보다 먼저 - "어디가 왜 위반인지"를 먼저 보여주고
+                법령 원문은 뒤로 미룬다(디디 확정, 2026-08-23). */}
+            <p className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] m-0 font-sans max-w-[62ch]">
+              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
+                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
+              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
+            </p>
+
+            {/* 조문 원문 인용. 카드당 상시 남는 테두리 둘 중 하나(왼쪽 심각도선 +
+                이 옅은 왼쪽선) - <blockquote> 태그 자체가 인용 느낌을 주므로
+                배경·전체 테두리 없이도 구분된다(디디 확정, 2026-08-23). */}
+            {(finding.legal_basis || finding.legal_basis_text) && (
+              <blockquote className="m-0 border-l border-[var(--line-2)] pl-3 max-w-[62ch]">
+                {tier === "FREE" && num > 1 ? (
+                  <span className="text-[12.5px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
+                ) : (
+                  <>
+                    {finding.legal_basis && (
+                      <div className="font-mono text-[11px] text-[var(--ink-3)] mb-1">
+                        {finding.legal_basis}
+                      </div>
+                    )}
+                    {finding.legal_basis_text && (
+                      <div className="text-[12.5px] text-[var(--ink-3)] leading-[1.7] break-keep">
+                        {finding.legal_basis_text}
+                      </div>
+                    )}
+                  </>
+                )}
+              </blockquote>
+            )}
+
+            {/* Pro 기능: 대체 표현 제안. CTA 버튼은 카드의 유일한 실제 조작
+                버튼이라 채움 스타일을 유지한다(팀장 확정, 2026-08-23 - 규칙선
+                재설계에서도 안 건드리는 예외). 블러+자물쇠 티저는 목업 그대로
+                실제 프론트 구현(기존 페이월)을 재사용한다. */}
             {(tier !== "FREE" || num === 1) ? (
               !showSuggestionsArea && (
                 <div className="flex justify-end">
@@ -363,11 +363,9 @@ function FindingCard({
                 </div>
               )
             ) : (
-              // 유료 페이월: 안내문 여러 줄을 겹쳐 쌓는 대신, 실제 제안 영역을 블러
-              // 처리해 "가려진 콘텐츠가 있다"는 걸 한 번에 보여준다(PM 지시 2026-08-22).
-              <div className="relative border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm overflow-hidden">
+              <div className="relative max-w-[62ch]">
                 <div
-                  className="text-[14px] text-[var(--ink-2)] leading-1.6 blur-[4px] select-none"
+                  className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] blur-[3.5px] select-none"
                   aria-hidden="true"
                 >
                   {getRemediationText(
@@ -378,47 +376,16 @@ function FindingCard({
                   )}
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--line-2)] rounded-full px-3 py-1 shadow-sm">
-                    <Lock size={12} weight="bold" className="text-[var(--ink-3)]" />
-                    <span className="text-[11.5px] font-bold text-[var(--ink-3)]">유료 요금제 전용</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-[var(--ink-3)] bg-[var(--canvas)] border border-[var(--line-2)] px-2.5 py-1 rounded-sm">
+                    <Lock size={12} weight="bold" />
+                    유료 요금제 전용
+                  </span>
                 </div>
               </div>
             )}
 
-            {/* 순서: [근거] 설명을 조문보다 먼저 - "어디가 왜 위반인지"를 먼저 보여주고
-                법령 원문은 뒤로 미룬다(디디 확정, 2026-08-23). */}
-            <p className="text-[13px] text-[var(--ink-2)] leading-1.6 m-0 font-sans">
-              {/* 규칙 경로·VLM 경로 모두 표시 형식을 통일한다(백엔드가 explanation을
-                  LLM 문장으로 바꿔도 화면은 그대로 받아 쓴다, PM 지시 2026-08-22) */}
-              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
-            </p>
-
-            {/* 조문 원문 인용. 사방 테두리 박스 대신 왼쪽 세로선만(박스 줄이기,
-                디디 확정, 2026-08-23) - <blockquote> 태그 자체가 인용 느낌을
-                주므로 배경·전체 테두리 없이도 구분된다. */}
-            {(finding.legal_basis || finding.legal_basis_text) && (
-              <blockquote className="m-0 border-l-2 border-[var(--line-2)] pl-3">
-                {tier === "FREE" && num > 1 ? (
-                  <span className="text-[12.5px] text-[var(--ink-3)] font-semibold block py-1">🔒 유료 요금제 전용 (Basic 이상 공개)</span>
-                ) : (
-                  <>
-                    {finding.legal_basis && (
-                      <div className="font-mono text-[11.5px] text-[var(--brand-ink)] font-semibold mb-1">
-                        {finding.legal_basis}
-                      </div>
-                    )}
-                    {finding.legal_basis_text && (
-                      <div className="text-[12.5px] text-[var(--ink-2)] leading-[1.7] break-keep">
-                        {finding.legal_basis_text}
-                      </div>
-                    )}
-                  </>
-                )}
-              </blockquote>
-            )}
-
-            {/* 대체 표현 제안 영역: 초록색 버튼 클릭 시 나타나며 로딩 진행 (유료 및 FREE 1번째 카드 한정) */}
+            {/* 대체 표현 제안 결과: 점선 테두리가 "버튼 눌러서 나타난 것" 신호라
+                다른 실선 요소와 다른 카테고리로 그대로 둔다(디디 확정, 2026-08-23). */}
             {(tier !== "FREE" || num === 1) && showSuggestionsArea && (
               <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[12px_14px] rounded-sm transition-all duration-300">
                 <div className="flex items-center gap-1.75 mb-2">
@@ -438,9 +405,6 @@ function FindingCard({
                   ) : hasFetched ? (
                     suggestions.length > 0 ? (
                       <>
-                        {/* 옅은 연두(--nav-active-bg)+그린 텍스트(--brand-ink) 조합이 가독성
-                            지적을 받아, 수용 버튼과 같은 채움 조합(--brand-deep/--brand +
-                            --on-brand, 디디 검증 9.36:1 라이트/6.48:1 다크)으로 교체했다. */}
                         {getRemediationText(
                           finding.violation_type,
                           <span className="font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] px-1.5 py-0.5 rounded-[3px] mx-1">
@@ -874,7 +838,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <p className="m-0 mb-2.5 text-[11px] text-[var(--ink-3)]">
             신뢰도 상·중·하는 AI가 이 판정에 얼마나 확신하는지를 나타내며, 위반·검토필요(심각도)와는 다른 축입니다. 신뢰도 하는 지적이 틀렸거나 무시해도 된다는 뜻이 아닙니다. 실제 위반이어도 AI가 낮은 확신으로 판단할 수 있습니다.
           </p>
-          <div className="flex flex-col gap-3">
+          {/* 카드 사이 구분은 위 규칙선 하나로(디디 카드 재설계, 2026-08-23) -
+              [&>*+*] 조합자로 첫 카드만 위 선이 없게 한다(:first-child 대신 -
+              필터로 앞 카드들이 숨겨질 수 있어 "실제 렌더된 첫 카드"가 항상
+              DOM상 첫 자식은 아니지만, 형제 결합자는 "바로 앞 형제가 있는
+              요소"만 잡으므로 숨은 형제와 무관하게 정확히 동작한다). */}
+          <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-[var(--line)]">
             {findGroups.map((g, orderIndex) => {
               if (flagFilter && g.representative.flag !== flagFilter) return null;
               return (
