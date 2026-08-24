@@ -132,7 +132,7 @@ function PricingModal({
           >
             <span>
               <span className="block font-bold text-[13px] text-[var(--ink)]">Pro</span>
-              <span className="block text-[11.5px] text-[var(--ink-3)]">Basic 전체 + 콘텐츠 생성·이력 대시보드</span>
+              <span className="block text-[11.5px] text-[var(--ink-3)]">Basic 전체 + 콘텐츠 생성</span>
             </span>
             <span className="font-mono text-[11px] font-bold text-[var(--brand-ink)] whitespace-nowrap">선택 →</span>
           </button>
