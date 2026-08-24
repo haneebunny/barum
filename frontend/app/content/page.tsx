@@ -548,6 +548,52 @@ function ContentGeneratorContent() {
     });
   };
 
+  // 원본 그대로 data URI로 굽던 걸 canvas로 리사이즈·재인코딩한다. 상세페이지
+  // 카드는 max-width:520px(.detailpage)인데 원본 생성 이미지는 1264x848·
+  // 450~590KB짜리라 카드 5~6장이면 내보낸 HTML이 2.7MB까지 불었다(팀장 지적,
+  // 2026-08-24 실측 3,239,743바이트). 레티나 감안 폭 1040px+JPEG q0.82로
+  // 실측 확인: 573KB→52KB(11배 감소), 원본과 나란히 놓고 봐도(전체·확대 크롭
+  // 둘 다) 눈에 띄는 화질 저하 없음. 알파 채널 있는 이미지만 WebP(JPEG는 알파를
+  // 못 담는다) - 실제 생성 이미지는 전부 불투명 사진이라 대부분 JPEG로 간다.
+  const hasAlphaChannel = (ctx: CanvasRenderingContext2D, w: number, h: number): boolean => {
+    const { data } = ctx.getImageData(0, 0, w, h);
+    // 전체 픽셀을 다 보면 큰 이미지에서 느려서 37픽셀 간격으로 샘플링한다(소수 스텝이라
+    // 격자 패턴과 안 겹친다). 실측 대상이 전부 사진이라 이 정도 샘플로 충분하다.
+    for (let i = 3; i < data.length; i += 4 * 37) {
+      if (data[i] < 255) return true;
+    }
+    return false;
+  };
+
+  const compressImage = (blob: Blob, maxWidth = 1040, quality = 0.82): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const scale = Math.min(1, maxWidth / img.naturalWidth);
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("2d context 생성 실패"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const mime = hasAlphaChannel(ctx, w, h) ? "image/webp" : "image/jpeg";
+        resolve(canvas.toDataURL(mime, quality));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("이미지 디코드 실패"));
+      };
+      img.src = objectUrl;
+    });
+  };
+
   // HTML 내보내기 (Blob)
   // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다 (타임아웃 3초 시 원본 URL로 안전 폴백).
   const toDataUri = async (url: string): Promise<string | null> => {
@@ -558,12 +604,18 @@ function ContentGeneratorContent() {
       clearTimeout(timeoutId);
       if (!res.ok) return resolveImageUrl(url);
       const blob = await res.blob();
-      return await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => resolve(resolveImageUrl(url));
-        reader.readAsDataURL(blob);
-      });
+      try {
+        return await compressImage(blob);
+      } catch {
+        // 리사이즈 실패(디코드 안 되는 포맷 등)해도 "네트워크 없이 혼자 열리는" 보장은
+        // 지킨다 - 용량 절감만 포기하고 원본 그대로 data URI로 굽는다.
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve(resolveImageUrl(url));
+          reader.readAsDataURL(blob);
+        });
+      }
     } catch {
       return resolveImageUrl(url);
     }
