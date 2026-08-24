@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport, generateContent, resolveImageUrl, uploadProductPhoto } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl, uploadProductPhoto, uploadIngredients } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section, SurveyEvidence } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -170,6 +170,15 @@ function ContentGeneratorContent() {
   const [createIngredientAmounts, setCreateIngredientAmounts] = useState<
     Array<IngredientAmount & { id: string }>
   >([]);
+  // 엑셀·CSV·txt 업로드 상태. warnings는 파싱 중 건너뛴 행 안내(팀장 지시로
+  // 반드시 표시 - 조용히 넘어가면 "20개 넣었는데 왜 17개만"을 못 알아챈다,
+  // 2026-08-24). error는 업로드 자체 실패(네트워크 등)라 급한 문제라서
+  // warnings와 달리 --crit로 보여준다(§F - 경고와 실패는 급함이 다르다).
+  const [ingredientUpload, setIngredientUpload] = useState<{
+    uploading: boolean;
+    error: string | null;
+    warnings: string[];
+  }>({ uploading: false, error: null, warnings: [] });
   const [createCertifications, setCreateCertifications] = useState<Set<string>>(new Set());
   // 상품 스펙표(제형·용량) 입력. 둘 다 비워두면 백엔드가 표 모듈 자체를 안
   // 만든다(ensure_product_spec_module) - 표 카드가 화면에서 사라지는 버그의
@@ -230,6 +239,32 @@ function ContentGeneratorContent() {
       ...prev,
       { id: nextIngredientAmountId(), name: "", amount: "" }
     ]);
+  };
+  // 손입력 행이 이미 채워져 있으면(빈 자리표시자 행 제외) 이어붙이고, 비어있으면
+  // 통째로 교체한다 - 업로드가 항상 기존 입력을 지우면 실수로 날아가고, 항상
+  // 이어붙이면 빈 자리표시자 행이 계속 쌓인다(PM 판단 요청, 2026-08-24).
+  const handleIngredientFileUpload = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const file = Array.from(files)[0];
+    if (!file) return;
+    setIngredientUpload({ uploading: true, error: null, warnings: [] });
+    uploadIngredients(file)
+      .then((res) => {
+        const newRows = res.rows.map((r) => ({ id: nextIngredientAmountId(), name: r.name, amount: r.amount }));
+        setCreateIngredientAmounts((prev) => {
+          const hasExisting = prev.some((row) => row.name.trim() || row.amount.trim());
+          return hasExisting ? [...prev, ...newRows] : newRows;
+        });
+        setIngredientUpload({ uploading: false, error: null, warnings: res.warnings });
+      })
+      .catch((err) => {
+        console.error("Failed to upload ingredients file", err);
+        setIngredientUpload({
+          uploading: false,
+          error: err instanceof Error ? err.message : String(err),
+          warnings: [],
+        });
+      });
   };
   const updateIngredientAmount = (id: string, field: "name" | "amount", value: string) => {
     setCreateIngredientAmounts((prev) =>
@@ -1297,6 +1332,30 @@ function ContentGeneratorContent() {
                 <div className="flex flex-col gap-3.5">
                   <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
                     <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">전성분 + 함량 (인정문구 함량기준 대조용)</p>
+                    <Dropzone
+                      accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+                      supportedExtensions="XLSX · CSV · TXT"
+                      title="엑셀·CSV·txt로 한 번에 넣기"
+                      subtitle="drop or click"
+                      multiple={false}
+                      compact
+                      disabled={ingredientUpload.uploading}
+                      onFilesSelected={handleIngredientFileUpload}
+                      className="mb-2.5"
+                    />
+                    {ingredientUpload.uploading && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--ink-3)]">업로드 중...</p>
+                    )}
+                    {ingredientUpload.error && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--crit)]">업로드 실패: {ingredientUpload.error}</p>
+                    )}
+                    {ingredientUpload.warnings.length > 0 && (
+                      <div className="m-[0_0_8px] flex flex-col gap-0.5">
+                        {ingredientUpload.warnings.map((w, i) => (
+                          <p key={i} className="m-0 text-[11px] text-[var(--ink-3)]">{w}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-col gap-1.5">
                       {createIngredientAmounts.map((row) => (
                         <div key={row.id} className="flex items-center gap-1.5">
