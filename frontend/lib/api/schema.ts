@@ -403,6 +403,12 @@ export const ReportEnvelopeSchema = z.object({
   created_at: z.string(),
   region: RegionSchema,
   image_available: z.boolean(),
+  // 백엔드 `StoredCheck.product_name`. 여기 안 적어두면 zod가 조용히 버린다
+  // (2026-08-24). 실제로 버려져서 개선 모드가 상품명 없이 생성했고, 백엔드가
+  // 상품 종류를 못 알아내(`infer_product_type` -> None) 이미지 힌트가 전부
+  // 중립 폴백("잎, 물방울, 천, 돌 표면")으로 떨어졌다. 그래서 어떤 제품이든
+  // 나뭇잎·대리석 사진만 나왔다.
+  product_name: z.string().nullable().optional(),
   report: z.union([CheckReportSchema, USPreflightReportSchema]),
 });
 export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;
