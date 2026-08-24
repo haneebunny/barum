@@ -504,6 +504,18 @@ class IngredientAmount(BaseModel):
     amount: str = Field(..., description='함량 원문 표기, 예: "2%", "2~5%", "2,500 IU/g"')
 
 
+class IngredientUploadResponse(BaseModel):
+    """`POST /uploads/ingredients` 응답. 엑셀/CSV/TXT를 파싱한 결과.
+
+    `warnings`가 비어 있지 않으면 일부 행을 건너뛴 것이다(함량 누락·형식 불명 등).
+    조용히 건너뛰면 "20개 넣었는데 왜 17개만 들어왔지"를 사용자가 알 방법이 없어서
+    반드시 같이 낸다(PM 요청, 2026-08-24).
+    """
+
+    rows: list[IngredientAmount]
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ClinicalEvidence(BaseModel):
     """create 모드 전용: 사업자가 직접 입력한 실증자료(인체적용시험 결과 등).
 

@@ -21,6 +21,7 @@ from barum.models import (
     CheckReport,
     GenerateRequest,
     GenerateResponse,
+    IngredientUploadResponse,
     Region,
     RegulatoryBasis,
     RemediationRequest,
@@ -33,6 +34,7 @@ from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
 from barum.pipeline import run_check, run_us_sunscreen_check
+from barum.preprocess.ingredient_upload import IngredientParseError, parse_ingredient_upload
 from barum.storage.checks_store import (
     build_cache_key,
     build_check_row,
@@ -551,6 +553,59 @@ def get_generated_image(image_id: str) -> Response:
 # 원본 포맷을 그대로 보관), 저장 경로도 그대로 재구성한다(path traversal 방지,
 # 화이트리스트 확장자 외엔 전부 거부).
 _PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
+
+
+# 전성분 업로드 확장자 화이트리스트. content-type은 브라우저·OS마다 제각각이라
+# (csv를 application/vnd.ms-excel로 보내는 경우도 흔하다) 확장자를 판단 기준으로
+# 삼고, content-type은 명백히 엉뚱한 값만 걸러내는 보조 신호로만 쓴다.
+_INGREDIENT_EXTS = {".xlsx", ".csv", ".txt"}
+_INGREDIENT_CT_ALLOW = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "text/csv",
+    "application/csv",
+    "text/plain",
+    "application/octet-stream",
+    "",
+}
+_MAX_INGREDIENT_FILE_BYTES = 5 * 1024 * 1024
+
+
+@app.post("/uploads/ingredients")
+async def upload_ingredients(file: UploadFile = File(...)) -> IngredientUploadResponse:
+    """엑셀/CSV/TXT로 올린 전성분+함량을 파싱한다(create 모드, PM 요청 2026-08-24).
+
+    성분 20~30개를 한 줄씩 손으로 치는 게 지옥이라 파일 업로드로 대체한다. 저장은
+    안 한다 - 파싱 결과만 즉시 돌려주고 프론트가 `ingredient_amounts`에 채운다
+    (사진 업로드처럼 나중에 id로 다시 참조할 이유가 없다).
+
+    파일 자체를 못 읽으면(헤더 없음·시트 없음·손상) 422. 행 단위 문제는 조용히
+    건너뛰지 않고 `warnings`로 같이 낸다.
+    """
+    filename = file.filename or ""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _INGREDIENT_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
+        )
+    if file.content_type not in _INGREDIENT_CT_ALLOW:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
+        )
+    try:
+        rows, warnings = parse_ingredient_upload(ext, data)
+    except IngredientParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return IngredientUploadResponse(rows=rows, warnings=warnings)
 
 
 @app.post("/uploads/product-photo")
