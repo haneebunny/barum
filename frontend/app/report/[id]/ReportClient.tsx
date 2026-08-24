@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
+import { Warning, MagnifyingGlass, Check, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
 import { getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -703,47 +703,40 @@ export function ReportClient({ envelope }: ReportClientProps) {
             type="button"
             aria-pressed={flagFilter === "위반"}
             onClick={() => setFlagFilter((prev) => (prev === "위반" ? null : "위반"))}
-            // 선택 시 채움으로 바꾼다(디디 확정, 2026-08-23) - 전엔 outline 링 하나만
-            // 더해서 nViol>0일 때 이미 색이 있는 칩과 선택 상태가 거의 구별 안 됐다.
-            // 다크모드 --crit(#ff5252)는 밝은 색이라 밝은 글자(--on-brand)를 얹으면
-            // 대비가 2.86:1로 기준 미달 - 어두운 --canvas(#101612)를 얹어야
-            // 5.74:1로 통과한다(직접 계산, 기존 토큰만 재사용·새 색 없음).
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${flagFilter === "위반"
+            // 박스형 칩 → 밑줄형으로 전환(사용자 지시, 2026-08-24, 미국 리포트에
+            // 먼저 적용 후 국내에도 동일 적용). 배경은 선택됐을 때만 채운다 - 안
+            // 그래도 "필터"라는 게 안 읽힌다는 지적이 있었다(체크 아이콘도
+            // 같은 이유로 선택 시 아이콘을 바꿔 이중 신호). 아래 대비 계산은
+            // 채움(active) 배색이 그대로라 여전히 유효하다: 다크모드 --crit는
+            // 밝은 색이라 밝은 글자(--on-brand)를 얹으면 대비 2.86:1로 미달 -
+            // 어두운 --canvas(#101612)를 얹어야 5.74:1로 통과한다(직접 계산).
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[14px] font-bold border-b-2 cursor-pointer transition-all duration-[120ms] ${flagFilter === "위반"
               ? "border-[var(--crit)] bg-[var(--crit)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
               : nViol > 0
-                ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-                : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
+                ? "border-[var(--crit)] bg-transparent text-[var(--crit)] hover:bg-[var(--crit-bg)]"
+                : "border-[var(--line-2)] bg-transparent text-[var(--ink-3)]"
               }`}
           >
-            <Warning size={14} weight="bold" />
+            {flagFilter === "위반" ? <Check size={14} weight="bold" /> : <Warning size={14} weight="bold" />}
             위반 <span className="font-mono">{nViol}</span> 건
           </button>
           <button
             type="button"
             aria-pressed={flagFilter === "검토필요"}
             onClick={() => setFlagFilter((prev) => (prev === "검토필요" ? null : "검토필요"))}
-            // 검토필요 칩도 위반과 같은 방식 - 다크모드 --ink-3(#8aa294)도 밝은
-            // 색이라 --canvas를 얹어야 6.70:1로 통과한다(직접 계산).
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border rounded-[3px] cursor-pointer transition-all duration-[120ms] ${flagFilter === "검토필요"
+            // 검토필요 칩도 위반과 같은 방식(밑줄형, 선택 시만 채움). 다크모드
+            // --ink-3도 밝은 색이라 --canvas를 얹어야 6.70:1로 통과한다(직접 계산).
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[14px] font-bold border-b-2 cursor-pointer transition-all duration-[120ms] ${flagFilter === "검토필요"
               ? "border-[var(--ink-3)] bg-[var(--ink-3)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
-              : "border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]"
+              : "border-[var(--line-2)] bg-transparent text-[var(--ink-2)] hover:bg-[var(--surface-sub)]"
               }`}
           >
-            <MagnifyingGlass size={14} weight="bold" />
+            {flagFilter === "검토필요" ? <Check size={14} weight="bold" /> : <MagnifyingGlass size={14} weight="bold" />}
             검토필요 <span className="font-mono">{nReview}</span> 건
           </button>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[14px] font-bold border border-dashed rounded-[3px] border-[var(--line-2)] text-[var(--ink-3)] bg-transparent">
             미판정 <span className="font-mono">{d.unjudged.length}</span> 건
           </span>
-          {flagFilter && (
-            <button
-              type="button"
-              onClick={() => setFlagFilter(null)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[12px] font-mono text-[var(--ink-3)] border border-dashed border-[var(--line-2)] rounded-[3px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
-            >
-              <X size={11} weight="bold" /> 전체 보기
-            </button>
-          )}
         </div>
         {d.summary.n_ocr_failed_tiles > 0 && (
           // 위반 신호가 아니라 "우리가 못 읽었다"는 안내라 경보색을 쓰지 않는다

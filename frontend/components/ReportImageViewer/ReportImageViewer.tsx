@@ -1,24 +1,49 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Finding, Unjudged } from "@/lib/api/schema";
+import type { Location } from "@/lib/api/schema";
 
 const ZOOM_LEVELS = [100, 160, 220] as const;
 
+/** 하이라이트 대상이 갖춰야 할 최소 계약. 국내 Finding(flag: 위반/검토필요)과
+ * 미국 USPreflightFinding(flag 없음, category만 있음)이 둘 다 구조적으로 만족한다
+ * (둘 다 이 필드들을 갖고 있어 타입 변환 없이 그대로 넘길 수 있다). flag가 있으면
+ * 그걸로 심각도 색을 정하고(국내 기존 동작 그대로), 없으면 isCrit으로 정한다
+ * (미국 - 호출부에서 category==="미국_미승인_성분"일 때만 true로 채워 넘긴다).
+ */
+interface HighlightSource {
+  location: Location;
+  span: string;
+  sentence: string;
+  flag?: "위반" | "검토필요";
+  isCrit?: boolean;
+}
+
+interface UnjudgedLike {
+  sentence: string;
+  location: Location;
+}
+
+function isCritOf(item: HighlightSource): boolean {
+  return item.flag ? item.flag === "위반" : !!item.isCrit;
+}
+
 interface FindByOrderItem {
-  f: Finding;
+  f: HighlightSource;
   idx: number;
   num: number;
 }
 
 interface ReportImageViewerProps {
   findByOrder: FindByOrderItem[];
-  ujByOrder: Unjudged[];
+  /** 미판정 개념이 없는 도메인(미국 등)은 생략하면 빈 배열로 취급한다. */
+  ujByOrder?: UnjudgedLike[];
   /** null이면 실제 이미지를 아예 시도 안 한다(목업 result_id 등 - 백엔드에 이미지가 없음, 버그 아님). */
   imageUrl: string | null;
   imageErrorGlobal: boolean;
   onImageError: () => void;
-  actions: Record<number, "accept" | "exclude" | null>;
+  /** accept/exclude 개념이 없는 도메인은 생략하면 빈 객체로 취급한다(전부 표시). */
+  actions?: Record<number, "accept" | "exclude" | null>;
   hoveredIndex: number | null;
   onHoverChange: (idx: number | null) => void;
 }
@@ -26,11 +51,11 @@ interface ReportImageViewerProps {
 /** 원문 하이라이트 패널 본문 (실제 이미지 + 좌표 오버레이, 줌/미니맵) */
 export function ReportImageViewer({
   findByOrder,
-  ujByOrder,
+  ujByOrder = [],
   imageUrl,
   imageErrorGlobal,
   onImageError,
-  actions,
+  actions = {},
   hoveredIndex,
   onHoverChange,
 }: ReportImageViewerProps) {
@@ -69,7 +94,7 @@ interface ZoomableImageProps {
   imageUrl: string;
   onImageError: () => void;
   findByOrder: FindByOrderItem[];
-  ujByOrder: Unjudged[];
+  ujByOrder: UnjudgedLike[];
   actions: Record<number, "accept" | "exclude" | null>;
   hoveredIndex: number | null;
   onHoverChange: (idx: number | null) => void;
@@ -251,7 +276,7 @@ function ZoomableImage({
                 const widthPct = hasX ? Math.min(100 - leftPct, rawWidthPct + padXPct * 2) : 100;
                 const topPct = Math.max(0, rawTopPct - padYPct);
                 const heightPct = Math.min(100 - topPct, rawHeightPct + padYPct * 2);
-                const isViolation = o.f.flag === "위반";
+                const isViolation = isCritOf(o.f);
                 const isHovered = hoveredIndex === o.idx;
                 const badgeOffset = (itemSubIndices[o.idx] || 0) * 22;
 
