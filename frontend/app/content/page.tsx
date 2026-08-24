@@ -1174,9 +1174,6 @@ function ContentGeneratorContent() {
             </>
           )}
         </span>
-        <span className="text-[var(--ink-3)] text-[10px]">
-          {mode === "create" ? "새로 만들기 모드" : id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
-        </span>
       </div>
 
       {/* 티어 게이팅 */}
