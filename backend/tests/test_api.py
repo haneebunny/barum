@@ -216,10 +216,12 @@ def test_sha를_못_읽어도_서버는_뜬다():
 
 
 def test_reload_감시에_레퍼런스_팩이_들어간다():
-    """**팩은 backend/ 밖이라 기본 감시 범위에 안 걸린다.**
+    """**팩(backend/reference/)도 감시 대상에 넣는다.**
 
     팩을 읽는 함수들이 전부 lru_cache라, 감시를 안 걸면 팩을 고쳐도 서버가
-    옛 규정으로 계속 판정한다. 조용히, 무기한으로.
+    옛 규정으로 계속 판정한다. 조용히, 무기한으로. (2026-08-24: 팩이 저장소
+    루트에 있어 Railway가 backend만 배포할 때 빠지면서 create 판정이 500 났다.
+    backend 안으로 옮겨 배포에 포함시켰고, 감시 경로도 backend/reference가 됐다.)
     """
     from pathlib import Path
 
@@ -227,7 +229,7 @@ def test_reload_감시에_레퍼런스_팩이_들어간다():
         encoding="utf-8"
     )
     assert "reload_dirs" in src
-    assert 'ROOT.parent / "reference"' in src
+    assert 'ROOT / "reference"' in src
 
 
 def test_앱을_띄울_때_env를_읽는다():

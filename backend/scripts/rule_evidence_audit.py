@@ -23,7 +23,7 @@ import unicodedata
 from pathlib import Path
 
 _BACKEND = Path(__file__).resolve().parents[1]
-_REF_DIR = _BACKEND.parent / "reference" / "cosmetic_kr"
+_REF_DIR = _BACKEND / "reference" / "cosmetic_kr"
 _RULES_PATH = _BACKEND / "src" / "barum" / "reference" / "data" / "judge_rules.json"
 
 # 근거로 인정하는 팩 문서. 순서 = 근거 우선순위(앞이 더 강한 근거).
