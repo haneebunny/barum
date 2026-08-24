@@ -2,89 +2,122 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Warning, ShieldWarning, Question, ArrowsClockwise } from "@phosphor-icons/react";
+import { Warning, ShieldWarning, Question, ArrowsClockwise, CaretDown, Check } from "@phosphor-icons/react";
 import type { USPreflightReport, USPreflightFinding, USPreflightCategory } from "@/lib/api/schema";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
-import { getReport } from "@/lib/api/client";
+import { getReport, getReportImageUrl } from "@/lib/api/client";
+import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
+import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
+
+const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
+  { value: "image", label: "원본 보기" },
+];
 
 const CATEGORY_META: Record<
   USPreflightCategory,
-  { label: string; desc: string; isCrit: boolean }
+  { label: string; icon: typeof ShieldWarning; isCrit: boolean }
 > = {
   "OTC의약품_분류전환": {
     label: "OTC 의약품 분류 전환",
-    desc: "미국에서는 화장품이 아닌 OTC 의약품으로 규제됩니다",
+    icon: ArrowsClockwise,
     isCrit: false,
   },
   "미국_미승인_성분": {
     label: "미국 FDA 미승인 성분",
-    desc: "미국 FDA 승인 목록에 없는 자외선차단 성분입니다",
+    icon: ShieldWarning,
     isCrit: true,
   },
   "성분정보_확인불가": {
     label: "성분 정보 확인 불가",
-    desc: "전성분 정보가 없어 성분 적합성을 확인할 수 없습니다",
+    icon: Question,
     isCrit: false,
   },
 };
 
-function CategoryIcon({ category }: { category: USPreflightCategory }) {
-  if (category === "미국_미승인_성분") {
-    return <ShieldWarning size={16} weight="bold" className="text-[var(--crit)] shrink-0" />;
-  }
-  if (category === "OTC의약품_분류전환") {
-    return <ArrowsClockwise size={16} weight="bold" className="text-[var(--ink-2)] shrink-0" />;
-  }
-  return <Question size={16} weight="bold" className="text-[var(--ink-3)] shrink-0" />;
+function escapeHtml(s: string) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
 }
 
-function FindingCard({ finding, index }: { finding: USPreflightFinding; index: number }) {
+// 국내 ReportClient의 markSentence와 같은 방식(span을 원문 문장 안에서 찾아 감싼다).
+// 텍스트 입력(이미지 없음)일 때만 쓰인다 - 이미지가 있으면 ReportImageViewer가 대신한다.
+function markFindingSpan(finding: USPreflightFinding, num: number) {
   const meta = CATEGORY_META[finding.category];
+  const out = escapeHtml(finding.sentence);
+  const needle = escapeHtml(finding.span);
+  if (out.indexOf(needle) === -1) return out;
+  const spanCls = meta.isCrit
+    ? "relative px-1 rounded-sm cursor-default border inline border-[var(--crit)] bg-[var(--crit-bg)] font-semibold"
+    : "relative px-1 rounded-sm cursor-default border inline border-[var(--line-2)] bg-[var(--surface-sub)]";
+  return out.replace(
+    needle,
+    `<span class="${spanCls}"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9.5px] font-bold color-inherit">${num}</span>${needle}</span>`
+  );
+}
+
+interface FindingCardProps {
+  finding: USPreflightFinding;
+  idx: number;
+  num: number;
+  open: boolean;
+  onToggle: () => void;
+  onHover: (hover: boolean) => void;
+}
+
+// 카드 뼈대·타이포는 국내 리포트와 통일한다(왼쪽 심각도선·pill 번호·아코디언).
+// 수용/제외·대체표현·신뢰도 배지·조문 인용은 넣지 않는다 - 미국 프리플라이트
+// 데이터(USPreflightFinding)엔 그 근거가 되는 필드 자체가 없다(위반유형·flag·
+// evidence_grade·legal_basis 없음, span/sentence/category/explanation/location뿐).
+// 없는 데이터를 있는 척 보여주면 오히려 사용자를 오도한다(2026-08-24, 인터뷰로 확정).
+function FindingCard({ finding, idx, num, open, onToggle, onHover }: FindingCardProps) {
+  const meta = CATEGORY_META[finding.category];
+  const accentColor = meta.isCrit ? "var(--crit)" : "var(--ink-3)";
+  const Icon = meta.icon;
 
   return (
     <div
-      className={`border p-[16px_18px] ${
-        meta.isCrit
-          ? "border-[var(--crit-bd)] bg-[var(--crit-bg)]"
-          : "border-[var(--line-2)] bg-[var(--surface)]"
-      }`}
+      className="pl-4 pb-4 border-l-[3px] bg-[var(--surface)] dark:bg-transparent"
+      style={{ borderLeftColor: accentColor }}
+      data-i={idx}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
     >
-      <div className="flex items-start gap-3 mb-3">
-        <span className="font-mono text-[11px] font-bold text-[var(--on-brand)] bg-[var(--brand-deep)] p-[2px_6px] shrink-0 leading-[1.4]">
-          {String(index + 1).padStart(2, "0")}
-        </span>
-        <CategoryIcon category={finding.category} />
-        <div className="flex-1 min-w-0">
-          <span
-            className={`text-[12px] font-bold font-mono ${
-              meta.isCrit ? "text-[var(--crit)]" : "text-[var(--ink-2)]"
-            }`}
-          >
+      <div className="cursor-pointer" onClick={onToggle}>
+        <div className="flex items-center gap-2.25 flex-wrap pt-3.5">
+          <span className="font-mono text-[12px] font-bold text-[var(--ink-3)]">[{num}]</span>
+          <Icon size={14} weight="bold" style={{ color: accentColor }} className="shrink-0" />
+          <span className="font-extrabold text-[13px] tracking-[0.2px]" style={{ color: accentColor }}>
             {meta.label}
+          </span>
+          <span
+            className={`ml-auto text-[var(--ink-3)] inline-flex items-center transition-transform duration-[200ms] ${open ? "rotate-180" : ""}`}
+          >
+            <CaretDown size={14} weight="bold" />
+          </span>
+        </div>
+
+        <div className="mt-2.25">
+          <span
+            className="font-bold text-[15px] text-[var(--ink)] pb-[3px] border-b-2 inline min-w-0"
+            style={{ borderBottomColor: accentColor }}
+          >
+            &ldquo;{finding.span}&rdquo;
           </span>
         </div>
       </div>
 
-      <div className="ml-[52px]">
-        <div className="mb-2">
-          <span
-            className={`inline font-semibold text-[13.5px] ${
-              meta.isCrit
-                ? "text-[var(--crit)] underline decoration-[var(--crit)] underline-offset-2"
-                : "text-[var(--ink)] underline decoration-[var(--ink-3)] underline-offset-2"
-            }`}
-          >
-            {finding.span}
-          </span>
+      <div className={`accordion-wrapper ${open ? "open" : ""}`}>
+        <div className="accordion-content">
+          <div className="pt-3.5 flex flex-col gap-3">
+            {finding.sentence && finding.sentence !== finding.span && (
+              <p className="text-[12.5px] text-[var(--ink-3)] leading-[1.6] m-0 max-w-[62ch]">
+                원문: {finding.sentence}
+              </p>
+            )}
+            <p className="text-[13.5px] text-[var(--ink-2)] leading-[1.7] m-0 font-sans max-w-[62ch]">
+              <span className="font-bold text-[var(--ink)]">[근거]</span> {finding.explanation}
+            </p>
+          </div>
         </div>
-
-        {finding.sentence !== finding.span && (
-          <p className="text-[12.5px] text-[var(--ink-3)] mb-2 leading-[1.6]">
-            원문: {finding.sentence}
-          </p>
-        )}
-
-        <p className="text-[13px] text-[var(--ink-2)] leading-[1.65]">{finding.explanation}</p>
       </div>
     </div>
   );
@@ -97,6 +130,11 @@ interface USReportClientProps {
 export function USReportClient({ resultId }: USReportClientProps) {
   const [report, setReport] = useState<USPreflightReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openIdx, setOpenIdx] = useState<number | null>(0);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"image" | "tile">("image");
+  const [imageErrorGlobal, setImageErrorGlobal] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<USPreflightCategory | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(`us-preflight-${resultId}`);
@@ -148,93 +186,169 @@ export function USReportClient({ resultId }: USReportClientProps) {
   }
 
   const { findings, summary, disclaimer } = report;
-  const critCount = findings.filter((f) => f.category === "미국_미승인_성분").length;
-  const otcCount = findings.filter((f) => f.category === "OTC의약품_분류전환").length;
-  const missingCount = findings.filter((f) => f.category === "성분정보_확인불가").length;
+
+  const findByOrder = findings
+    .map((f, idx) => ({ f, idx, num: 0 }))
+    .sort((a, b) => a.f.location.order - b.f.location.order)
+    .map((o, i) => ({ ...o, num: i + 1 }));
+
+  // 국내 ReportImageViewer가 요구하는 형태로 isCrit만 얹어 그대로 넘긴다
+  // (컴포넌트는 flag가 없으면 isCrit을 본다 - 미국·국내 공용화, 2026-08-24).
+  const highlightItems = findByOrder.map((o) => ({
+    f: { ...o.f, isCrit: CATEGORY_META[o.f.category].isCrit },
+    idx: o.idx,
+    num: o.num,
+  }));
+
+  const visibleFindByOrder = categoryFilter
+    ? findByOrder.filter((o) => o.f.category === categoryFilter)
+    : findByOrder;
+
+  const isImageMode = findByOrder.some((o) => o.f.location.tile);
+  const sampleLoc = findByOrder[0]?.f.location;
+  const srcW = sampleLoc?.source_w;
+  const srcH = sampleLoc?.source_h;
+  const hasCoords = typeof srcW === "number" && typeof srcH === "number" && srcW > 0 && srcH > 0;
+  const canShowRealImage = hasCoords && !imageErrorGlobal;
 
   return (
     <>
-      {/* 브레드크럼 */}
-      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)] font-mono text-[11px] text-[var(--ink-3)] flex-wrap">
-        <span className="text-[var(--ink-2)]">
-          <Link href="/" className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--ink)]">
-            홈
-          </Link>{" "}
-          <span className="text-[var(--ink-3)]">›</span> 해외 수출 검증{" "}
-          <span className="text-[var(--ink-3)]">›</span> 미국{" "}
-          <span className="text-[var(--ink-3)]">›</span> 리포트
-        </span>
-      </div>
-
-      {/* 요약 바 */}
-      <div className="p-[16px_20px] border-b border-[var(--line)] bg-[var(--surface)]">
-        <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="text-[15px] font-bold text-[var(--ink)] m-0">
-            미국 수출 프리플라이트
-          </h1>
+      {/* 요약 + 필터 바 (국내 리포트 상단바와 같은 뼈대) */}
+      <div className="p-[18px_20px] border-b border-[var(--line)]">
+        <div className="flex items-center gap-4 flex-wrap mb-3">
+          <h1 className="text-[15px] font-bold text-[var(--ink)] m-0">미국 수출 프리플라이트</h1>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-
           <div className="flex items-center gap-4 font-mono text-[12px]">
             <span className="text-[var(--ink-3)]">
               검사 문장 <span className="text-[var(--ink-2)] font-bold">{summary.n_sentences}</span>
             </span>
             <span className="text-[var(--ink-3)]">
               지적{" "}
-              <span
-                className={`font-bold ${
-                  summary.n_findings > 0 ? "text-[var(--crit)]" : "text-[var(--ink-2)]"
-                }`}
-              >
+              <span className={`font-bold ${summary.n_findings > 0 ? "text-[var(--crit)]" : "text-[var(--ink-2)]"}`}>
                 {summary.n_findings}
               </span>
             </span>
           </div>
         </div>
 
-        {/* 카테고리별 건수 태그 */}
         {summary.n_findings > 0 && (
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            {critCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] p-[3px_8px] border border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]">
-                <ShieldWarning size={12} weight="bold" />
-                미승인 성분 {critCount}
-              </span>
-            )}
-            {otcCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] p-[3px_8px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)]">
-                <ArrowsClockwise size={12} weight="bold" />
-                분류 전환 {otcCount}
-              </span>
-            )}
-            {missingCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] p-[3px_8px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)]">
-                <Question size={12} weight="bold" />
-                확인 불가 {missingCount}
-              </span>
-            )}
+          <div className="flex flex-wrap items-center gap-4">
+            {(Object.keys(CATEGORY_META) as USPreflightCategory[]).map((cat) => {
+              const count = findings.filter((f) => f.category === cat).length;
+              if (count === 0) return null;
+              const meta = CATEGORY_META[cat];
+              const Icon = meta.icon;
+              const isActive = categoryFilter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setCategoryFilter((prev) => (prev === cat ? null : cat))}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 text-[13px] font-bold border-b-2 cursor-pointer transition-all duration-[120ms] ${
+                    isActive
+                      ? meta.isCrit
+                        ? "border-[var(--crit)] bg-[var(--crit)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
+                        : "border-[var(--ink-3)] bg-[var(--ink-3)] text-[var(--on-brand)] dark:text-[var(--canvas)]"
+                      : meta.isCrit
+                        ? "border-[var(--crit)] bg-transparent text-[var(--crit)] hover:bg-[var(--crit-bg)]"
+                        : "border-[var(--ink-3)] bg-transparent text-[var(--ink-2)] hover:bg-[var(--surface-sub)]"
+                  }`}
+                >
+                  {isActive ? <Check size={13} weight="bold" /> : <Icon size={13} weight="bold" />}
+                  {meta.label} <span className="font-mono">{count}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* 지적 카드 목록 */}
-      <div className="p-[18px_20px_24px]">
-        {findings.length === 0 ? (
-          <div className="text-center p-[40px_20px]">
-            <p className="text-[var(--ink-2)] text-[14px] font-semibold mb-1">
-              지적 사항 없음
-            </p>
-            <p className="text-[var(--ink-3)] text-[12.5px]">
-              입력된 자료에서 미국 자외선차단 규제 관련 이슈가 발견되지 않았습니다.
-            </p>
+      {findings.length === 0 ? (
+        <div className="text-center p-[40px_20px]">
+          <p className="text-[var(--ink-2)] text-[14px] font-semibold mb-1">지적 사항 없음</p>
+          <p className="text-[var(--ink-3)] text-[12.5px]">
+            입력된 자료에서 미국 자외선차단 규제 관련 이슈가 발견되지 않았습니다.
+          </p>
+        </div>
+      ) : (
+        /* 2단 리포트 그리드 (국내와 동일한 뼈대) */
+        <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+          <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">01</span>
+              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">검증 카드</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+              <span className="text-[var(--ink-3)] font-mono text-[11px]">
+                {categoryFilter && <span className="font-mono">{visibleFindByOrder.length}/</span>}
+                <span className="font-mono">{findByOrder.length}</span>건
+              </span>
+            </div>
+            <div className="flex flex-col gap-3 [&>*+*]:border-t [&>*+*]:border-[var(--line)]">
+              {visibleFindByOrder.map((o) => (
+                <FindingCard
+                  key={o.idx}
+                  finding={o.f}
+                  idx={o.idx}
+                  num={o.num}
+                  open={openIdx === o.idx}
+                  onToggle={() => setOpenIdx(openIdx === o.idx ? null : o.idx)}
+                  onHover={(h) => setHoveredIndex(h ? o.idx : null)}
+                />
+              ))}
+              {categoryFilter && visibleFindByOrder.length === 0 && (
+                <div className="flex flex-col items-center gap-2 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[24px_16px] text-center">
+                  <p className="m-0 text-[13px] text-[var(--ink-3)]">해당 유형이 없습니다.</p>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter(null)}
+                    className="text-[12px] font-mono text-[var(--brand-ink)] border-b border-[var(--brand-ink)] cursor-pointer bg-transparent"
+                  >
+                    전체 보기
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {findings.map((finding, idx) => (
-              <FindingCard key={idx} finding={finding} index={idx} />
-            ))}
+
+          <div className="p-[18px_20px_22px]">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
+              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+              {isImageMode ? (
+                canShowRealImage ? (
+                  <TabSwitch options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
+                ) : (
+                  <span className="text-[var(--ink-3)] font-mono text-[11px]">타일 오버레이</span>
+                )
+              ) : (
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
+              )}
+            </div>
+            <div id="origPanel">
+              {isImageMode ? (
+                <ReportImageViewer
+                  viewMode={viewMode}
+                  findByOrder={highlightItems}
+                  imageUrl={canShowRealImage ? getReportImageUrl(resultId) : null}
+                  imageErrorGlobal={imageErrorGlobal}
+                  onImageError={() => setImageErrorGlobal(true)}
+                  hoveredIndex={hoveredIndex}
+                  onHoverChange={setHoveredIndex}
+                />
+              ) : (
+                <div
+                  className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[15px] text-[var(--ink)] leading-[2]"
+                  dangerouslySetInnerHTML={{
+                    __html: findByOrder.map((o) => markFindingSpan(o.f, o.num)).join(" "),
+                  }}
+                />
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 하단 액션 */}
       <div className="p-[14px_20px] border-t border-[var(--line)] bg-[var(--surface-sub)] flex items-center justify-between flex-wrap gap-3">
