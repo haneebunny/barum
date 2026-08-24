@@ -1,271 +1,231 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
-import { Modal } from "@/components/Modal/Modal";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
-import { useTier } from "@/lib/tier";
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { recentHistory, rowProps } from "@/lib/mockHistory";
-
-interface FeatItem {
-  text: string;
-  is_active: boolean;
-}
-
-interface TierInfo {
-  name: "Free" | "Basic" | "Pro";
-  price: string;
-  used: number;
-  limit: number | null;
-  feats: FeatItem[];
-  up: {
-    title: string;
-    desc: string;
-  };
-}
-
-const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
-  Free: {
-    name: "Free",
-    price: "0원",
-    used: 2,
-    limit: 3,
-    feats: [
-      { text: "월 3건 검사", is_active: true },
-      { text: "위반 탐지 · 근거 조항", is_active: true },
-      { text: "수정 권고안", is_active: false },
-      { text: "검사 이력 무제한", is_active: false },
-    ],
-    up: {
-      title: "Basic으로 올리면 수정 권고안까지 볼 수 있어요.",
-      desc: "위반을 낮춘 대체 표현 제안과 무제한 검사 이력이 열립니다.",
-    },
-  },
-  Basic: {
-    name: "Basic",
-    price: "4.9만원",
-    used: 12,
-    limit: 20,
-    feats: [
-      { text: "월 20건 검사", is_active: true },
-      { text: "위반 탐지 · 근거 조항", is_active: true },
-      { text: "수정 권고안 제공", is_active: true },
-      { text: "검사 이력 무제한", is_active: true },
-    ],
-    up: {
-      title: "Pro로 올리면 검사가 무제한이 됩니다.",
-      desc: "콘텐츠 생성 월 5회가 함께 열립니다.",
-    },
-  },
-  Pro: {
-    name: "Pro",
-    price: "14.9만원",
-    used: 47,
-    limit: null,
-    feats: [
-      { text: "검사 무제한", is_active: true },
-      { text: "수정 권고안 제공", is_active: true },
-      { text: "콘텐츠 생성 월 5회", is_active: true },
-    ],
-    up: {
-      title: "현재 최상위 요금제(Pro)를 이용 중입니다.",
-      desc: "리포트를 PDF로 내보내려면 Export 애드온을 추가할 수 있어요.",
-    },
-  },
-};
+import {
+  EXPIRY_WARNING_DAYS,
+  BETA_PRODUCTS,
+  MAIN_PRODUCTS,
+  TICKET_VALIDITY_NOTE,
+  daysUntil,
+  formatDate,
+  formatPrice,
+  getProduct,
+  isExpired,
+  useDailyChecks,
+  useTickets,
+  type TicketKind,
+  type TicketLot,
+} from "@/lib/tickets";
 
 const RECENT_HISTORY = recentHistory(5);
 
+/** 구매 lot 하나의 상태 라벨. 색이 아니라 글자로 구분한다(F 규칙: 비긴급 상태에 색 금지). */
+function lotStatus(lot: TicketLot): string {
+  if (lot.remaining === 0) return "모두 사용함";
+  if (isExpired(lot)) return "기간 만료";
+  const left = daysUntil(lot.expiresAt);
+  if (left <= EXPIRY_WARNING_DAYS) return `${lot.remaining}건 남음 · 만료 ${left}일 전`;
+  return `${lot.remaining}건 남음`;
+}
+
 export default function MyPage() {
-  const { tier } = useTier();
-  const [is_compare_modal_open, set_is_compare_modal_open] = useState(false);
+  // 구매 자체는 결제 모달이 처리한다. 여기선 잔액과 이력만 읽는다.
+  const { lots, balance, expiringSoon } = useTickets();
+  const daily = useDailyChecks();
+  const [checkoutKind, setCheckoutKind] = useState<TicketKind | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  const compare_btn_ref = useRef<HTMLButtonElement>(null);
-  const modal_close_btn_ref = useRef<HTMLButtonElement>(null);
+  const openCheckout = (kind?: TicketKind) => {
+    setCheckoutKind(kind ?? null);
+    setIsCheckoutOpen(true);
+  };
 
-  const active_tier = TIERS[tier];
+  /** 그 종류에서 잔량이 남은 것 중 가장 먼저 만료되는 날짜. 보유가 없으면 null. */
+  const soonestExpiry = (kind: TicketKind): string | null => {
+    const lot = lots
+      .filter((l) => l.kind === kind && l.remaining > 0 && !isExpired(l))
+      .sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())[0];
+    return lot ? `${formatDate(lot.expiresAt)}까지` : null;
+  };
+
+  // 최근 구매가 위로
+  const purchaseHistory = [...lots].sort(
+    (a, b) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime(),
+  );
 
   return (
     <>
       <PageContent>
-      <PageHeader
-        title="마이페이지"
-      />
+        <PageHeader title="마이페이지" />
 
-      {/* 요금제 + 사용량 */}
-      <div className="py-[18px] border-b border-[var(--line)]">
-        <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
-          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">요금제 · 사용량</h2>
-          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">yourberry 계정</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
-          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">현재 요금제</p>
-            <div className="flex items-baseline gap-2.25 mb-1.5">
-              <span className="text-[22px] font-extrabold text-[var(--ink)] tracking-[-0.4px]">{active_tier.name}</span>
-              <span className="font-mono text-[12.5px] text-[var(--ink-2)]">
-                {active_tier.price} <span className="text-[var(--ink-3)]">/ 월</span>
+        {/* 보유 이용권 */}
+        <div className="py-[18px] border-b border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">보유 이용권</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">yourberry 계정</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3.5 max-[900px]:grid-cols-1">
+            {MAIN_PRODUCTS.map((product) => (
+              <div key={product.kind} className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] flex flex-col">
+                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">{product.name}</p>
+                <div className="flex items-baseline gap-1.5 mb-1.5">
+                  <span className="text-[26px] font-extrabold text-[var(--ink)] tracking-[-0.4px] tabular-nums">{balance(product.kind)}</span>
+                  <span className="font-mono text-[12.5px] text-[var(--ink-2)]">건 남음</span>
+                </div>
+                <p className="m-0 mb-3 text-[12px] text-[var(--ink-3)] leading-[1.6] break-keep">{product.desc}</p>
+                <div className="mt-auto flex items-center justify-between gap-2 pt-2.5 border-t border-dashed border-[var(--line-2)]">
+                  <span className="font-mono text-[10.5px] text-[var(--ink-3)] tabular-nums">
+                    {soonestExpiry(product.kind) ?? "보유 없음"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openCheckout(product.kind)}
+                    className="font-sans text-[12px] font-semibold p-[6px_11px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] transition-all duration-[120ms]"
+                  >
+                    충전
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 베타 상품은 위 3종과 위계를 나눠 한 줄로 아래에 붙인다 */}
+          {BETA_PRODUCTS.map((product) => (
+            <div
+              key={product.kind}
+              className="mt-3.5 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[13px_16px] flex items-center gap-3 flex-wrap"
+            >
+              <span className="border border-[var(--line-2)] text-[var(--ink-3)] font-mono text-[10.5px] font-bold px-[6px] py-[2px]">BETA</span>
+              <span className="text-[13px] font-bold text-[var(--ink)]">{product.name}</span>
+              <span className="font-mono text-[12.5px] tabular-nums text-[var(--ink-2)]">
+                <b className="text-[15px] font-bold">{balance(product.kind)}</b>건 남음
+              </span>
+              <span className="text-[12px] text-[var(--ink-3)] break-keep">{product.desc} · 선크림 단일 품목</span>
+              <span className="ml-auto flex items-center gap-2.5">
+                <span className="font-mono text-[10.5px] text-[var(--ink-3)] tabular-nums">
+                  {soonestExpiry(product.kind) ?? "보유 없음"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openCheckout(product.kind)}
+                  className="font-sans text-[12px] font-semibold p-[6px_11px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] transition-all duration-[120ms]"
+                >
+                  충전
+                </button>
               </span>
             </div>
-            <ul className="list-none m-[8px_0_0] p-0 flex flex-col gap-1.25">
-              {active_tier.feats.map((feat, index) => (
-                <li key={index} className={`text-[12.5px] flex items-start gap-1.75 ${feat.is_active ? "text-[var(--ink-2)]" : "text-[var(--ink-3)]"}`}>
-                  {feat.is_active ? (
-                    <svg
-                      className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M4 12l5 5L20 6" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--ink-3)]"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 12h14" />
-                    </svg>
-                  )}
-                  <span>{feat.text}</span>
+          ))}
+
+          {expiringSoon.length > 0 && (
+            <p className="m-[14px_0_0] p-[11px_13px] border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-[12.5px] text-[var(--ink-2)] leading-[1.7] break-keep">
+              <b className="text-[var(--ink)] font-bold">만료 임박</b>{" "}
+              {expiringSoon
+                .map((l) => `${getProduct(l.kind).name} ${l.remaining}건 (${daysUntil(l.expiresAt)}일 남음)`)
+                .join(" · ")}
+              . 기한이 지나면 사용할 수 없습니다.
+            </p>
+          )}
+
+          {/* 오늘의 무료 검사. 국내 검사에만 적용된다 */}
+          <div className="mt-3.5 border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+            <div className="flex items-baseline justify-between mb-2.25">
+              <span className="text-[12.5px] text-[var(--ink-2)]">오늘의 무료 국내 검사</span>
+              <span className="font-mono tabular-nums text-[13px] text-[var(--ink)]">
+                <b className="text-[16px] font-bold">{daily.used}</b> / {daily.limit}회
+              </span>
+            </div>
+            <div
+              className="h-2 bg-[var(--line-2)] border border-[var(--line-2)] overflow-hidden"
+              aria-label={`오늘 무료 검사 ${daily.used}회 사용, ${daily.remaining}회 남음`}
+            >
+              <div
+                className="h-full bg-[var(--ink-3)]"
+                style={{ width: `${Math.round((daily.used / daily.limit) * 100)}%` }}
+              ></div>
+            </div>
+            <div className="font-mono text-[10.5px] text-[var(--ink-3)] mt-2">
+              {daily.remaining}회 남음 · 매일 자정 초기화 · 해외 프리플라이트는 무료 검사가 없습니다
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5 mt-3.5 p-[13px_15px] border border-[var(--line-2)] bg-[var(--surface-sub)]">
+            <div className="flex-1 min-w-0">
+              <b className="text-[var(--ink)] font-bold">필요한 만큼만 이용권으로 결제하세요.</b>
+              <p className="m-[2px_0_0] text-[12px] text-[var(--ink-3)] leading-[1.7] break-keep">{TICKET_VALIDITY_NOTE}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openCheckout()}
+              className="shrink-0 font-sans text-[13px] font-bold p-[11px_16px] border border-[var(--brand-deep)] dark:border-[var(--brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:opacity-90 inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
+            >
+              이용권 구매 <span className="font-mono">→</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 구매 이력 */}
+        <div className="py-[18px] border-b border-[var(--line)]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">구매 이력</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">{purchaseHistory.length}건</span>
+          </div>
+          {purchaseHistory.length === 0 ? (
+            <p className="m-0 p-[18px_16px] border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-[12.5px] text-[var(--ink-3)] text-center">
+              아직 구매한 이용권이 없습니다.
+            </p>
+          ) : (
+            <ul className="list-none m-0 p-0 border border-[var(--line-2)] bg-[var(--surface)]">
+              {purchaseHistory.map((lot) => (
+                <li
+                  key={lot.id}
+                  className="grid grid-cols-[100px_1fr_auto_auto] gap-3 items-baseline p-[11px_14px] border-b border-[var(--line)] last:border-b-0 max-[900px]:grid-cols-2"
+                >
+                  <span className="font-mono text-[11.5px] text-[var(--ink-3)] tabular-nums">{formatDate(lot.purchasedAt)}</span>
+                  <span className="text-[12.5px] text-[var(--ink)]">
+                    {getProduct(lot.kind).name} {lot.size}건
+                  </span>
+                  <span className="font-mono text-[11.5px] text-[var(--ink-3)] tabular-nums whitespace-nowrap">{lotStatus(lot)}</span>
+                  <span className="font-mono text-[12.5px] text-[var(--ink-2)] tabular-nums text-right whitespace-nowrap">{formatPrice(lot.price)}</span>
                 </li>
               ))}
             </ul>
-          </div>
-          <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-            <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">이번 달 사용량</p>
-            {active_tier.limit === null ? (
-              <div>
-                <div className="flex items-baseline justify-between mb-2.25">
-                  <span className="text-[12.5px] text-[var(--ink-2)]">이번 달 검사</span>
-                  <span className="font-mono tabular-nums text-[13px] text-[var(--ink)]">
-                    <b className="text-[16px] font-bold">{active_tier.used}</b>건
-                  </span>
-                </div>
-                <span className="inline-flex items-center gap-1.5 font-mono text-[12px] text-[var(--brand-ink)] border border-[var(--line-2)] bg-[var(--surface-sub)] p-[4px_9px]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M7 12c0-2 1.5-3.5 3.5-3.5S14 12 14 12s1.5 3.5 3.5 3.5S21 14 21 12s-1.5-3.5-3.5-3.5S14 12 14 12s-1.5 3.5-3.5 3.5S3 14 3 12s1.5-3.5 4-3.5" />
-                  </svg>
-                  무제한 검사
-                </span>
-                <div className="font-mono text-[10.5px] text-[var(--ink-3)] mt-2">한도 없음 · 이번 달 {active_tier.used}건 사용</div>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-baseline justify-between mb-2.25">
-                  <span className="text-[12.5px] text-[var(--ink-2)]">검사 사용량</span>
-                  <span className="font-mono tabular-nums text-[13px] text-[var(--ink)]">
-                    <b className="text-[16px] font-bold">{active_tier.used}</b> / {active_tier.limit}건
-                  </span>
-                </div>
-                <div
-                  className="h-2 bg-[var(--line-2)] border border-[var(--line-2)] overflow-hidden"
-                  aria-label={`검사 사용량 ${Math.round((active_tier.used / active_tier.limit) * 100)}% 사용함`}
-                >
-                  <div
-                    className="h-full bg-[var(--ink-3)]"
-                    style={{ width: `${Math.round((active_tier.used / active_tier.limit) * 100)}%` }}
-                  ></div>
-                </div>
-                <div className="font-mono text-[10.5px] text-[var(--ink-3)] mt-2">{active_tier.limit - active_tier.used}건 남음 · 매월 1일 초기화</div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
-        <div className="flex items-center gap-3.5 mt-3.5 p-[13px_15px] border border-[var(--line-2)] bg-[var(--surface-sub)]" id="upBanner">
-          <div className="flex-1 min-w-0">
-            <b className="text-[var(--ink)] font-bold">{active_tier.up.title}</b>
-            <p className="m-[2px_0_0] text-[12px] text-[var(--ink-3)]">{active_tier.up.desc}</p>
-          </div>
-          <button
-            id="openCompare"
-            ref={compare_btn_ref}
-            className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
-            onClick={() => set_is_compare_modal_open(true)}
-          >
-            요금제 비교 <span className="font-mono">→</span>
-          </button>
-        </div>
-      </div>
 
-      {/* 검사 이력 */}
-      <div className="py-[18px] border-b-0">
-        <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">02</span>
-          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 이력</h2>
-          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="histHint">최근 5건</span>
+        {/* 검사 이력 */}
+        <div className="py-[18px] border-b-0">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">03</span>
+            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 이력</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">최근 5건</span>
+          </div>
+          <HistoryRowList>
+            {RECENT_HISTORY.map((row) => (
+              <HistoryRow key={row.result_id} href={`/report/${row.result_id}`} {...rowProps(row)} />
+            ))}
+          </HistoryRowList>
         </div>
-        <HistoryRowList>
-          {RECENT_HISTORY.map(row => (
-            <HistoryRow key={row.result_id} href={`/report/${row.result_id}`} {...rowProps(row)} />
-          ))}
-        </HistoryRowList>
-      </div>
       </PageContent>
 
       <PageFooter />
 
-      <Modal
-        isOpen={is_compare_modal_open}
-        title="요금제 비교"
-        onClose={() => set_is_compare_modal_open(false)}
-        ref={modal_close_btn_ref}
-      >
-        <div className="flex flex-col gap-0.5">
-          <div className={`grid grid-cols-[auto_auto_1fr] gap-[10px] items-baseline p-2.5 border-b border-[var(--line)] last:border-b-0 ${tier === "Free" ? "bg-[var(--nav-active-bg)]" : ""}`}>
-            <span className="text-[var(--brand-ink)]">›</span>
-            <span className="text-[var(--ink)] font-bold text-[13px] min-w-[56px]">
-              Free
-              {tier === "Free" && <span className="text-[var(--ink-3)] text-[10.5px] ml-1.5"> (현재 이용 중)</span>}
-            </span>
-            <span className="text-[var(--ink-2)] text-[12px] whitespace-nowrap text-right ml-auto">0원 / 월</span>
-            <span className="text-[var(--ink-3)] text-[11.5px] col-span-full mt-0.5 ml-[22px]">월 3건 검사 · 위반 탐지와 근거까지 체험</span>
-          </div>
-          <div className={`grid grid-cols-[auto_auto_1fr] gap-[10px] items-baseline p-2.5 border-b border-[var(--line)] last:border-b-0 ${tier === "Basic" ? "bg-[var(--nav-active-bg)]" : ""}`}>
-            <span className="text-[var(--brand-ink)]">›</span>
-            <span className="text-[var(--ink)] font-bold text-[13px] min-w-[56px]">
-              Basic
-              {tier === "Basic" && <span className="text-[var(--ink-3)] text-[10.5px] ml-1.5"> (현재 이용 중)</span>}
-            </span>
-            <span className="text-[var(--ink-2)] text-[12px] whitespace-nowrap text-right ml-auto">4.9만원 / 월</span>
-            <span className="text-[var(--ink-3)] text-[11.5px] col-span-full mt-0.5 ml-[22px]">월 20건 · 수정 권고안 제공 · 검사 이력 무제한</span>
-          </div>
-          <div className={`grid grid-cols-[auto_auto_1fr] gap-[10px] items-baseline p-2.5 border-b border-[var(--line)] last:border-b-0 ${tier === "Pro" ? "bg-[var(--nav-active-bg)]" : ""}`}>
-            <span className="text-[var(--brand-ink)]">›</span>
-            <span className="text-[var(--ink)] font-bold text-[13px] min-w-[56px]">
-              Pro
-              {tier === "Pro" && <span className="text-[var(--ink-3)] text-[10.5px] ml-1.5"> (현재 이용 중)</span>}
-            </span>
-            <span className="text-[var(--ink-2)] text-[12px] whitespace-nowrap text-right ml-auto">14.9만원 / 월</span>
-            <span className="text-[var(--ink-3)] text-[11.5px] col-span-full mt-0.5 ml-[22px]">검사 무제한 · 콘텐츠 생성 월 5회</span>
-          </div>
-          <div className="p-2.5 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] text-[12px]">
-            <b className="text-[var(--ink)] font-bold">Export 애드온</b> <span className="text-[var(--brand-ink)]">건당 4.9만원</span> · 리포트를 PDF로 내보내기 (모든 요금제에 추가 가능)
-          </div>
-        </div>
-      </Modal>
+      <TicketCheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        defaultKind={checkoutKind ?? undefined}
+      />
     </>
   );
 }
