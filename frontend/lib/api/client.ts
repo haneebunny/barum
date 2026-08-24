@@ -570,8 +570,17 @@ export async function uploadIngredients(file: File): Promise<IngredientUploadRes
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Failed to upload ingredients file: ${response.status} - ${errText}`);
+    // 415(형식 불량)·422(빈 파일·파싱 불가)·413(5MB 초과) 전부 detail에 사람이
+    // 읽을 이유를 담아 보낸다(백엔드 계약, 2026-08-24) - 그대로 화면에 쓴다.
+    // JSON이 아니거나 detail이 없는 응답(프록시 에러 등)만 일반 문구로 폴백.
+    let detail = `업로드에 실패했습니다 (${response.status}).`;
+    try {
+      const body = await response.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // JSON 파싱 실패 시 기본 문구 그대로
+    }
+    throw new Error(detail);
   }
 
   return validateResponse(
