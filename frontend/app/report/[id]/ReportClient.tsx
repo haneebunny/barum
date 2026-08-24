@@ -755,7 +755,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1 items-start">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">01</span>
