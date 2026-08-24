@@ -335,6 +335,17 @@ async def check(
         product_name=product_name,
         rewriter=_replacement_rewriter(),
     )
+    # **OCR이 깨진 결과는 캐시하지 않는다**(2026-08-24 팀장 발견).
+    # 실패한 리포트를 캐시에 박으면 화면이 "다시 시도해 주세요"라고 안내해도
+    # 재시도가 같은 실패를 캐시에서 그대로 돌려받는다. 재시도가 원천적으로
+    # 불가능해진다. 캐시 키를 지워 저장·복원 양쪽을 다 건너뛴다(리포트 자체는
+    # 증거로 남긴다 - result_id는 계속 발급된다).
+    if cache_key and getattr(report.summary, "n_ocr_failed_tiles", 0) > 0:
+        print(
+            f"    [info] OCR 실패 타일 {report.summary.n_ocr_failed_tiles}개 "
+            f"-> 이 결과는 캐시하지 않는다(재시도가 가능해야 한다)"
+        )
+        cache_key = None
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.
     report.result_id = _persist_check(
         report, region.value, image_bytes, image.content_type if image else None,
@@ -408,6 +419,13 @@ async def check_us_sunscreen(
         ingredients=ingredients,
         product_name=product_name,
     )
+    # 국내 경로와 같은 이유로 OCR이 깨진 결과는 캐시하지 않는다(재시도 가능해야 한다).
+    if cache_key and getattr(report.summary, "n_ocr_failed_tiles", 0) > 0:
+        print(
+            f"    [info] OCR 실패 타일 {report.summary.n_ocr_failed_tiles}개 "
+            f"-> 이 결과는 캐시하지 않는다(재시도가 가능해야 한다)"
+        )
+        cache_key = None
     report.result_id = _persist_check(
         report,
         region="US",

@@ -68,11 +68,21 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
     from barum.api import app as app_module
 
     run_check_calls = []
-    orig_run_check = app_module.run_check
 
     def mock_run_check(*args, **kwargs):
+        """**실제 판정을 부르지 않는다.** 예전엔 진짜 `run_check`에 위임했는데,
+        그러면 이 테스트가 실제 Gemini OCR을 호출한다(과금이고 네트워크 의존이다).
+        크레딧이 떨어지거나 429가 나면 OCR이 전부 실패하고, 그 실패 리포트는
+        캐시하지 않는 게 정상 동작이라(`app.py`, 2026-08-24) 이 테스트가 엉뚱하게
+        깨진다. 여기서 검증할 건 "같은 이미지면 run_check를 두 번 안 부른다"
+        하나뿐이므로 판정 결과는 고정값으로 둔다.
+        """
         run_check_calls.append(kwargs)
-        return orig_run_check(*args, **kwargs)
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        )
 
     monkeypatch.setattr(app_module, "run_check", mock_run_check)
 
