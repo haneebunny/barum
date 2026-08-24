@@ -56,7 +56,7 @@ const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
     ],
     up: {
       title: "Pro로 올리면 검사가 무제한이 됩니다.",
-      desc: "콘텐츠 생성 월 5회와 이력 통합 대시보드가 함께 열립니다.",
+      desc: "콘텐츠 생성 월 5회가 함께 열립니다.",
     },
   },
   Pro: {
@@ -68,7 +68,6 @@ const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
       { text: "검사 무제한", is_active: true },
       { text: "수정 권고안 제공", is_active: true },
       { text: "콘텐츠 생성 월 5회", is_active: true },
-      { text: "이력 통합 대시보드", is_active: true },
     ],
     up: {
       title: "현재 최상위 요금제(Pro)를 이용 중입니다.",
@@ -210,81 +209,10 @@ export default function MyPage() {
         </div>
       </div>
 
-      {/* Pro 전용: 이력 통합 대시보드 */}
-      {tier === "Pro" && (
-        <div className="py-[18px] border-b border-[var(--line)]">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">이력 통합 대시보드</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">Pro · 이번 분기</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3.5 mb-3.5 max-[900px]:grid-cols-1">
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[14px_15px]">
-              <p className="text-[12px] text-[var(--ink-3)] mb-1.5">이번 분기 위반</p>
-              <div className="text-[30px] font-extrabold leading-none tracking-[-0.5px] text-[var(--crit)]">42</div>
-              <div className="font-mono text-[11px] text-[var(--ink-3)] mt-1.25">지난 분기 대비 8건 감소</div>
-              <svg className="mt-2.75 block w-full h-[34px]" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
-                {[5, 7, 4, 6, 8, 5, 3, 4].map((val, i) => {
-                  const max_val = 8;
-                  const height_factor = 24 / max_val;
-                  const h = val * height_factor;
-                  const y = 34 - h;
-                  const x = 1 + i * 30;
-                  const fill = i === 7 ? "var(--crit)" : "var(--ink-3)";
-                  return (
-                    <rect
-                      key={i}
-                      x={x}
-                      y={y}
-                      width={28}
-                      height={h + 4}
-                      rx={4}
-                      fill={fill}
-                    >
-                      <title>{8 - i}주 전 기준 {val}건</title>
-                    </rect>
-                  );
-                })}
-              </svg>
-            </div>
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[14px_15px]">
-              <p className="text-[12px] text-[var(--ink-3)] mb-1.5">이번 분기 검토필요</p>
-              <div className="text-[30px] font-extrabold leading-none tracking-[-0.5px] text-[var(--ink)]">21</div>
-              <div className="font-mono text-[11px] text-[var(--ink-3)] mt-1.25">지난 분기 대비 3건 증가</div>
-              <svg className="mt-2.75 block w-full h-[34px]" viewBox="0 0 240 34" preserveAspectRatio="none" aria-hidden="true">
-                {[2, 3, 2, 4, 3, 2, 3, 2].map((val, i) => {
-                  const max_val = 4;
-                  const height_factor = 24 / max_val;
-                  const h = val * height_factor;
-                  const y = 34 - h;
-                  const x = 1 + i * 30;
-                  const fill = i === 7 ? "var(--ink-2)" : "var(--ink-3)";
-                  return (
-                    <rect
-                      key={i}
-                      x={x}
-                      y={y}
-                      width={28}
-                      height={h + 4}
-                      rx={4}
-                      fill={fill}
-                    >
-                      <title>{8 - i}주 전 기준 {val}건</title>
-                    </rect>
-                  );
-                })}
-              </svg>
-            </div>
-          </div>
-          <p className="font-mono text-[10.5px] text-[var(--ink-3)] mt-0.5">최근 8주 주별 추이 · 막대에 올리면 값 표시 · 검사 128건 기준</p>
-        </div>
-      )}
-
       {/* 검사 이력 */}
       <div className="py-[18px] border-b-0">
         <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">{tier === "Pro" ? "03" : "02"}</span>
+          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">02</span>
           <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 이력</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
           <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="histHint">최근 5건</span>
@@ -331,7 +259,7 @@ export default function MyPage() {
               {tier === "Pro" && <span className="text-[var(--ink-3)] text-[10.5px] ml-1.5"> (현재 이용 중)</span>}
             </span>
             <span className="text-[var(--ink-2)] text-[12px] whitespace-nowrap text-right ml-auto">14.9만원 / 월</span>
-            <span className="text-[var(--ink-3)] text-[11.5px] col-span-full mt-0.5 ml-[22px]">검사 무제한 · 콘텐츠 생성 월 5회 · 이력 통합 대시보드</span>
+            <span className="text-[var(--ink-3)] text-[11.5px] col-span-full mt-0.5 ml-[22px]">검사 무제한 · 콘텐츠 생성 월 5회</span>
           </div>
           <div className="p-2.5 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] text-[12px]">
             <b className="text-[var(--ink)] font-bold">Export 애드온</b> <span className="text-[var(--brand-ink)]">건당 4.9만원</span> · 리포트를 PDF로 내보내기 (모든 요금제에 추가 가능)

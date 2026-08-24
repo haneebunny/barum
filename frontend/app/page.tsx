@@ -1224,7 +1224,7 @@ export default function LandingPage() {
                 <div className="text-[var(--ink-3)] mb-[16px] text-[12px]">검사를 넘어 제작까지</div>
               </div>
               <div className="flex-1 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] p-[14px_20px] text-[13px] font-medium leading-[2]">
-                국내 검사 무제한<br />Basic 전체 포함<br /><b className="text-[var(--brand-ink)]">상세페이지 초안 제작 월 5회</b><br />전체 검사 현황 대시보드<br />수출 검사 애드온 구매 가능
+                국내 검사 무제한<br />Basic 전체 포함<br /><b className="text-[var(--brand-ink)]">상세페이지 초안 제작 월 5회</b><br />수출 검사 애드온 구매 가능
               </div>
               <div className="p-[0_20px_20px]">
                 <Link href="/home" onClick={enterConsole} className="flex items-center justify-center gap-[7px] no-underline bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer py-[11px] text-[13.5px] font-bold">Pro 시작 <span className="font-mono">→</span></Link>
