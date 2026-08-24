@@ -877,7 +877,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </div>
           )}
         </div>
-        <div className="p-[18px_20px_22px]">
+        <div className="p-[18px_20px_22px] flex flex-col min-h-0">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
@@ -888,7 +888,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
               <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
             )}
           </div>
-          <div id="origPanel">
+          <div id="origPanel" className="flex-1 flex flex-col min-h-0 sticky top-[20px]">
             {isImageMode ? (
               <ReportImageViewer
                 findByOrder={findByOrder}
