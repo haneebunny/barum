@@ -380,16 +380,6 @@ function ContentGeneratorContent() {
         },
       ];
 
-  // 업로드된 이미지 칩 추출
-  const uploadedImages = report
-    ? Array.from(
-        new Set([
-          ...report.findings.map((f) => f.location?.tile).filter(Boolean),
-          ...report.unjudged.map((u) => u.location?.tile).filter(Boolean),
-        ])
-      )
-    : mockData.imagesUploaded;
-
   // 모달 포커스 및 키보드 접근성 처리
   useEffect(() => {
     if (isModalOpen) {
@@ -1516,33 +1506,6 @@ function ContentGeneratorContent() {
                 )}
               </ul>
             </div>
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
-              {uploadedImages.length > 0 ? (
-                <>
-                  <div className="flex flex-wrap gap-1.75">
-                    {uploadedImages.map((img, i) => (
-                      <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px] inline-flex items-center gap-1.5">
-                        <FileImage size={13} className="text-[var(--brand-ink)]" />
-                        {img}
-                      </span>
-                    ))}
-                  </div>
-                  <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
-                    이미지는 새로 생성하지 않고 원본 첨부본을 레이아웃에 재배치합니다.
-                  </p>
-                </>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[var(--ink-3)] text-[12px]">
-                    첨부된 원본 이미지가 없습니다.
-                  </span>
-                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--ink-3)" }}>
-                    텍스트 카피 및 레이아웃을 중심으로 상세페이지 초안을 생성합니다.
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}
@@ -1620,10 +1583,16 @@ function ContentGeneratorContent() {
                     }`}
                     id="recheckBadge"
                   >
+                    {/* "재검증 실패"라고 쓰지 않는다(팀장 지시, 2026-08-24). 생성이
+                        실패한 게 아니라 자동으로 고칠 수 없는 표현이 남은 것이고,
+                        "실패"는 산출물 전체가 못 쓰는 것처럼 읽힌다. 무엇을 해야
+                        하는지(수정 필요)를 건수와 함께 사실대로 적는다. 색은
+                        그대로 crit을 쓴다 - 남은 위반은 실제로 지금 급한 항목이라
+                        DESIGN.md "빨강만 경보" 기준에 맞는다. */}
                     {hasViolation ? (
                       <>
                         <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
-                        재검증 실패 · 위반 {genResult.recheck.n_violation}건
+                        수정 필요 · 위반 {genResult.recheck.n_violation}건
                       </>
                     ) : (
                       <>
@@ -1636,7 +1605,7 @@ function ContentGeneratorContent() {
               })()}
               {genResult.recheck.n_needs_review > 0 && (
                 <p className="m-0 mt-1.5 text-[11px] text-[var(--ink-3)]">
-                  검토필요 {genResult.recheck.n_needs_review}건 - 실증자료 확인이 필요한 표현입니다(재검증 실패 아님).
+                  검토필요 {genResult.recheck.n_needs_review}건 - 실증자료 확인이 필요한 표현입니다(위반 아님).
                 </p>
               )}
             </div>
@@ -1689,7 +1658,7 @@ function ContentGeneratorContent() {
             <div className="border border-[var(--line-2)] bg-[var(--surface-sub)]">
               <div className="flex items-center gap-2 p-[8px_12px] border-b border-[var(--line-2)] font-mono text-[11px] text-[var(--ink-3)]">
                 <span className="w-1.75 h-1.75 rounded-full bg-[var(--line-2)] shrink-0"></span>
-                <span className="text-[var(--ink-2)]">detail_draft.html</span>
+                <span className="text-[var(--ink-2)]">{exportFileBase}_draft.html</span>
               </div>
               <div className="p-[22px] flex justify-center">
                 {previewContent ? (
