@@ -8,14 +8,11 @@ import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
 import { getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
-import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 import { Modal } from "@/components/Modal/Modal";
 import { useTier, type Tier } from "@/lib/tier";
 
-const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
-  { value: "image", label: "원본 보기" },
-];
+
 
 const TYPE_LABEL = {
   "1호_의약품오인": "1호 · 의약품 오인",
@@ -461,7 +458,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 아파서 되돌리기가 있어야 한다, 2026-08-23).
   const [bulkUndoSnapshot, setBulkUndoSnapshot] = useState<Record<number, "accept" | "exclude" | null> | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
-  const [viewMode, setViewMode] = useState<"image" | "tile">("image");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const { tier, setTier } = useTier();
   // 대체표현 열람 "체험 1회" 클릭 카운트는 폐기(FREE도 첫 3건은 전부 잠금
@@ -759,7 +755,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1 items-start">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">01</span>
@@ -881,25 +877,20 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </div>
           )}
         </div>
-        <div className="p-[18px_20px_22px]">
+        <div className="p-[18px_20px_22px] flex flex-col min-h-0">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
             <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
             {isImageMode ? (
-              canShowRealImage ? (
-                <TabSwitch options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
-              ) : (
-                <span className="text-[var(--ink-3)] font-mono text-[11px]">타일 오버레이</span>
-              )
+              <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
             ) : (
               <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
             )}
           </div>
-          <div id="origPanel">
+          <div id="origPanel" className="flex-1 flex flex-col min-h-0 sticky top-[20px]">
             {isImageMode ? (
               <ReportImageViewer
-                viewMode={viewMode}
                 findByOrder={findByOrder}
                 ujByOrder={ujByOrder}
                 imageUrl={canShowRealImage ? getReportImageUrl(activeEnvelope.result_id) : null}
