@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, X, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
@@ -452,6 +453,7 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
+  const router = useRouter();
   const [activeEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
   // "모두 수용" 실행취소용 스냅샷. 개별 조작이나 리포트 전환이 끼어들면 되돌릴
@@ -465,6 +467,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 대체표현 열람 "체험 1회" 클릭 카운트는 폐기(FREE도 첫 3건은 전부 잠금
   // 없이 보이는 구조로 바뀌어 더 이상 필요 없다, 2026-08-23).
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
   const [flagFilter, setFlagFilter] = useState<"위반" | "검토필요" | null>(null);
 
@@ -994,22 +997,19 @@ export function ReportClient({ envelope }: ReportClientProps) {
         <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
         {tier === "Pro" ? (
           <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}
-              onClick={(e) => {
+            <button
+              type="button"
+              onClick={() => {
                 if (!hasInteracted) {
-                  const proceed = window.confirm(
-                    "수정 권고안에 대해 '수용' 또는 '제외'를 선택하지 않으셨습니다. 모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?\n\n'취소'를 누르시면 리포트에서 직접 선택하실 수 있습니다."
-                  );
-                  if (!proceed) {
-                    e.preventDefault();
-                  }
+                  setConfirmModalOpen(true);
+                } else {
+                  router.push(`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`);
                 }
               }}
-              className="font-sans text-[14px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+              className="font-sans text-[14px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
             >
               이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
-            </Link>
+            </button>
             <Link
               href="/content?mode=create"
               className="font-sans text-[14px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
@@ -1040,6 +1040,48 @@ export function ReportClient({ envelope }: ReportClientProps) {
           setPricingModalOpen(false);
         }}
       />
+
+      <Modal
+        isOpen={confirmModalOpen}
+        title="상세페이지 생성 안내"
+        onClose={() => setConfirmModalOpen(false)}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <button
+              type="button"
+              onClick={() => setConfirmModalOpen(false)}
+              className="font-sans text-[13px] font-semibold px-3.5 py-2 border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] cursor-pointer transition-all duration-[120ms]"
+            >
+              직접 선택
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmModalOpen(false);
+                router.push(`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`);
+              }}
+              className="font-sans text-[13px] font-bold px-4 py-2 border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] hover:bg-[var(--brand-deep)] cursor-pointer transition-all duration-[120ms]"
+            >
+              일괄 수용하고 생성 →
+            </button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3 py-1 text-[13px] text-[var(--ink-2)] leading-[1.6]">
+          <div className="p-3.5 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)]">
+            <p className="m-0 font-bold text-[13.5px] leading-snug">
+              수정 권고안에 대해 '수용' 또는 '제외'를 선택하지 않으셨습니다.
+            </p>
+            <p className="m-[6px_0_0] text-[12.5px] text-[var(--ink-3)]">
+              모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?
+            </p>
+          </div>
+          <p className="m-0 text-[12px] text-[var(--ink-3)]">
+            '직접 선택'을 누르시면 리포트 화면에서 각 수정 권고안을 개별 검토하실 수 있습니다.
+          </p>
+        </div>
+      </Modal>
     </>
   );
 }
