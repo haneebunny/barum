@@ -248,6 +248,20 @@ export const SurveyEvidenceSchema = z.object({
 });
 export type SurveyEvidence = z.infer<typeof SurveyEvidenceSchema>;
 
+// 리포트에서 사용자가 수용한 대체표현(models.py ApprovedReplacement). improve
+// 모드에 이걸 실어 보내지 않으면 백엔드가 판정을 처음부터 다시 돌리고(비용 2배)
+// 검출된 모든 위반을 치환한다 - 사용자가 리포트에서 고른 항목이 무시되고 생성
+//마다 결과가 흔들린다(2026-08-23 베베 감사로 발견, 이 필드는 정확히 이 문제를
+// 막으려고 설계돼 있었는데 프론트가 안 씀).
+export const ApprovedReplacementSchema = z.object({
+  original: z.string(),
+  replaced: z.string(),
+  finding_index: z.number().nullable().optional(),
+  violation_type: ViolationTypeSchema.nullable().optional(),
+  note: z.string().nullable().optional(),
+});
+export type ApprovedReplacement = z.infer<typeof ApprovedReplacementSchema>;
+
 export const GenerateRequestSchema = z.object({
   mode: z.enum(["improve", "create"]).default("improve"),
   content: z.string().nullable().optional(),
@@ -277,6 +291,9 @@ export const GenerateRequestSchema = z.object({
   // 2026-08-23 베베 확인).
   formulation_type: z.string().nullable().optional(),
   volume: z.string().nullable().optional(),
+  // improve 모드 전용. 리포트에서 수용한 대체표현을 그대로 실어 보낸다 - 안
+  // 보내면(None) 백엔드가 하위호환 경로로 판정을 처음부터 다시 돌린다.
+  approved_replacements: z.array(ApprovedReplacementSchema).nullable().optional(),
 });
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
