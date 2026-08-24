@@ -557,23 +557,38 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     return {"photo_id": photo_id}
 
 
-def _resolve_product_photos(client):
-    """`product_photo_ids` → 참조 이미지 바이트 목록. `generate_content`에 주입한다.
+def _resolve_reference_photos(client):
+    """`GenerateRequest` → 참조 이미지 바이트 목록. `generate_content`에 주입한다.
+
+    create·improve가 참조를 서로 다른 곳에서 찾는다(2026-08-24, PM 요청으로 improve
+    까지 확장). create는 `product_photo_ids`(별도 업로드, `uploads/{id}`), improve는
+    `result_id`로 찾는 원본 검사 이미지(`row["image_path"]`) - 저장 키 체계가 달라
+    조회 경로를 가른다. 둘 다 없으면 빈 목록(참조 없이 배경만 생성).
 
     id 형식이 안 맞거나 조회에 실패한 사진은 예상된 실패라 건너뛴다(전체 요청을
     막지 않는다. 참조 없이 배경만 생성되는 쪽으로 계속 진행).
     """
-    def resolve(photo_ids: list[str]) -> list[bytes]:
-        images: list[bytes] = []
-        for photo_id in photo_ids:
-            if not _PHOTO_ID_RE.match(photo_id):
-                print(f"    [skip] 잘못된 photo_id 형식: {photo_id!r}")
-                continue
+    def resolve(req) -> list[bytes]:
+        if req.product_photo_ids:
+            images: list[bytes] = []
+            for photo_id in req.product_photo_ids:
+                if not _PHOTO_ID_RE.match(photo_id):
+                    print(f"    [skip] 잘못된 photo_id 형식: {photo_id!r}")
+                    continue
+                try:
+                    images.append(download_image(client, f"uploads/{photo_id}"))
+                except Exception as e:
+                    print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
+            return images
+        if req.result_id:
+            row = get_check(client, req.result_id)
+            if row is None or not row.get("image_path"):
+                return []
             try:
-                images.append(download_image(client, f"uploads/{photo_id}"))
+                return [download_image(client, row["image_path"])]
             except Exception as e:
-                print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
-        return images
+                print(f"    [skip] 리포트 이미지 조회 실패({req.result_id}): {type(e).__name__}: {e}")
+        return []
     return resolve
 
 
@@ -615,7 +630,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         vlm=_section_vlm(),
         image_generator=image_gen,
         image_sink=_image_sink(client) if client else None,
-        photo_resolver=_resolve_product_photos(client) if client else None,
+        photo_resolver=_resolve_reference_photos(client) if client else None,
     )
     put_cached_generate(cache_key, resp)
     return resp
