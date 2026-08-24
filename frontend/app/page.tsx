@@ -1353,7 +1353,7 @@ export default function LandingPage() {
       </div>
       <div className="flex border-t border-[var(--line-2)] bg-[var(--surface-sub)] font-mono text-[11px]">
         <span className="font-bold bg-[var(--brand-deep)] text-[var(--on-brand)] p-[7px_13px]">바름</span>
-        <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">팀 유어베리 YourVeri</span>
+        <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">Team Cerberus</span>
         <span className="border-r border-[var(--line)] text-[var(--ink-3)] p-[7px_13px]">© 2026</span>
         <span className="flex-1 text-[var(--ink-3)] p-[7px_13px]">올리기 전에, 바르게.</span>
       </div>
