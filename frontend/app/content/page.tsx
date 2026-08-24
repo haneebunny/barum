@@ -39,7 +39,7 @@ const DEFAULT_MOCKS: Record<string, ContentMockData> = {
       { kind: "사용법", source: "llm", text: "세안 후 토너 다음 단계에서 적당량을 덜어 얼굴 전체에 고르게 펴 발라주세요. 아침·저녁 데일리 케어로 사용하기 좋습니다." },
       { kind: "주의사항", source: "template", text: "화장품 사용 시 이상이 있는 경우 사용을 중지하고 피부과 전문의와 상담하세요. 직사광선을 피해 서늘한 곳에 보관하세요." }
     ],
-    imagesUploaded: ["detail_000_t00.png", "detail_000_t01.png", "detail_000_t02.png"],
+    imagesUploaded: ["상세페이지 상단 배너", "제품 텍스처 컷", "임상 결과 그래프"],
     imagesPlaced: [
       { slot: "body_1", image_url: "detail_000_t01.png" },
       { slot: "body_2", image_url: "detail_000_t02.png" }
@@ -72,7 +72,7 @@ const DEFAULT_MOCKS: Record<string, ContentMockData> = {
       { kind: "사용법", source: "llm", text: "적당량을 덜어 피부 결에 따라 펴 바른 후 손바닥으로 감싸 흡수시킵니다." },
       { kind: "주의사항", source: "template", text: "상처가 있는 부위 등에는 사용을 자제하시고 어린이의 손이 닿지 않는 곳에 보관하세요." }
     ],
-    imagesUploaded: ["detail_002_t00.png", "detail_002_t01.png"],
+    imagesUploaded: ["상세페이지 상단 컷", "전성분 표기 컷"],
     imagesPlaced: [
       { slot: "body_1", image_url: "detail_002_t00.png" },
       { slot: "body_2", image_url: "detail_002_t01.png" }
@@ -355,13 +355,28 @@ function ContentGeneratorContent() {
   // findingIdx를 들고 있어야 report.replacements와 finding_index로 짝지을 수 있다
   // (PR #265 - 판정할 때 배치로 만들어진 진짜 대체표현. 데모용 하드코딩 목록으로
   // 대신하던 걸 실제 값으로 바꾼다, 2026-08-23 팀장 실측 버그).
-  const acceptedFindings: Array<{ span: string; violation_type: string; findingIdx: number }> = report
+  const acceptedFindings: Array<{
+    span: string;
+    violation_type: string;
+    findingIdx: number;
+    mockReplacement?: string;
+  }> = report
     ? report.findings
         .map((f, idx) => ({ span: f.span, violation_type: f.violation_type, findingIdx: idx }))
         .filter((f) => acceptedIndices.includes(f.findingIdx))
     : [
-        { span: "아토피 피부염을 완화하고 손상된 피부를 재생", violation_type: "1호_의약품오인", findingIdx: -1 },
-        { span: "시중 제품 대비 3배 빠른 흡수", violation_type: "5호_거짓과장기만", findingIdx: -1 }
+        {
+          span: "손상된 피부를 재생",
+          violation_type: "1호_의약품오인",
+          findingIdx: -1,
+          mockReplacement: "피부 장벽을 보호하고 건강하게 가꿈",
+        },
+        {
+          span: "시중 제품 대비 3배 빠른 흡수",
+          violation_type: "5호_거짓과장기만",
+          findingIdx: -1,
+          mockReplacement: "산뜻하고 빠르게 흡수",
+        },
       ];
 
   // 업로드된 이미지 칩 추출
@@ -369,7 +384,7 @@ function ContentGeneratorContent() {
     ? Array.from(
         new Set([
           ...report.findings.map((f) => f.location?.tile).filter(Boolean),
-          ...report.unjudged.map((u) => u.location?.tile).filter(Boolean)
+          ...report.unjudged.map((u) => u.location?.tile).filter(Boolean),
         ])
       )
     : mockData.imagesUploaded;
@@ -1535,21 +1550,34 @@ function ContentGeneratorContent() {
           <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
               <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
-              <ul className="list-none m-0 p-0 flex flex-col gap-1.25">
+              <ul className="list-none m-0 p-0 flex flex-col gap-2">
                 {acceptedFindings.map((f, i) => {
-                  // finding_index로 짝짓는다(PR #265). 못 찾으면 "제안할 수
-                  // 없었다"는 뜻(제품명·유통 채널 등 자동 수정이 구조적으로
-                  // 안 되는 문구) - 지어낸 문구로 덮지 않는다.
                   const rep = report?.replacements.find((r) => r.finding_index === f.findingIdx);
+                  const replacedText = rep?.replaced || f.mockReplacement;
+                  const isReplaced = !!replacedText;
+
                   return (
-                    <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-1.75">
-                      <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
-                        <path d="M4 12l5 5L20 6" />
-                      </svg>
+                    <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-2">
+                      {isReplaced ? (
+                        <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                          <path d="M4 12l5 5L20 6" />
+                        </svg>
+                      ) : (
+                        <span className="shrink-0 mt-0.5 text-[var(--ink-3)] font-mono text-[11px]">[-]</span>
+                      )}
                       <span>
-                        <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
-                        <span className="text-[var(--ink-3)] mx-0.5">→</span>
-                        {rep ? rep.replaced : <span className="text-[var(--ink-3)]">자동 수정하지 못했습니다</span>}
+                        {isReplaced ? (
+                          <>
+                            <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
+                            <span className="text-[var(--ink-3)] mx-1">→</span>
+                            <span className="font-semibold text-[var(--ink)]">{replacedText}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[var(--ink-2)]">{f.span}</span>
+                            <span className="text-[var(--ink-3)] text-[11.5px] ml-1.5">(자동 수정 불가 · 원문 유지)</span>
+                          </>
+                        )}
                         {rep?.note && (
                           <span className="block text-[11px] text-[var(--ink-3)] mt-0.5">ⓘ {rep.note}</span>
                         )}
@@ -1564,21 +1592,30 @@ function ContentGeneratorContent() {
             </div>
             <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
               <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
-              <div className="flex flex-wrap gap-1.75">
-                {uploadedImages.map((img, i) => (
-                  <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] p-[4px_9px]">
-                    {img}
+              {uploadedImages.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap gap-1.75">
+                    {uploadedImages.map((img, i) => (
+                      <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px] inline-flex items-center gap-1.5">
+                        <FileImage size={13} className="text-[var(--brand-ink)]" />
+                        {img}
+                      </span>
+                    ))}
+                  </div>
+                  <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
+                    이미지는 새로 생성하지 않고 원본 첨부본을 레이아웃에 재배치합니다.
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[var(--ink-3)] text-[12px]">
+                    첨부된 원본 이미지가 없습니다.
                   </span>
-                ))}
-                {uploadedImages.length === 0 && (
-                  <span className="text-[var(--ink-3)] text-[10px]">
-                    첨부된 이미지가 없습니다.
-                  </span>
-                )}
-              </div>
-              <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
-                이미지는 새로 만들지 않고 업로드분을 재배치만 합니다.
-              </p>
+                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--ink-3)" }}>
+                    텍스트 카피 및 레이아웃을 중심으로 상세페이지 초안을 생성합니다.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
