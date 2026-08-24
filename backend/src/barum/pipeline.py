@@ -15,6 +15,7 @@ from PIL import Image
 from barum.judge.cosmetic import CosmeticJudge
 from barum.judge.evidence_verify import crop_band, verify_evidence
 from barum.judge.us_sunscreen import DISCLAIMER, USSunscreenJudge
+from barum.judge.us_export_readiness import build_us_export_readiness_report
 from barum.generate.replace import build_replacements
 from barum.models import (
     CheckReport,
@@ -24,6 +25,9 @@ from barum.models import (
     Summary,
     USPreflightReport,
     USPreflightSummary,
+    ExportProduct,
+    ExportProfile,
+    USExportReadinessReport,
     ViolationType,
 )
 from barum.preprocess.ocr import extract_product_sentences
@@ -476,4 +480,46 @@ def run_us_sunscreen_check(
         findings=findings,
         summary=summary,
         disclaimer=DISCLAIMER,
+    )
+
+
+def run_us_export_readiness(
+    ad_text: str | None,
+    image_bytes: bytes | None,
+    image_filename: str | None,
+    vlm: VLM | None,
+    judge: USSunscreenJudge,
+    ingredients: str | None,
+    product_name: str | None,
+    product: ExportProduct,
+    profile: ExportProfile,
+    created_at: str,
+    verbose: bool = False,
+) -> USExportReadinessReport:
+    """기존 미국 OCR 경로를 재사용해 준비도 리포트를 만든다.
+
+    공통 OCR 구조를 바꾸지 않고, 이미지가 있을 때만 기존
+    ``run_us_sunscreen_check``를 보조 신호로 사용한다. 준비도 판정 자체는
+    ``judge.us_export_readiness``의 결정적 규칙이 담당한다.
+    """
+    old_report = None
+    if ad_text or image_bytes:
+        old_report = run_us_sunscreen_check(
+            ad_text=ad_text,
+            image_bytes=image_bytes,
+            image_filename=image_filename,
+            vlm=vlm,
+            judge=judge,
+            ingredients=ingredients,
+            product_name=product_name,
+            verbose=verbose,
+        )
+    return build_us_export_readiness_report(
+        ad_text=ad_text,
+        ingredients=ingredients,
+        product_name=product_name,
+        product=product,
+        profile=profile,
+        old_report=old_report,
+        created_at=created_at,
     )
