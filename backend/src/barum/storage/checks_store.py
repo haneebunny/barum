@@ -145,11 +145,41 @@ def get_check_by_sha256(client, image_sha256: str) -> dict | None:
         return None
 
 
+def _ocr_failed_count(report_or_dict: object) -> int:
+    """리포트(객체·dict 무엇이든)에서 OCR 실패 타일 수를 읽는다. 못 읽으면 0."""
+    summary = (
+        report_or_dict.get("summary")
+        if isinstance(report_or_dict, dict)
+        else getattr(report_or_dict, "summary", None)
+    )
+    if summary is None:
+        return 0
+    value = (
+        summary.get("n_ocr_failed_tiles")
+        if isinstance(summary, dict)
+        else getattr(summary, "n_ocr_failed_tiles", 0)
+    )
+    return value or 0
+
+
 def get_cached_check(client, cache_key: str, image_sha256: str | None = None) -> object | None:
-    """캐시된 검사 리포트를 가져온다. 1차 메모리 캐시, 2차 Supabase 조회."""
+    """캐시된 검사 리포트를 가져온다. 1차 메모리 캐시, 2차 Supabase 조회.
+
+    **OCR이 깨진 리포트는 캐시에 있어도 안 쓴다.** 쓰기 쪽에서 이미 막지만
+    (`api/app.py`), 그 수정 전에 저장된 레코드가 Supabase에 그대로 남아 있다.
+    그걸 복원하면 화면이 계속 "위반 0건 + 이미지 일부를 못 읽었습니다"를 띄우고
+    재시도가 영영 안 먹는다(2026-08-24 팀장 실측). 읽는 쪽에서도 걸러야
+    이미 오염된 레코드까지 무효가 된다.
+
+    캐시 로직 버전(`_CACHE_LOGIC_VERSION`)을 올려 통째로 비우는 방법도 있지만,
+    그러면 **멀쩡한 캐시까지 다 날아가 재검사 과금이 난다.** 실패한 것만 고른다.
+    """
     if cache_key in _IMAGE_CACHE:
         cached = _IMAGE_CACHE[cache_key]
-        if hasattr(cached, "findings"):
+        if _ocr_failed_count(cached) > 0:
+            print("    [info] 캐시된 리포트가 OCR 실패분 -> 버리고 재검사한다")
+            del _IMAGE_CACHE[cache_key]
+        elif hasattr(cached, "findings"):
             # 메모리 캐시도 bbox 없으면 무효화
             if any(getattr(f.location, "tile", None) and getattr(f.location, "x_start", None) in (None, 0) and getattr(f.location, "x_end", None) == getattr(f.location, "source_w", None) for f in cached.findings):
                 del _IMAGE_CACHE[cache_key]
@@ -176,6 +206,12 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
                 # 옛 레코드는 `_cache_key`가 없어(None) 항상 불일치 -> 재검사한다.
                 if report_dict.get("_cache_key") != cache_key:
                     print("    [info] 2차 캐시 키 불일치(입력 변경 또는 로직 버전 상향) -> 신규 검사")
+                    return None
+
+                # 쓰기 금지 조치(`api/app.py`) 이전에 저장된 OCR 실패 레코드가
+                # 그대로 남아 있다. 복원하면 재시도가 영영 안 먹는다.
+                if _ocr_failed_count(report_dict) > 0:
+                    print("    [info] 2차 캐시가 OCR 실패분 -> 버리고 재검사한다")
                     return None
 
                 if (
