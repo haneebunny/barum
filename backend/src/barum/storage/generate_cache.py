@@ -9,8 +9,10 @@
 재시작하면 비는데, 이건 오히려 안전한 쪽이다 — 코드가 바뀌면 캐시도 같이 비워진다.
 """
 
+import json
 import os
 from collections import OrderedDict
+from pathlib import Path
 
 from ..models import GenerateRequest, GenerateResponse
 from .checks_store import sha256_hex
@@ -18,13 +20,10 @@ from .checks_store import sha256_hex
 # 응답 한 건이 카드 6장 + 이미지 URL이라 작지 않다. 시연용이라 이 정도면 충분하다.
 _MAX_ENTRIES = 32
 _CACHE: OrderedDict[str, GenerateResponse] = OrderedDict()
+_CACHE_DIR = Path(__file__).resolve().parent.parent.parent.parent / ".cache"
+_CACHE_FILE = _CACHE_DIR / "generate_cache.json"
 
 # **출력을 바꾸는 서버 스위치.** 키에 같이 넣는다.
-#
-# 이게 없으면 팀장이 `IMAGE_GENERATION_ENABLED`를 켠 직후 **이미지 없는 옛 응답이
-# 캐시에서 그대로 나온다.** 그러면 "플래그를 켰는데 이미지가 안 나온다"로 읽혀
-# 원인을 엉뚱한 데서 찾게 된다. 오늘 낡은 서버 프로세스로 같은 종류의 혼선이
-# 실제로 있었다(2026-08-23).
 _OUTPUT_AFFECTING_ENV = (
     "IMAGE_GENERATION_ENABLED",
     "JUDGE_KIND",
@@ -47,22 +46,38 @@ def _env_fingerprint() -> str:
 
 
 def build_generate_cache_key(req: GenerateRequest) -> str:
-    """요청 전체를 해시해 캐시 키를 만든다.
-
-    **필드를 골라 담지 않는다.** 고르면 새 필드가 생길 때마다 키에 넣는 걸 잊고,
-    그러면 서로 다른 요청이 같은 응답을 받는다. 조용히 틀리는 종류의 버그라
-    실행해도 안 보인다. 요청 전체를 담으면 그 실수가 구조적으로 불가능해진다.
-
-    출력을 바꾸는 서버 스위치도 같이 담는다(`_OUTPUT_AFFECTING_ENV` 주석 참고).
-    """
+    """요청 전체를 해시해 캐시 키를 만든다."""
     raw = f"{req.model_dump_json()}|{_env_fingerprint()}"
     return sha256_hex(raw.encode("utf-8"))
+
+
+def _load_disk_cache() -> None:
+    if not _CACHE_FILE.exists():
+        return
+    try:
+        data = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        for k, v in data.items():
+            if k not in _CACHE:
+                _CACHE[k] = GenerateResponse.model_validate(v)
+    except Exception as e:
+        print(f"    [warn] 디스크 캐시 로드 실패: {e}")
+
+
+def _save_disk_cache() -> None:
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        dump = {k: v.model_dump(mode="json") for k, v in _CACHE.items()}
+        _CACHE_FILE.write_text(json.dumps(dump, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"    [warn] 디스크 캐시 저장 실패: {e}")
 
 
 def get_cached_generate(key: str) -> GenerateResponse | None:
     """캐시된 응답. 없으면 None."""
     if not cache_enabled():
         return None
+    if not _CACHE:
+        _load_disk_cache()
     hit = _CACHE.get(key)
     if hit is not None:
         _CACHE.move_to_end(key)  # 최근 쓴 것을 뒤로(LRU)
@@ -77,8 +92,14 @@ def put_cached_generate(key: str, resp: GenerateResponse) -> None:
     _CACHE.move_to_end(key)
     while len(_CACHE) > _MAX_ENTRIES:
         _CACHE.popitem(last=False)
+    _save_disk_cache()
 
 
 def clear_generate_cache() -> None:
     """테스트·수동 초기화용."""
     _CACHE.clear()
+    if _CACHE_FILE.exists():
+        try:
+            _CACHE_FILE.unlink()
+        except Exception:
+            pass

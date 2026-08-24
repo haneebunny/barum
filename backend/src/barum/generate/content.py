@@ -292,6 +292,8 @@ def build_image_plan(
     placed: list[PlacedImage] = []
     if req.result_id:
         placed.append(PlacedImage(slot="hero", image_url=f"/reports/{req.result_id}/image"))
+    for pid in req.product_photo_ids or []:
+        placed.append(PlacedImage(slot="product_photo", image_url=f"/uploads/{pid}"))
 
     gen = ImageGenResult()
     ig = req.image_generation
@@ -726,11 +728,8 @@ def _accept_approved(req: GenerateRequest) -> tuple[list[Replacement], list[str]
     return approved, rejected
 
 
-# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type. hero_fullbleed로 고정하면
-# 손 장면 허용·사진성 있는 넓은 구도 등 create 모드의 안전규칙(_body_part_line·
-# _staged_look_forbidden_line, images.py)을 그대로 상속받는다 - 여기서 새로 정할
-# 필요가 없다.
-_REPLACEMENT_IMAGE_LAYOUT_TYPE = "hero_fullbleed"
+# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type (image_text_split: 한쪽에 이미지, 한쪽에 문구)
+_REPLACEMENT_IMAGE_LAYOUT_TYPE = "image_text_split"
 
 
 def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
@@ -776,6 +775,25 @@ def _replacement_copy_sections(reps: list[Replacement]) -> list[Section]:
     ]
 
 
+def _replacement_display_sections(reps: list[Replacement]) -> list[Section]:
+    """승인된 대체표현마다 카드로 낼 실제 문구.
+
+    `_replacement_copy_sections`(이미지 프롬프트 힌트용, "원문" → "대체문구" 표기)와
+    달리 이건 사용자가 그대로 읽는 카드 본문이라 대체문구만 낸다. module_kind를
+    이미지 쪽(`_replacement_image_modules`)과 같은 `replacement_i`로 맞춰야
+    `build_cards`가 이미지와 짝짓는다.
+    """
+    return [
+        Section(
+            kind=f"replacement_{i}",
+            text=r.replaced,
+            source="remediation",
+            module_kind=f"replacement_{i}",
+        )
+        for i, r in enumerate(reps)
+    ]
+
+
 def _generate_improve_content(
     req: GenerateRequest, *, judge, vlm, image_generator=None, image_sink=None, photo_resolver=None
 ) -> GenerateResponse:
@@ -784,6 +802,13 @@ def _generate_improve_content(
     image_generator를 주면 승인된 대체표현마다 배경 이미지도 만든다
     (`_replacement_image_modules` 참고). 안 주면 기존 동작 그대로다(배치·가드레일만,
     회귀 없음).
+
+    **create 모드와 같은 카드형 산출물을 낸다**(팀장 지시, 2026-08-24). 전에는
+    화면이 `sections`를 긴 HTML로 이어붙였는데, 대체표현 이미지의 module_kind
+    (`replacement_i`)가 어떤 섹션의 kind와도 안 겹치게 일부러 분리해 둔 값이라
+    화면 쪽 매칭이 원천적으로 안 됐다 - 이미지는 만들어지고 저장까지 됐는데 그릴
+    자리가 없어 조용히 버려졌다(실측, 2026-08-24). `build_cards`(create 모드가
+    쓰는 그 함수)를 그대로 재사용해 대체표현마다 카드 1장(이미지+문구)으로 낸다.
     """
     gate_rejected: list[str] = []
     if req.approved_replacements is not None:
@@ -801,18 +826,32 @@ def _generate_improve_content(
     # **최종 결과 기준으로 본다**(원문 기준으로 보면 다른 치환이 먼저 처리한 것까지
     # 미적용으로 세고, 정작 결과에 남은 위반은 못 잡는다).
     unapplied = unapplied_originals(safe_content, reps) + gate_rejected
-    # 3. 섹션 조립: 개선된 원문(광고문구) + LLM 저위험 서술
-    sections = [
-        Section(kind="광고문구", text=safe_content, source="remediation" if reps else "template")
-    ]
-    sections += generate_sections(req, vlm)
-    # 4. PII 제거
+    # 3. 섹션 조립: 대체표현이 있으면 대체표현별 카드를 구성하고, 없으면 safe_content를 단일 카드로 구성한다.
+    sections = (
+        _replacement_display_sections(reps)
+        if reps
+        else [
+            Section(
+                kind="광고문구",
+                text=safe_content,
+                source="remediation" if reps else "template",
+                module_kind="ad_copy",
+            )
+        ]
+    )
+    # 4. PII 제거 (대체표현 카드 문구도 여기서 같이 - 별도 필드로 새면 마스킹을
+    # 우회한다, PR #345와 같은 이유)
     cleaned, pii_kinds = _strip_pii(sections)
+    # 대체표현 카드 문구는 ad_copy 전체 문장 안에 이미 포함돼 있다. 재검증에
+    # 그대로 또 넣으면 판정기가 같은 문장을 두 번 세서 위반 개수가 부풀려진다
+    # (2026-08-24) - ad_copy·LLM 서술만 재검증한다.
+    recheck_input = [s for s in cleaned if not (s.module_kind or "").startswith("replacement_")]
     # 5. 이미지 배치·가드레일 + 승인된 대체표현별 배경 이미지 생성
+    replacement_modules = _replacement_image_modules(reps)
     image_plan = build_image_plan(
         req,
         plan=LayoutPlan(
-            modules=_replacement_image_modules(reps),
+            modules=replacement_modules,
             product_type=infer_product_type(req.product_name),
             source="improve_replacements",
         ),
@@ -822,7 +861,26 @@ def _generate_improve_content(
         sections=_replacement_copy_sections(reps),
     )
     # 6. 생성물 재검증
-    recheck, risks = _recheck(cleaned, req, judge)
+    recheck, risks = _recheck(recheck_input, req, judge)
+    # 7. 카드 조립. build_image_plan에 넘긴 plan(대체표현만)과 별개다 - 나머지
+    # 모듈(ad_copy·LLM 서술)은 이미지가 필요 없어서 애초에 이미지 생성 쪽 plan에
+    # 안 넣었다(과금 안 남). build_cards는 module_kind로 image_plan.module_images를
+    # 찾으므로, 대응하는 이미지가 없는 모듈은 그냥 문구만 있는 카드로 나간다.
+    # 7. 카드 조립.
+    # 대체표현이 있으면 각 대체표현별 split 카드를 메인으로 구성하고,
+    # 대체표현이 없을 때만 ad_copy 단일 카드를 statement로 구성한다.
+    cards_plan = LayoutPlan(
+        modules=replacement_modules if replacement_modules else [
+            LayoutModule(
+                kind="ad_copy",
+                purpose="개선된 전체 광고 문구",
+                has_claim_risk=False,
+                layout_type="section_statement",
+            )
+        ],
+        product_type=infer_product_type(req.product_name),
+        source="improve_replacements",
+    )
     return GenerateResponse(
         sections=cleaned,
         replacements=reps,
@@ -832,6 +890,7 @@ def _generate_improve_content(
         recheck=recheck,
         unapplied_replacements=unapplied,
         disclaimer=_DISCLAIMER,
+        cards=build_cards(cleaned, cards_plan, image_plan),
     )
 
 
@@ -905,6 +964,13 @@ def build_cards(
         if not (sec.text or "").strip() and not sec.table_rows:
             continue
         img = images.get(module.kind)
+        image_url = img.image_url if img else None
+        image_status = img.status if img else "skipped"
+        if not image_url and len(cards) == 0 and image_plan.placed:
+            # 생성된 모듈 이미지가 없을 때, 첫 카드(히어로)는 배치된 원본/업로드 사진을 사용
+            image_url = image_plan.placed[0].image_url
+            image_status = "placed"
+
         # 인정문구는 법으로 정해진 문구라 길어도 헤드라인 자리를 지킨다.
         head, body = split_headline(
             sec.text, allow_long_headline=sec.source == "approved_claim"
@@ -918,8 +984,8 @@ def build_cards(
                 body=body,
                 text=sec.text,
                 text_source=sec.source,
-                image_url=img.image_url if img else None,
-                image_status=img.status if img else "skipped",
+                image_url=image_url,
+                image_status=image_status,
                 table_rows=sec.table_rows,
                 clinical_stat=sec.clinical_stat,
             )

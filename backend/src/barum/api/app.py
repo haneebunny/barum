@@ -557,6 +557,19 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     return {"photo_id": photo_id}
 
 
+@app.get("/uploads/{photo_id}")
+def get_uploaded_photo(photo_id: str) -> Response:
+    """`POST /uploads/product-photo`로 업로드된 원본 제품사진을 스트리밍한다."""
+    if not _PHOTO_ID_RE.match(photo_id):
+        raise HTTPException(status_code=404, detail="잘못된 사진 id입니다.")
+    try:
+        data = download_image(_checks_client(), f"uploads/{photo_id}")
+    except Exception:
+        raise HTTPException(status_code=404, detail="해당 업로드 사진을 찾을 수 없습니다.")
+    ext = photo_id[photo_id.rfind(".") :] if "." in photo_id else ""
+    return Response(content=data, media_type=_EXT_TO_CT.get(ext, "application/octet-stream"))
+
+
 def _resolve_reference_photos(client):
     """`GenerateRequest` → 참조 이미지 바이트 목록. `generate_content`에 주입한다.
 

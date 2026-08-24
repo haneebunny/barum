@@ -185,6 +185,18 @@ def test_제품사진_업로드하면_photo_id를_낸다(monkeypatch):
     assert photo_id.endswith(".png")
     assert client_fake.files[f"uploads/{photo_id}"] == b"PNGDATA"
 
+    # 스트리밍 조회 확인
+    get_r = client.get(f"/uploads/{photo_id}")
+    assert get_r.status_code == 200
+    assert get_r.content == b"PNGDATA"
+    assert get_r.headers["content-type"] == "image/png"
+
+
+def test_업로드_사진_조회_잘못된_id는_404(monkeypatch):
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    r = client.get("/uploads/invalid-id")
+    assert r.status_code == 404
+
 
 def test_지원하지_않는_형식은_415(monkeypatch):
     monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
