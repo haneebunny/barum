@@ -826,10 +826,11 @@ def _generate_improve_content(
     # **최종 결과 기준으로 본다**(원문 기준으로 보면 다른 치환이 먼저 처리한 것까지
     # 미적용으로 세고, 정작 결과에 남은 위반은 못 잡는다).
     unapplied = unapplied_originals(safe_content, reps) + gate_rejected
-    # 3. 섹션 조립: 개선된 원문(광고문구, module_kind="ad_copy") + 대체표현별 카드
-    # 문구(이미지와 짝지을 것) + LLM 저위험 서술.
+    # 3. 섹션 조립: 대체표현이 있으면 대체표현별 카드를 구성하고, 없으면 safe_content를 단일 카드로 구성한다.
     sections = (
-        [
+        _replacement_display_sections(reps)
+        if reps
+        else [
             Section(
                 kind="광고문구",
                 text=safe_content,
@@ -837,8 +838,6 @@ def _generate_improve_content(
                 module_kind="ad_copy",
             )
         ]
-        + _replacement_display_sections(reps)
-        + generate_sections(req, vlm)
     )
     # 4. PII 제거 (대체표현 카드 문구도 여기서 같이 - 별도 필드로 새면 마스킹을
     # 우회한다, PR #345와 같은 이유)
@@ -870,32 +869,15 @@ def _generate_improve_content(
     # 7. 카드 조립.
     # 대체표현이 있으면 각 대체표현별 split 카드를 메인으로 구성하고,
     # 대체표현이 없을 때만 ad_copy 단일 카드를 statement로 구성한다.
-    base_cards = (
-        replacement_modules
-        if replacement_modules
-        else [
+    cards_plan = LayoutPlan(
+        modules=replacement_modules if replacement_modules else [
             LayoutModule(
                 kind="ad_copy",
                 purpose="개선된 전체 광고 문구",
                 has_claim_risk=False,
                 layout_type="section_statement",
             )
-        ]
-    )
-    cards_plan = LayoutPlan(
-        modules=(
-            base_cards
-            + [
-                LayoutModule(
-                    kind=s.kind,
-                    purpose=s.kind,
-                    has_claim_risk=False,
-                    layout_type="step_list" if s.kind == "사용법" else "section_statement",
-                )
-                for s in cleaned
-                if s.source in ("llm", "template")
-            ]
-        ),
+        ],
         product_type=infer_product_type(req.product_name),
         source="improve_replacements",
     )

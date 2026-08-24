@@ -818,75 +818,29 @@ function ContentGeneratorContent() {
           // 2026-08-23). 백엔드는 헤드라인·본문을 둘 다 정상 생성하는데 화면엔
           // 본문이 아예 안 나가 상세페이지가 헤드라인만 나열된 것처럼 부실해
           // 보였다. 옛 sections 경로가 쓰던 .dp-subcopy를 그대로 재사용한다.
-          const bodyHtml = card.body ? `<p class="dp-subcopy">${escapeHtml(card.body)}</p>` : "";
-
-          if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
-            return `${swapComment}
-    <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card">${claimTag}<p class="dp-headline" style="color:#ffffff;">${escapeHtml(card.headline)}</p>${card.body ? `<p class="dp-subcopy" style="color:rgba(255,255,255,0.92);">${escapeHtml(card.body)}</p>` : ""}</div>
-    </div>
-    ${imageCaption}
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "image_text_split" && dataUri) {
-            const side = statementAltIndex % 2 === 0 ? "left" : "right";
-            statementAltIndex++;
-            return `${swapComment}
-    <div class="dp-split dp-split-${side}">
-      <div class="dp-split-media-wrap">
-        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${imageCaption}
-      </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
-    </div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "step_list" && dataUri) {
-            const side = statementAltIndex % 2 === 0 ? "left" : "right";
-            statementAltIndex++;
-            return `${swapComment}
-    <div class="dp-split dp-split-${side}">
-      <div class="dp-split-media-wrap">
-        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${imageCaption}
-      </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
-    </div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "section_statement") {
-            const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
-            statementAltIndex++;
-            return `<div class="dp-statement${tone}${finePrintCard}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "mood_macro" && dataUri) {
-            return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${imageCaption}
-    ${card.headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
-    ${card.body ? `<p class="dp-caption">${escapeHtml(card.body)}</p>` : ""}
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "banner_strip") {
-            return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
-    ${noteHtml}`;
-          }
-
           if (dataUri) {
-            // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
             return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${imageCaption}
-    <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
+    <div class="dp-card" data-swap="${escapeAttr(card.module_kind)}">
+      <div class="dp-card-media-wrap">
+        <img src="${dataUri}" alt="${escapeAttr(card.headline || '상세 이미지')}" class="dp-card-img" />
+        ${imageCaption}
+      </div>
+      <div class="dp-card-body">
+        ${claimTagOnLight}
+        ${card.headline ? `<p class="dp-headline">${escapeHtml(card.headline)}</p>` : ""}
+        ${bodyHtml}
+      </div>
+    </div>
     ${noteHtml}`;
           }
-          return `<div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
+
+          return `<div class="dp-card-text${finePrintCard}">
+      <div class="dp-card-body">
+        ${claimTagOnLight}
+        ${card.headline ? `<p class="dp-headline">${escapeHtml(card.headline)}</p>` : ""}
+        ${bodyHtml}
+      </div>
+    </div>
     ${noteHtml}`;
         })
       );
@@ -921,52 +875,24 @@ function ContentGeneratorContent() {
     }
     .detailpage * { box-sizing: border-box; }
     .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; color: var(--dp-ink-2); }
-    .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 24px; }
-    /* 불투명 카드는 이미지를 가려 "발표자료" 느낌이 난다(팀장 지시, 2026-08-20). 카드 대신
-       아래에서 올라오는 스크림 위에 글자만 얹는다. 스크림 최하단 alpha 0.6은 최악 조건
-       (순백 이미지)에서도 흰 글자 대비 5.74:1로 WCAG AA 본문 기준(4.5:1)을 넘는다(DESIGN.md §3.1). */
-    .dp-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.34) 34%, rgba(0,0,0,0) 68%); pointer-events: none; }
-    .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
-    .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.4; color: #ffffff; margin: 0 0 7px; }
-    .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
-    /* 인정문구(법정 고정 문구)로 채워진 히어로 본문이 짧게 끝나도 "빈 카드"가
-       아니라 의도된 짧음이라는 걸 드러내는 작은 태그. 새 색 없이 흰 배경
-       투명도만 조절(--dp-* 토큰 체계와 별개인 히어로 위 오버레이 전용 표기). */
-    /* .dp-hero-card span(1클래스+1태그, 특이성 0,1,1)이 바로 위에 있어 이
-       배지가 .dp-claim-tag 단독(0,1,0)이면 밀린다 - .dp-hero-card와 묶어서
-       특이성을 0,2,0으로 올려야 이긴다(실측 확인, 2026-08-23). */
-    .dp-hero-card .dp-claim-tag { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.32); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
-    /* 히어로 밖(밝은 배경) 전용 톤 - 어느 모듈에나 인정문구가 붙을 수 있어
-       (베베 확인) 밝은 배경용 변형이 필요하다. 새 색 없이 기존 --dp-ink-3·
-       --dp-surface-sub·--dp-line 토큰만 재사용. */
-    .dp-claim-tag-onlight { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: var(--dp-ink-3); background: var(--dp-surface-sub); border: 1px solid var(--dp-line); border-radius: 3px; padding: 2px 7px; margin: 0 0 6px; }
+    .dp-card { margin-bottom: 0; background: var(--dp-surface); border-bottom: 1px solid var(--dp-line); }
+    .dp-card:last-child { border-bottom: none; }
+    .dp-card-media-wrap { position: relative; width: 100%; background: var(--dp-surface-sub); }
+    .dp-card-img { width: 100%; height: auto; display: block; object-fit: contain; }
+    .dp-ai-caption { margin: 6px 16px 8px; font-size: 10px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
+    .dp-card-body { padding: 22px 24px 26px; text-align: center; }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 13.5px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-2); word-break: keep-all; }
+    .dp-card-text { padding: 28px 24px; text-align: center; border-bottom: 1px solid var(--dp-line); background: var(--dp-surface); }
+    .dp-card-text.dp-fine { background: var(--dp-surface-sub); padding: 18px 24px; }
+    .dp-card-text:last-child { border-bottom: none; }
+    .dp-claim-tag-onlight { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: var(--dp-ink-3); background: var(--dp-surface-sub); border: 1px solid var(--dp-line); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-block.dp-fine { padding: 20px 24px; background: var(--dp-surface-sub); }
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
     .dp-step-text { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 14.5px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); white-space: pre-line; }
-    .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
-    .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
-    .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
-    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
-    .dp-subcopy { margin: 0; font-size: 13px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
-    .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
-    .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
-    .dp-statement .dp-headline { font-size: 20px; }
-    .dp-split { display: flex; align-items: stretch; gap: 0; }
-    .dp-split-right { flex-direction: row-reverse; }
-    .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
-    .dp-split-right .dp-split-media-wrap { margin: 24px 24px 24px 0; }
-    /* .dp-split이 align-items: stretch라 본문(copy)이 아주 짧거나 없으면 그
-       칸 높이에 맞춰 이미지가 14~26px로 찌그러든다(실측, 2026-08-23). 최소
-       높이로 방지 - 본문이 길면 원래대로 늘어난다(min-height라 위쪽만 막음). */
-    .dp-split-media { flex: 1; min-height: 200px; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
-    .dp-split-media-wrap .dp-ai-caption { margin: 5px 0 0; }
-    .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
-    .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
-    .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
-    .dp-banner p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-table-wrap { padding: 20px 24px; }
     .dp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
     .dp-table tr { border-bottom: 1px solid var(--dp-line); }
@@ -974,13 +900,10 @@ function ContentGeneratorContent() {
     .dp-table td { padding: 10px 4px; }
     .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
     .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
-    /* 실증자료 수치강조 카드(히어로 figure). 비교 대상 없는 단일 값이라 큰
-       글자 하나로만 낸다 - 막대·게이지 등 비교용 시각화를 붙이지 않는다
-       (value가 자유표기라 그릴 수도 없다, 2026-08-24). */
-    .dp-stat { padding: 36px 24px; background: var(--dp-surface); text-align: center; }
+    .dp-stat { padding: 32px 24px; background: var(--dp-surface); text-align: center; border-bottom: 1px solid var(--dp-line); }
     .dp-stat-label { margin: 0 0 10px; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 13px; font-weight: 600; color: var(--dp-ink-3); }
-    .dp-stat-value { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 44px; font-weight: 700; color: var(--dp-accent); letter-spacing: -0.5px; line-height: 1.2; }
-    .dp-stat-foot { margin: 12px 0 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11px; color: var(--dp-ink-3); }
+    .dp-stat-value { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 40px; font-weight: 700; color: var(--dp-accent); letter-spacing: -0.5px; line-height: 1.2; }
+    .dp-stat-foot { margin: 10px 0 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11px; color: var(--dp-ink-3); }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>`;
 
