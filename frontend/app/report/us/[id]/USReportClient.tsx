@@ -7,6 +7,8 @@ import type { USPreflightReport, USPreflightFinding, USPreflightCategory } from 
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { getReport, getReportImageUrl } from "@/lib/api/client";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
+import { useReportAccess, useTickets } from "@/lib/tickets";
 
 const CATEGORY_META: Record<
   USPreflightCategory,
@@ -130,6 +132,11 @@ export function USReportClient({ resultId }: USReportClientProps) {
   const [imageErrorGlobal, setImageErrorGlobal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<USPreflightCategory | null>(null);
 
+  // 해외 프리플라이트는 무료 체험이 없다. 이용권을 쓰기 전엔 요약 건수조차 안 보여준다.
+  const { isUnlocked, unlock } = useReportAccess(resultId);
+  const { has, consume } = useTickets();
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
   useEffect(() => {
     const raw = sessionStorage.getItem(`us-preflight-${resultId}`);
     if (raw) {
@@ -176,6 +183,67 @@ export function USReportClient({ resultId }: USReportClientProps) {
   if (!report) {
     return (
       <div className="p-[24px] text-[var(--ink-3)] text-[13px]">로딩 중...</div>
+    );
+  }
+
+  // 이용권을 쓰기 전엔 리포트 본문을 통째로 막는다(국내와 달리 무료 요약이 없다).
+  if (!isUnlocked) {
+    const openWithTicket = () => {
+      if (!consume("overseas")) {
+        setCheckoutOpen(true);
+        return;
+      }
+      unlock("overseas");
+    };
+    return (
+      <>
+        <div className="p-[18px_20px] border-b border-[var(--line)] flex items-center gap-4 flex-wrap">
+          <h1 className="text-[15px] font-bold text-[var(--ink)] m-0">미국 수출 프리플라이트</h1>
+          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+          <span className="font-mono text-[11.5px] text-[var(--ink-3)]">검사 완료 · 열람 전</span>
+        </div>
+
+        <div className="p-[28px_20px]">
+          <div className="max-w-[620px] mx-auto border border-[var(--line-2)] bg-[var(--surface-sub)] p-[22px_24px]">
+            <p className="m-0 mb-2.5 font-mono text-[11px] font-bold text-[var(--ink-3)] tracking-[0.3px]">[ 이용권 필요 ]</p>
+            <h2 className="m-0 mb-2.5 text-[17px] font-extrabold text-[var(--ink)] tracking-[-0.3px] break-keep">
+              검사가 끝났습니다. 이용권으로 리포트를 여세요.
+            </h2>
+            <p className="m-0 mb-4 text-[13px] text-[var(--ink-2)] leading-[1.75] break-keep">
+              해외 프리플라이트는 무료 체험이 없습니다. 이용권 1장으로 성분 OTC 분류 판정, 미국 미승인 성분,
+              라벨링 이슈와 수정 권고안 전체를 볼 수 있고, 한 번 연 리포트는 기간 제한 없이 남습니다.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={openWithTicket}
+                className="font-sans text-[13px] font-bold p-[11px_16px] border border-[var(--brand-deep)] dark:border-[var(--brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:opacity-90 inline-flex items-center justify-center gap-1.5"
+              >
+                {has("overseas") ? "보유 이용권으로 열기" : "이용권 구매하고 열기"} <span className="font-mono">→</span>
+              </button>
+              <Link
+                href="/inspect?region=US"
+                className="font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center gap-1.5 no-underline"
+              >
+                <span className="font-mono">←</span> 다시 검사
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <PageFooter />
+
+        <TicketCheckoutModal
+          isOpen={checkoutOpen}
+          onClose={() => setCheckoutOpen(false)}
+          kinds={["overseas"]}
+          defaultKind="overseas"
+          reason="이 미국 프리플라이트 리포트 전체를 엽니다. 현재 선크림 단일 품목 베타 범위입니다."
+          onPurchased={() => {
+            if (consume("overseas")) unlock("overseas");
+          }}
+        />
+      </>
     );
   }
 

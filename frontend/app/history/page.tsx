@@ -3,8 +3,8 @@
 /**
  * 검사 이력 페이지.
  *
- * - Free 티어: 7일 이전 행 잠금 티저 (Basic부터 무제한 보관)
- * - 티어 스위처는 목업 전용(데모 장치)
+ * - 무료 요약 리포트는 7일까지만 보관하고 그 뒤엔 만료 처리한다. 이용권으로
+ *   열어본 리포트는 기간 제한 없이 남는다.
  * - 데이터: mock을 StoredCheck 구조에 맞춤. API가 생기면 MOCK_HISTORY를
  *   GET /reports 목록 응답으로 교체하고 필터를 쿼리 파라미터로 옮긴다.
  */
@@ -15,7 +15,7 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { HistoryRow, HistoryRowList, HistoryRowLocked } from "@/components/HistoryRow/HistoryRow";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
-import { useTier } from "@/lib/tier";
+import { FREE_SUMMARY_RETENTION_DAYS, freeSummaryDaysLeft, isFreeSummaryExpired, useAllReportAccess } from "@/lib/tickets";
 import { MOCK_HISTORY, REGION_LABEL, STATUS_META, daysAgo, dateLabel, rowProps, type MockHistoryItem } from "@/lib/mockHistory";
 import { FilterDropdown } from "@/components/Dropdown/FilterDropdown";
 
@@ -48,7 +48,7 @@ const PERIOD_FILTERS = [
 ] as const;
 
 export default function HistoryPage() {
-  const { tier } = useTier();
+  const reportAccess = useAllReportAccess();
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState<(typeof REGION_OPTIONS)[number]["key"]>("전체");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
@@ -63,7 +63,9 @@ export default function HistoryPage() {
     return true;
   });
 
-  const isLockedRow = (row: MockHistoryItem) => tier === "Free" && daysAgo(row.created_at) > 7;
+  // 무료 요약은 7일 보관. 이용권으로 연 리포트는 access에 unlockedWith가 있어 만료되지 않는다.
+  const isLockedRow = (row: MockHistoryItem) =>
+    isFreeSummaryExpired(row.created_at, reportAccess[row.result_id]);
 
   const rowHref = (row: MockHistoryItem) =>
     row.status === "draft" ? `/inspect?id=${row.result_id}` : `/report/${row.result_id}`;
@@ -133,16 +135,32 @@ export default function HistoryPage() {
                     lock_message={
                       <>
                         <LockIcon />
-                        7일 이전 이력은 Basic부터 무제한 보관됩니다
+                        무료 요약은 {FREE_SUMMARY_RETENTION_DAYS}일간만 보관됩니다. 이용권으로 열어둔 리포트는 기간 제한 없이 남아요.
                         <Link href="/#pricing" className="ml-1 font-mono text-[11px] font-bold text-[var(--brand-ink)] border-b border-[var(--brand-ink)] no-underline cursor-pointer">
-                          요금제 보기
+                          이용권 보기
                         </Link>
                       </>
                     }
                   />
                 );
               }
-              return <HistoryRow key={row.result_id} href={rowHref(row)} {...rowProps(row)} />;
+              // 곧 만료되는 무료 요약은 남은 일수를 날짜 옆에 글자로 붙인다(경보색 안 씀).
+              const props = rowProps(row);
+              const daysLeft = reportAccess[row.result_id]?.unlockedWith
+                ? null
+                : freeSummaryDaysLeft(row.created_at);
+              return (
+                <HistoryRow
+                  key={row.result_id}
+                  href={rowHref(row)}
+                  {...props}
+                  date_label={
+                    daysLeft !== null && daysLeft <= 3
+                      ? `${props.date_label} · 만료 D-${daysLeft}`
+                      : props.date_label
+                  }
+                />
+              );
             })}
           </HistoryRowList>
         )}
@@ -150,7 +168,7 @@ export default function HistoryPage() {
 
       {/* 하단 안내 */}
       <div className="pt-[4px] pb-[18px] font-mono text-[10.5px] text-[var(--ink-3)]">
-        {tier === "Free" ? "Free는 최근 7일 이력만 보관됩니다" : "이력 무제한 보관 중"} · 행을 누르면 리포트로 이동
+        무료 요약은 {FREE_SUMMARY_RETENTION_DAYS}일 보관 · 이용권으로 연 리포트는 기간 제한 없음 · 행을 누르면 리포트로 이동
       </div>
       </PageContent>
 

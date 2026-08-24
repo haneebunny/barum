@@ -11,7 +11,8 @@ import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { GenerationLoading } from "@/components/GenerationLoading/GenerationLoading";
 import { Dropzone } from "@/components/Dropzone";
-import { useTier, useImproveQuota } from "@/lib/tier";
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
+import { useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 import { useError } from "@/lib/error/ErrorContext";
 
 interface ProductPhotoItem {
@@ -111,7 +112,20 @@ function nextProductPhotoId() {
   return `pp-${productPhotoSeq}`;
 }
 
-function UpgradeCard({ title, desc, children }: { title: string; desc: string; children?: React.ReactNode }) {
+/**
+ * 콘텐츠 생성 잠금 카드. 보유 이용권이 있으면 바로 쓰게 하고, 없으면 결제 모달로 보낸다.
+ */
+function ContentLockCard({
+  title,
+  desc,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  desc: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
   return (
     <div className="p-[18px_20px]">
       <div className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[32px_24px] flex flex-col items-center gap-3 text-center">
@@ -120,14 +134,14 @@ function UpgradeCard({ title, desc, children }: { title: string; desc: string; c
           <path d="M8 11V7a4 4 0 0 1 8 0v4" />
         </svg>
         <p className="m-0 text-[14px] font-bold text-[var(--ink)]">{title}</p>
-        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[44ch]">{desc}</p>
-        {children}
-        <Link
-          href="/#pricing"
-          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[46ch] leading-[1.7] break-keep">{desc}</p>
+        <button
+          type="button"
+          onClick={onAction}
+          className="font-sans text-[13px] font-bold p-[11px_16px] border border-[var(--brand-deep)] dark:border-[var(--brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:opacity-90 inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
         >
-          요금제 보기 <span className="font-mono">→</span>
-        </Link>
+          {actionLabel} <span className="font-mono">→</span>
+        </button>
       </div>
     </div>
   );
@@ -141,8 +155,28 @@ function ContentGeneratorContent() {
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
 
-  const { tier } = useTier();
-  const { remaining, consume, resetWithAd } = useImproveQuota();
+  // 상세페이지 1건 = 이용권 1장. 리포트에서 넘어왔으면 그 리포트에 붙은 생성 권한을
+  // 쓰고, 리포트 없이 직접 들어온 create 모드는 독립 작업공간 하나에 권한을 쌓는다.
+  const accessKey = id || "standalone-content";
+  const { contentRemaining, canGenerateContent, grantContent, consumeContent } = useReportAccess(accessKey);
+  const { has, consume: consumeTicket } = useTickets();
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  // 콘텐츠 단독을 먼저 쓰고, 없으면 결합형을 쓴다(단독이 더 싸서 사용자에게 유리).
+  const ownedContentKind: TicketKind | null = has("content")
+    ? "content"
+    : has("combo")
+      ? "combo"
+      : null;
+
+  /** 보유 이용권 1장을 이 작업공간에 붙인다. 잔액이 없으면 결제 모달로 보낸다. */
+  const useContentTicket = () => {
+    if (!ownedContentKind || !consumeTicket(ownedContentKind)) {
+      setCheckoutOpen(true);
+      return;
+    }
+    grantContent();
+  };
 
   const [report, setReport] = useState<CheckReport | null>(null);
   // 검사 때 입력된 상품명(리포트 envelope). 개선 모드엔 상품명 입력칸이 없어서
@@ -567,7 +601,7 @@ function ContentGeneratorContent() {
           approved_replacements: approvedReplacements,
         });
       }
-      if (mode === "improve" && tier === "Free") consume();
+      consumeContent(); // 결합형 1장에 딸린 생성 횟수를 1회 차감
       setGenResult(res);
       setConfirmedRisks({});
       setIsModalOpen(true);
@@ -1195,30 +1229,25 @@ function ContentGeneratorContent() {
             </>
           )}
         </span>
+        {canGenerateContent && (
+          <span className="ml-auto tabular-nums">상세페이지 {contentRemaining}건 생성 가능</span>
+        )}
       </div>
 
-      {/* 티어 게이팅 */}
-      {mode === "create" && tier !== "Pro" ? (
-        <UpgradeCard
-          title="콘텐츠 생성은 Pro에서 이용 가능합니다"
-          desc="제품 정보를 입력하면 화장품법을 준수하는 상세페이지 초안을 자동으로 만들어줍니다. Pro 요금제에서 월 5회까지 사용할 수 있어요."
+      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. */}
+      {!canGenerateContent ? (
+        <ContentLockCard
+          title="상세페이지 초안을 만들려면 이용권이 필요합니다"
+          desc="제품 정보나 수정 권고안을 바탕으로 화장품법을 지키는 상세페이지 초안 1건을 만들어 드립니다. 콘텐츠 생성 이용권 1장이 상세페이지 1건이고, 결합형을 쓰면 리포트 열람까지 함께 처리됩니다."
+          actionLabel={
+            ownedContentKind === "content"
+              ? "보유 콘텐츠 이용권 쓰기"
+              : ownedContentKind === "combo"
+                ? "보유 결합형 쓰기"
+                : "콘텐츠 생성 이용권 구매"
+          }
+          onAction={useContentTicket}
         />
-      ) : mode === "improve" && tier === "Free" && remaining <= 0 ? (
-        <UpgradeCard
-          title="무료 체험 1회를 모두 사용했습니다"
-          desc="수정 권고안 기반 콘텐츠 개선은 Basic부터 무제한으로 이용할 수 있어요."
-        >
-          <button
-            type="button"
-            onClick={resetWithAd}
-            className="font-sans text-[12px] font-semibold p-[8px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5 transition-all duration-[120ms]"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-              <polygon points="6,4 20,12 6,20" />
-            </svg>
-            광고 보고 1회 추가 사용
-          </button>
-        </UpgradeCard>
       ) : (
         <>
 
@@ -1986,6 +2015,19 @@ function ContentGeneratorContent() {
           <p className="m-0 mb-1.5 px-2.5 text-[13px] text-[var(--ink-3)]">확인이 필요한 항목이 없습니다.</p>
         )}
       </Modal>
+
+      {/* 결제 직후 이 작업공간에 생성 권한을 붙인다. 리포트를 낀 경우(id 있음)엔
+          결합형이 리포트 열람까지 덮지만, 그 처리는 리포트 화면이 맡는다. */}
+      <TicketCheckoutModal
+        isOpen={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        kinds={["content", "combo"]}
+        defaultKind="content"
+        reason="상세페이지 초안 1건을 만듭니다. 콘텐츠 생성 이용권 1장이 1건이고, 결합형은 리포트 열람까지 함께 포함합니다."
+        onPurchased={(kind) => {
+          if (consumeTicket(kind)) grantContent();
+        }}
+      />
     </>
   );
 }

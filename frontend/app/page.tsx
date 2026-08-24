@@ -5,6 +5,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/ThemeToggle/ThemeToggle";
 import { BootOverlay, useConsoleEntry } from "@/components/BootOverlay/BootOverlay";
+import {
+  FREE_DAILY_LIMIT,
+  FREE_SUMMARY_RETENTION_DAYS,
+  MAIN_PRODUCTS,
+  TICKET_VALIDITY_NOTE,
+  formatPrice,
+  getProduct,
+} from "@/lib/tickets";
 
 // ── Intersection Observer를 통한 reveal 훅 ──────────────────────────
 function useReveal(threshold = 0.15) {
@@ -605,7 +613,7 @@ export default function LandingPage() {
         <div className="ml-auto hidden md:flex items-center gap-6">
           <a href="#features" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">기능</a>
           <a href="#export" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">수출 검사</a>
-          <a href="#pricing" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">요금제</a>
+          <a href="#pricing" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">이용권</a>
           <a href="#faq" className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">FAQ</a>
 
           <div className="flex items-center gap-4">
@@ -645,7 +653,7 @@ export default function LandingPage() {
           >
             <a href="#features" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">기능</a>
             <a href="#export" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">수출 검사</a>
-            <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">요금제</a>
+            <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">이용권</a>
             <a href="#faq" onClick={() => setIsMobileMenuOpen(false)} className="text-[var(--ink-2)] no-underline hover:text-[var(--ink)]">FAQ</a>
             <div className="flex items-center justify-between gap-4 pt-2 border-t border-dashed border-[var(--line-2)]">
               <ThemeToggle />
@@ -734,7 +742,7 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="text-[var(--ink-3)] font-mono text-[11px] leading-[1.8]">
-            가입 없이 월 3건 무료 · 신용카드 불필요<br />결과는 참고 정보이며 법적 자문이 아닙니다
+            가입 없이 하루 3건 무료 · 신용카드 불필요<br />결과는 참고 정보이며 법적 자문이 아닙니다
           </div>
         </div>
 
@@ -1130,7 +1138,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── 요금제 섹션 ── */}
+      {/* ── 이용권 섹션 ── */}
       <div
         id="pricing"
         ref={pricingRef}
@@ -1141,107 +1149,115 @@ export default function LandingPage() {
           transition: prefersReducedMotion ? "none" : "opacity 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1)"
         }}
       >
-        <div className="text-[var(--brand-ink)] mb-[12px] font-mono text-[11.5px] font-bold tracking-[0.4px]">요금제</div>
-        <h2 className="m-0 mb-[28px] text-[var(--ink)] text-[34px] font-extrabold leading-[1.3] tracking-[-1px] break-keep">
-          진단은 무료로 시작,<br />더 필요할 때만 유료로.
+        <div className="text-[var(--brand-ink)] mb-[12px] font-mono text-[11.5px] font-bold tracking-[0.4px]">이용권</div>
+        <h2 className="m-0 mb-[10px] text-[var(--ink)] text-[34px] font-extrabold leading-[1.3] tracking-[-1px] break-keep">
+          필요한 만큼만,<br />이용권으로 결제하세요.
         </h2>
-        <div className="grid grid-cols-3 gap-3 mb-[12px]">
-          {/* FREE */}
-          <div
-            className="flex flex-col bg-[var(--surface)] border border-[var(--line-2)]"
-            style={{
-              clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
-              transition: prefersReducedMotion ? "none" : "clip-path 220ms ease-out 0ms"
-            }}
-          >
-            <div
-              style={{
-                opacity: pricingRevealed ? 1 : 0,
-                transition: prefersReducedMotion ? "none" : "opacity 320ms ease-out 220ms"
-              }}
-              className="flex-1 flex flex-col"
+        <p className="m-0 mb-[22px] max-w-[640px] text-[var(--ink-3)] text-[14px] leading-[1.75] break-keep">
+          월 구독은 없습니다. 검사할 일이 생겼을 때 이용권을 사두고, 리포트를 열 때 한 장씩 씁니다.
+        </p>
+
+        {/* 무료 체험 안내. 국내 검사에만 해당하고 해외는 아래 EXPORT 줄에서 따로 밝힌다 */}
+        <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-[16px_20px] mb-3">
+          <div className="flex items-center gap-[14px] mb-[8px] flex-wrap">
+            <span className="text-[var(--surface)] bg-[var(--ink)] font-mono text-[11px] font-bold px-[7px] py-[2px]">FREE</span>
+            <span className="text-[var(--ink)] text-[14px] font-semibold break-keep">국내 검사는 하루 {FREE_DAILY_LIMIT}회까지 무료</span>
+            <Link
+              href="/home"
+              onClick={enterConsole}
+              className="ml-auto inline-flex items-center gap-[6px] whitespace-nowrap no-underline text-[var(--brand-ink)] text-[13px] font-bold hover:underline"
             >
-              <div className="p-[20px_20px_0]">
-                <div className="text-[var(--ink-3)] mb-[10px] font-mono text-[12px] font-bold">FREE</div>
-                <div className="text-[var(--ink)] mb-[2px] text-[34px] font-extrabold tracking-[-1px]">0원</div>
-                <div className="text-[var(--ink-3)] mb-[16px] text-[12px]">일단 검사부터 해보세요</div>
-              </div>
-              <div className="flex-1 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] p-[14px_20px] text-[13px] font-medium leading-[2]">
-                국내 검사 월 3건<br />위험 문구 표시 + <b className="text-[var(--ink)]">조항 근거 1건 공개</b><br />이력 7일 보관
-              </div>
-              <div className="p-[0_20px_20px]">
-                <Link href="/home" onClick={enterConsole} className="flex items-center justify-center no-underline border border-[var(--line-2)] text-[var(--ink-2)] hover:bg-[var(--nav-active-bg)] cursor-pointer py-[11px] text-[13.5px] font-bold">무료로 시작</Link>
-              </div>
-            </div>
+              무료로 검사해보기 <span className="font-mono">→</span>
+            </Link>
           </div>
-          {/* BASIC */}
-          <div
-            className="flex flex-col bg-[var(--surface)] border border-[var(--line-2)]"
-            style={{
-              clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
-              transition: prefersReducedMotion ? "none" : "clip-path 220ms ease-out 50ms"
-            }}
-          >
-            <div
-              style={{
-                opacity: pricingRevealed ? 1 : 0,
-                transition: prefersReducedMotion ? "none" : "opacity 320ms ease-out 270ms"
-              }}
-              className="flex-1 flex flex-col"
-            >
-              <div className="p-[20px_20px_0]">
-                <div className="text-[var(--ink-3)] mb-[10px] font-mono text-[12px] font-bold">BASIC</div>
-                <div className="text-[var(--ink)] mb-[2px] text-[34px] font-extrabold tracking-[-1px]">월 4.9만원</div>
-                <div className="text-[var(--ink-3)] mb-[16px] text-[12px]">인플루언서 · 1인 브랜드</div>
-              </div>
-              <div className="flex-1 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] p-[14px_20px] text-[13px] font-medium leading-[2]">
-                국내 검사 월 20건<br /><b className="text-[var(--brand-ink)]">전체 조항 근거 + 문구별 수정안</b><br />이력 무제한 · 재검사 무제한
-              </div>
-              <div className="p-[0_20px_20px]">
-                <Link href="/home" onClick={enterConsole} className="flex items-center justify-center no-underline border border-[var(--brand)] text-[var(--brand-ink)] hover:bg-[var(--nav-active-bg)] cursor-pointer py-[11px] text-[13.5px] font-bold">Basic 시작</Link>
-              </div>
-            </div>
-          </div>
-          {/* PRO */}
-          <div
-            className="flex flex-col bg-[var(--surface)] relative border border-[var(--brand-deep)] shadow-[inset_0_0_0_1px_var(--brand-deep)]"
-            style={{
-              clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
-              transition: prefersReducedMotion ? "none" : "clip-path 220ms ease-out 100ms"
-            }}
-          >
-            <span className="absolute top-[-1px] right-[-1px] text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono text-[10px] font-bold px-2 py-[3px]">추천 · 상시 운영 브랜드</span>
-            <div
-              style={{
-                opacity: pricingRevealed ? 1 : 0,
-                transition: prefersReducedMotion ? "none" : "opacity 320ms ease-out 320ms"
-              }}
-              className="flex-1 flex flex-col"
-            >
-              <div className="p-[20px_20px_0]">
-                <div className="text-[var(--brand-ink)] mb-[10px] font-mono text-[12px] font-bold">PRO</div>
-                <div className="text-[var(--ink)] mb-[2px] text-[34px] font-extrabold tracking-[-1px]">월 14.9만원</div>
-                <div className="text-[var(--ink-3)] mb-[16px] text-[12px]">검사를 넘어 제작까지</div>
-              </div>
-              <div className="flex-1 border-t border-dashed border-[var(--line-2)] text-[var(--ink-2)] p-[14px_20px] text-[13px] font-medium leading-[2]">
-                국내 검사 무제한<br />Basic 전체 포함<br /><b className="text-[var(--brand-ink)]">상세페이지 초안 제작 월 5회</b><br />수출 검사 애드온 구매 가능
-              </div>
-              <div className="p-[0_20px_20px]">
-                <Link href="/home" onClick={enterConsole} className="flex items-center justify-center gap-[7px] no-underline bg-[var(--brand)] text-[var(--on-brand)] hover:bg-[var(--brand-deep)] cursor-pointer py-[11px] text-[13.5px] font-bold">Pro 시작 <span className="font-mono">→</span></Link>
-              </div>
-            </div>
-          </div>
+          <p className="m-0 text-[var(--ink-3)] text-[13px] leading-[1.75] break-keep">
+            무료는 요약 리포트입니다. 총 위반 건수와 조항별 건수를 보여드리고, 근거 조항과 수정 권고안은 직접 고른 위반 1건만 미리 볼 수 있어요.
+            요약 리포트는 {FREE_SUMMARY_RETENTION_DAYS}일간 보관되고, 이용권으로 열어본 리포트는 기간 제한 없이 남습니다.
+          </p>
         </div>
 
-        {/* EXPORT 애드온 (토글 기능 포함) */}
+        <div className="grid grid-cols-3 gap-3 mb-[12px] max-[900px]:grid-cols-1">
+          {MAIN_PRODUCTS.map((product, i) => {
+            // 결합형이 리포트와 콘텐츠 생성을 한 번에 덮어서 기본 추천으로 둔다
+            const recommended = product.kind === "combo";
+            const unit = product.packs[0].price;
+            return (
+              <div
+                key={product.kind}
+                className={`flex flex-col relative bg-[var(--surface)] border ${recommended ? "border-[var(--brand-deep)] shadow-[inset_0_0_0_1px_var(--brand-deep)]" : "border-[var(--line-2)]"}`}
+                style={{
+                  clipPath: pricingRevealed ? "inset(0)" : "inset(0 100% 0 0)",
+                  transition: prefersReducedMotion ? "none" : `clip-path 220ms ease-out ${50 * i}ms`
+                }}
+              >
+                {recommended && (
+                  <span className="absolute top-[-1px] right-[-1px] text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono text-[10px] font-bold px-2 py-[3px]">추천</span>
+                )}
+                <div
+                  style={{
+                    opacity: pricingRevealed ? 1 : 0,
+                    transition: prefersReducedMotion ? "none" : `opacity 320ms ease-out ${50 * i + 220}ms`
+                  }}
+                  className="flex-1 flex flex-col"
+                >
+                  <div className="p-[20px_20px_0]">
+                    <div className={`mb-[10px] font-mono text-[12px] font-bold ${recommended ? "text-[var(--brand-ink)]" : "text-[var(--ink-3)]"}`}>{product.name}</div>
+                    <div className="text-[var(--ink)] mb-[2px] text-[34px] font-extrabold tracking-[-1px] tabular-nums">{formatPrice(unit)}</div>
+                    <div className="text-[var(--ink-3)] mb-[16px] text-[12px]">1건 기준</div>
+                  </div>
+                  <div className="flex-1 border-t border-dashed border-[var(--line-2)] p-[14px_20px]">
+                    <p className="m-0 mb-[12px] text-[var(--ink-2)] text-[13px] font-medium leading-[1.7] break-keep">{product.desc}</p>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-[6px]">
+                      {product.packs.map((pk) => {
+                        // 1건 단가 x 수량과 비교한 묶음 할인율
+                        const off = Math.round((1 - pk.price / (unit * pk.size)) * 100);
+                        return (
+                          <li key={pk.size} className="flex items-baseline gap-2 font-mono text-[12.5px] tabular-nums">
+                            <span className="text-[var(--ink-3)] w-[36px] shrink-0">{pk.size}건</span>
+                            <span className="text-[var(--ink)] font-bold">{formatPrice(pk.price)}</span>
+                            {off > 0 && <span className="text-[var(--ink-3)] text-[11px]">{off}% 할인</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {product.packs.length === 1 && (
+                      <p className="m-0 mt-[8px] font-mono text-[var(--ink-3)] text-[11.5px]">1건 단위로만 판매합니다</p>
+                    )}
+                  </div>
+                  <div className="p-[0_20px_20px]">
+                    <Link
+                      href="/mypage"
+                      onClick={enterConsole}
+                      className={`flex items-center justify-center gap-[7px] no-underline cursor-pointer py-[11px] text-[13.5px] font-bold ${
+                        recommended
+                          ? "bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] hover:opacity-90"
+                          : "border border-[var(--line-2)] text-[var(--ink-2)] hover:bg-[var(--nav-active-bg)]"
+                      }`}
+                    >
+                      이용권 구매 {recommended && <span className="font-mono">→</span>}
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="m-0 mb-3 max-w-[720px] text-[var(--ink-3)] text-[12.5px] leading-[1.75] break-keep">{TICKET_VALIDITY_NOTE}</p>
+
+        {/* 해외 프리플라이트. 아직 선크림 단일 품목 베타라 위 3종과 위계를 나눠
+            메인 가격표 밖에 접이식으로 둔다. */}
         <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)]">
           <div
             onClick={() => setExportOpen(v => !v)}
-            className="flex items-center gap-[14px] cursor-pointer hover:bg-[var(--nav-active-bg)] p-[14px_20px]"
+            className="flex items-center gap-[14px] cursor-pointer hover:bg-[var(--nav-active-bg)] p-[14px_20px] flex-wrap"
           >
             <span className="text-[var(--surface)] bg-[var(--ink)] font-mono text-[11px] font-bold px-[7px] py-[2px]">EXPORT</span>
-            <span className="text-[var(--ink)] text-[14px] font-semibold">미국 수출 검사 애드온</span>
-            <span className="text-[var(--ink-3)] text-[13px] break-keep">건당 4.9만원 · Pro 전용</span>
+            <span className="border border-[var(--line-2)] text-[var(--ink-3)] font-mono text-[10.5px] font-bold px-[6px] py-[2px]">BETA</span>
+            <span className="text-[var(--ink)] text-[14px] font-semibold break-keep">{getProduct("overseas").name}</span>
+            <span className="text-[var(--ink-3)] text-[13px] break-keep">
+              건당 <span className="font-mono tabular-nums">{formatPrice(getProduct("overseas").packs[0].price)}</span> · 선크림 단일 품목 · 무료 체험 없음
+            </span>
             <span className="ml-auto inline-flex items-center gap-[5px] text-[var(--brand-ink)] whitespace-nowrap text-[13px] font-bold">
               {exportOpen ? "접기" : "자세히"}
               <span className="inline-flex transition-transform duration-200" style={{ transform: exportOpen ? "rotate(180deg)" : "rotate(0)" }}>
@@ -1251,11 +1267,11 @@ export default function LandingPage() {
           </div>
           {exportOpen && (
             <div className="p-[0_20px_16px] animate-[popIn_0.2s_both]">
-              <div className="grid grid-cols-3 gap-3 pt-1">
+              <div className="grid grid-cols-3 gap-3 pt-1 max-[900px]:grid-cols-1">
                 {[
                   { label: "대상", text: "미국 FDA/FTC 기준 1차 스크리닝 (EU · 일본 · 중국 순차 지원 예정)" },
                   { label: "포함 항목", text: "성분 OTC 분류 판정 · 라벨링 필수 항목 · 금지 클레임 탐지 · 수정 권고안" },
-                  { label: "비용 비교", text: "RA 컨설팅 건당 200만~670만원 대비 약 1/40 (올리기 전 1차 점검용)" },
+                  { label: "비용 비교", text: "RA 컨설팅 건당 200만~670만원 대비 1/250 이하 (올리기 전 1차 점검용)" },
                 ].map(c => (
                   <div key={c.label} className="bg-[var(--surface)] border border-[var(--line)] p-[12px_14px]">
                     <div className="text-[var(--brand-ink)] mb-[6px] font-mono text-[11px] font-bold">{c.label}</div>
@@ -1263,6 +1279,13 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
+              <Link
+                href="/mypage"
+                onClick={enterConsole}
+                className="mt-3 inline-flex items-center gap-[6px] no-underline border border-[var(--line-2)] text-[var(--ink-2)] hover:bg-[var(--nav-active-bg)] cursor-pointer py-[9px] px-[14px] text-[13px] font-bold"
+              >
+                해외 프리플라이트 이용권 구매 <span className="font-mono">→</span>
+              </Link>
             </div>
           )}
         </div>
@@ -1333,7 +1356,7 @@ export default function LandingPage() {
               지금 광고 문구를 붙여넣으세요.<br />3분 뒤 조항까지 나옵니다.
             </div>
             <div className="font-mono text-[12px] text-[var(--on-brand)] opacity-80">
-              가입 없이 월 3건 무료 · 신용카드 불필요 ▊
+              가입 없이 하루 3건 무료 · 신용카드 불필요 ▊
             </div>
           </div>
           <Link

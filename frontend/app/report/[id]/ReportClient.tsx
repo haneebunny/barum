@@ -10,7 +10,8 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 import { Modal } from "@/components/Modal/Modal";
-import { useTier, type Tier } from "@/lib/tier";
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
+import { getProduct, grantsReport, useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 
 
 
@@ -63,13 +64,19 @@ interface FindingCardProps {
   open: boolean;
   onToggle: () => void;
   onScrollToPosition: (idx: number) => void;
-  tier: Tier;
+  // 이용권으로 리포트 전체를 열었는지. 열렸으면 모든 카드의 근거·대체표현이 보인다.
+  reportUnlocked: boolean;
+  // 무료 요약에서 사용자가 미리보기로 고른 1건인지
+  isPreviewPick: boolean;
+  // 아직 미리보기를 안 골랐는지. 고를 수 있으면 잠긴 카드에 선택 버튼을 띄운다.
+  canPickPreview: boolean;
+  onPickPreview: () => void;
   // 판정할 때 배치로 만들어져 리포트에 실려온 대체표현(PR #265). 있으면 그대로 쓰고
   // 새로 호출하지 않는다. hasReportReplacements가 false일 때만(옛 리포트·생성 실패)
   // /remediate 실시간 조회로 폴백한다.
   replacement: Replacement | undefined;
   hasReportReplacements: boolean;
-  onOpenPricingModal: () => void;
+  onOpenCheckout: () => void;
 }
 
 function getRemediationText(violationType: string, suggestionsNode: React.ReactNode) {
@@ -94,55 +101,6 @@ function getRemediationText(violationType: string, suggestionsNode: React.ReactN
   );
 }
 
-// 잠긴 대체표현 자물쇠 클릭 시 뜨는 요금제 안내. 결제 연동 없이 티어
-// 비교+업그레이드 CTA만 있는 가벼운 모달(시연용, 팀장 지시 2026-08-23).
-// 실제 결제 대신 이 화면의 티어 미리보기 스위치를 바로 바꿔 데모 흐름을
-// 끊지 않는다.
-function PricingModal({
-  isOpen,
-  onClose,
-  onSelectTier,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectTier: (tier: "Basic" | "Pro") => void;
-}) {
-  return (
-    <Modal isOpen={isOpen} title="요금제 업그레이드" onClose={onClose} size="sm">
-      <div className="flex flex-col gap-3">
-        <p className="m-0 text-[12.5px] text-[var(--ink-3)] leading-[1.6]">
-          FREE는 지적 3건까지만 근거·조문·대체표현을 볼 수 있어요. 업그레이드하면 전체 지적을 제한 없이 확인할 수 있습니다.
-        </p>
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => onSelectTier("Basic")}
-            className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
-          >
-            <span>
-              <span className="block font-bold text-[13px] text-[var(--ink)]">Basic</span>
-              <span className="block text-[11.5px] text-[var(--ink-3)]">전체 지적 근거·조문·대체표현 무제한</span>
-            </span>
-            <span className="font-mono text-[11px] font-bold text-[var(--brand-ink)] whitespace-nowrap">선택 →</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTier("Pro")}
-            className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
-          >
-            <span>
-              <span className="block font-bold text-[13px] text-[var(--ink)]">Pro</span>
-              <span className="block text-[11.5px] text-[var(--ink-3)]">Basic 전체 + 콘텐츠 생성</span>
-            </span>
-            <span className="font-mono text-[11px] font-bold text-[var(--brand-ink)] whitespace-nowrap">선택 →</span>
-          </button>
-        </div>
-        <p className="m-0 text-[10.5px] text-[var(--ink-3)]">결제 연동 전 데모입니다 - 선택하면 이 화면의 티어 미리보기가 바뀝니다.</p>
-      </div>
-    </Modal>
-  );
-}
-
 function FindingCard({
   finding,
   index,
@@ -156,10 +114,13 @@ function FindingCard({
   open,
   onToggle,
   onScrollToPosition,
-  tier,
+  reportUnlocked,
+  isPreviewPick,
+  canPickPreview,
+  onPickPreview,
   replacement,
   hasReportReplacements,
-  onOpenPricingModal,
+  onOpenCheckout,
 }: FindingCardProps) {
   const { showError } = useError();
   // 옛 리포트(hasReportReplacements=false)만 쓰는 폴백. 배치 데이터가 있으면
@@ -193,9 +154,9 @@ function FindingCard({
   const isExcluded = act === "exclude";
   const isAccepted = act === "accept";
   const accentColor = cls === "violation" ? "var(--crit)" : "var(--ink-3)";
-  // FREE 티어도 첫 3건은 근거·조문·대체표현 전부 잠금 없이(팀장 지시,
-  // 2026-08-23) - num===1 한정 "체험 1회" 클릭 방식은 폐기.
-  const isUnlocked = tier !== "Free" || num <= 3;
+  // 이용권으로 리포트를 열었으면 전부 보이고, 무료 요약이면 사용자가 고른
+  // 미리보기 1건만 보인다(고르면 그 리포트에선 고정, 재선택 불가).
+  const isUnlocked = reportUnlocked || isPreviewPick;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -248,7 +209,7 @@ function FindingCard({
           </span>
         </div>
 
-        {/* 표현(밑줄 인용) + 수용/제외. 잠긴 카드는 이 자리에 "유료 요금제 전용"을
+        {/* 표현(밑줄 인용) + 수용/제외. 잠긴 카드는 이 자리에 잠금 문구를
             반복하지 않는다 - 접힌 헤더에서 아예 뺐다(팀장 지시, 카드당 문구는
             본문 안 한 곳으로 통일). 표현이 길어지면 줄어들며 줄바꿈되고 버튼
             묶음은 shrink-0으로 항상 제 폭을 지킨다(#292·#295 교훈 유지). */}
@@ -319,7 +280,7 @@ function FindingCard({
             </p>
 
             {/* 조문 원문 인용. 잠긴 카드는 자물쇠 아이콘만(문구 반복 제거 -
-                카드당 "유료 요금제 전용"은 대체표현 자리 한 곳에만, 팀장 지시). */}
+                카드당 잠금 문구는 대체표현 자리 한 곳에만, 팀장 지시). */}
             {(finding.legal_basis || finding.legal_basis_text) && (
               <blockquote className="m-0 border-l border-[var(--line-2)] pl-3 max-w-[62ch]">
                 {!isUnlocked ? (
@@ -347,11 +308,11 @@ function FindingCard({
                 (팀장 지시, 2026-08-23). CTA 버튼을 없앤다 - "버튼 눌렀는데
                 결과가 없음이면 낚시"라는 지적을 그대로 반영. */}
             {!isUnlocked ? (
-              // 상태 3: 잠금 - 블러+자물쇠, 클릭하면 요금제 모달. 카드당 유일한
-              // "유료 요금제 전용" 문구가 여기 있다.
+              // 상태 3: 잠금 - 블러+자물쇠. 아직 미리보기를 안 골랐으면 이 건을
+              // 미리보기로 쓰고(리포트당 1건, 고르면 고정), 이미 썼으면 결제로 보낸다.
               <button
                 type="button"
-                onClick={onOpenPricingModal}
+                onClick={canPickPreview ? onPickPreview : onOpenCheckout}
                 className="relative max-w-[62ch] text-left cursor-pointer"
               >
                 <div
@@ -368,7 +329,7 @@ function FindingCard({
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-[var(--ink-3)] bg-[var(--canvas)] border border-[var(--line-2)] px-2.5 py-1 rounded-sm">
                     <Lock size={12} weight="bold" />
-                    유료 요금제 전용
+                    {canPickPreview ? "이 건을 무료로 미리보기" : "이용권으로 열기"}
                   </span>
                 </div>
               </button>
@@ -459,15 +420,48 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [bulkUndoSnapshot, setBulkUndoSnapshot] = useState<Record<number, "accept" | "exclude" | null> | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const { tier, setTier } = useTier();
-  // 대체표현 열람 "체험 1회" 클릭 카운트는 폐기(FREE도 첫 3건은 전부 잠금
-  // 없이 보이는 구조로 바뀌어 더 이상 필요 없다, 2026-08-23).
-  const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  // 이용권 체계. 무료로 돌린 리포트는 요약만 보이고, 이용권 1장을 쓰면 전체가
+  // 열린다(무료 요약을 나중에 업그레이드하는 경로도 이 흐름을 그대로 쓴다).
+  const reportId = envelope.result_id;
+  const { access, isUnlocked, contentRemaining, canGenerateContent, pickPreview, unlock, grantContent } =
+    useReportAccess(reportId);
+  const { has, consume } = useTickets();
+  // 결제 모달을 두 목적으로 쓴다. 리포트를 여는 것과 상세페이지 생성 권한을 붙이는 건
+  // 파는 이용권도 결제 후 처리도 다르다.
+  const [checkoutIntent, setCheckoutIntent] = useState<null | "unlock" | "content">(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
   const [flagFilter, setFlagFilter] = useState<"위반" | "검토필요" | null>(null);
 
   const d = activeEnvelope.report;
+
+  /** 보유한 이용권 1장을 써서 이 리포트를 연다. 잔액이 없으면 결제 모달로 보낸다. */
+  const unlockWithTicket = (kind: TicketKind) => {
+    if (!consume(kind)) {
+      setCheckoutIntent("unlock");
+      return;
+    }
+    unlock(kind);
+  };
+
+  /**
+   * 상세페이지 생성 권한을 이 리포트에 붙인다. 아직 안 연 리포트에 결합형을 쓰면
+   * 열람까지 한 번에 처리되고, 이미 열린 리포트면 생성 권한만 얹는다.
+   */
+  const attachContent = (kind: TicketKind) => {
+    if (!isUnlocked && grantsReport(kind)) unlock(kind);
+    else grantContent();
+  };
+
+  /** 보유 이용권으로 상세페이지 생성 권한 확보. 콘텐츠 단독을 먼저 쓰고 없으면 결합형. */
+  const useOwnedContentTicket = () => {
+    const kind: TicketKind | null = has("content") ? "content" : has("combo") ? "combo" : null;
+    if (!kind || !consume(kind)) {
+      setCheckoutIntent("content");
+      return;
+    }
+    attachContent(kind);
+  };
 
   // 판정 로직 중복 제거(화면 워크어라운드, 근본 원인은 발표 후 과제 - PM 8대
   // 루루 지시 2026-08-22). 같은 문장이 규칙 경로와 VLM 경로에서 둘 다 finding으로
@@ -664,6 +658,16 @@ export function ReportClient({ envelope }: ReportClientProps) {
     }
   });
 
+  // 무료 요약에 쓰는 조항별 건수. 무료에서도 "몇 조항에 몇 건"까지는 공개한다
+  // (근거 조문과 수정 권고안만 유료). 건수 기준은 위 nViol/nReview와 같게 맞춘다.
+  const countsByClause = new Map<string, number>();
+  d.findings.forEach((f, i) => {
+    if (!visibleFindingIdx.has(i)) return;
+    if (actions[i] === "exclude") return;
+    const label = TYPE_LABEL[f.violation_type as keyof typeof TYPE_LABEL] || f.violation_type;
+    countsByClause.set(label, (countsByClause.get(label) ?? 0) + 1);
+  });
+
   const isImageMode = findByOrder.some((o) => o.f.location.tile) || d.unjudged.some((u) => u.location.tile);
 
   const ujByOrder = [...d.unjudged].sort((a, b) => a.location.order - b.location.order);
@@ -745,6 +749,57 @@ export function ReportClient({ envelope }: ReportClientProps) {
             이미지 일부를 못 읽었습니다. 다시 시도해 주세요.
           </p>
         )}
+
+        {/* 무료 요약 안내. 이용권으로 열기 전까지 총 건수와 조항별 건수만 공개한다. */}
+        {!isUnlocked && (
+          <div className="mt-3 border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[14px_16px]">
+            <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
+              <span className="text-[var(--surface)] bg-[var(--ink)] font-mono text-[10.5px] font-bold px-[7px] py-[2px]">무료 요약</span>
+              <span className="text-[13px] font-bold text-[var(--ink)]">
+                전체 {nViol + nReview}건 중 위반 {nViol}건
+              </span>
+            </div>
+            <dl className="m-0 mb-3 flex flex-wrap gap-x-5 gap-y-1">
+              {Array.from(countsByClause.entries()).map(([label, count]) => (
+                <div key={label} className="flex items-baseline gap-1.5">
+                  <dt className="text-[12px] text-[var(--ink-3)]">{label}</dt>
+                  <dd className="m-0 font-mono text-[12.5px] font-bold tabular-nums text-[var(--ink)]">{count}건</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="m-0 mb-3 text-[12.5px] text-[var(--ink-3)] leading-[1.7] break-keep">
+              근거 조문과 수정 권고안은 이용권으로 열 수 있습니다.{" "}
+              {access.previewViolationId
+                ? "무료 미리보기 1건은 이미 사용했습니다."
+                : "잠긴 카드 하나를 눌러 무료 미리보기 1건을 고를 수 있어요. 한 번 고르면 이 리포트에서는 바꿀 수 없습니다."}
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(has("domestic") || has("combo")) && (
+                <button
+                  type="button"
+                  onClick={() => unlockWithTicket(has("combo") ? "combo" : "domestic")}
+                  className="font-sans text-[13px] font-bold p-[10px_14px] border border-[var(--brand-deep)] dark:border-[var(--brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:opacity-90 inline-flex items-center justify-center gap-1.5"
+                >
+                  보유 이용권으로 전체 열기 <span className="font-mono">→</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCheckoutIntent("unlock")}
+                className="font-sans text-[13px] font-semibold p-[10px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5"
+              >
+                이용권 구매
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isUnlocked && (
+          <p className="m-0 mt-2.5 font-mono text-[11.5px] text-[var(--ink-3)]">
+            {getProduct(access.unlockedWith!).name} 이용권으로 열람 중 · 보관 기한 없음
+            {contentRemaining > 0 && ` · 상세페이지 생성 ${contentRemaining}건 가능`}
+          </p>
+        )}
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
@@ -767,9 +822,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
               직후 나타나는 링크로 처리한다(17건 일괄 변경이라 사고 방지 필요하지만
               모달 확인 단계를 넣기엔 개별 수용/제외에 이미 있는 토글식 취소
               관례와 결이 다르다고 판단). */}
-          {/* FREE 티어는 카드에 수용/제외 버튼 자체가 없다("유료 요금제 전용"만
-              보임) - 일괄 버튼만 따로 있으면 앞뒤가 안 맞는다. */}
-          {tier !== "Free" && (
+          {/* 잠긴 카드엔 수용/제외 버튼 자체가 없다 - 일괄 버튼만 따로 있으면
+              앞뒤가 안 맞아서, 리포트를 이용권으로 연 뒤에만 노출한다. */}
+          {isUnlocked && (
             <div className="flex items-center gap-2.5 mb-2.5">
               <button
                 type="button"
@@ -822,10 +877,13 @@ export function ReportClient({ envelope }: ReportClientProps) {
                     setOpenOrderIndex(openOrderIndex === orderIndex ? null : orderIndex);
                   }}
                   onScrollToPosition={(idx) => scrollToBox(idx, false)}
-                  tier={tier}
+                  reportUnlocked={isUnlocked}
+                  isPreviewPick={access.previewViolationId === g.key}
+                  canPickPreview={!isUnlocked && !access.previewViolationId}
+                  onPickPreview={() => pickPreview(g.key)}
                   replacement={replacementByFindingIndex.get(g.repIdx)}
                   hasReportReplacements={hasReportReplacements}
-                  onOpenPricingModal={() => setPricingModalOpen(true)}
+                  onOpenCheckout={() => setCheckoutIntent("unlock")}
                 />
               );
             })}
@@ -979,7 +1037,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
         <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        {tier === "Pro" ? (
+        {canGenerateContent ? (
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
@@ -1002,13 +1060,22 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </Link>
           </div>
         ) : (
+          // 잠김 안내는 위반 신호가 아니라 상태 표시라 경보색(--crit)을 쓰지 않는다(§F).
           <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
-            <span className="text-[11.5px] text-[var(--crit)] font-semibold">🔒 상세페이지 제작은 Pro 요금제 전용 기능입니다.</span>
+            <span className="text-[11.5px] text-[var(--ink-3)]">
+              상세페이지 제작에는 콘텐츠 생성 이용권이 필요합니다.
+            </span>
             <button
-              disabled
-              className="font-sans text-[13px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-3)] cursor-not-allowed inline-flex items-center justify-center gap-1.5 rounded-sm"
+              type="button"
+              onClick={useOwnedContentTicket}
+              className="font-sans text-[13px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5"
             >
-              상세페이지 만들기 잠김 🔒
+              {has("content")
+                ? "보유 콘텐츠 이용권 쓰기"
+                : has("combo")
+                  ? "보유 결합형 쓰기"
+                  : "콘텐츠 생성 이용권 구매"}{" "}
+              <span className="font-mono">→</span>
             </button>
           </div>
         )}
@@ -1016,12 +1083,22 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
       <PageFooter basis={envelope.report.basis ?? null} snapshot />
 
-      <PricingModal
-        isOpen={pricingModalOpen}
-        onClose={() => setPricingModalOpen(false)}
-        onSelectTier={(t) => {
-          setTier(t);
-          setPricingModalOpen(false);
+      {/* 결제 후 곧바로 이 리포트에 이용권 1장을 쓴다. purchase()가 스토어에
+          동기 반영된 뒤 호출돼서 방금 산 장수를 그대로 집어간다. */}
+      <TicketCheckoutModal
+        isOpen={checkoutIntent !== null}
+        onClose={() => setCheckoutIntent(null)}
+        kinds={checkoutIntent === "content" ? ["content", "combo"] : ["domestic", "combo"]}
+        defaultKind={checkoutIntent === "content" ? "content" : "domestic"}
+        reason={
+          checkoutIntent === "content"
+            ? "이 리포트의 수정 권고안을 반영해 상세페이지 초안 1건을 만듭니다. 아직 리포트를 열지 않았다면 결합형이 열람까지 함께 처리합니다."
+            : "이 리포트의 근거 조문과 수정 권고안 전체를 엽니다. 결합형을 고르면 상세페이지 초안 1건까지 이어서 만들 수 있어요."
+        }
+        onPurchased={(kind) => {
+          if (!consume(kind)) return;
+          if (checkoutIntent === "content") attachContent(kind);
+          else unlock(kind);
         }}
       />
 
