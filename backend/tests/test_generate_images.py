@@ -693,3 +693,80 @@ def test_섹션에서_모듈별_카피를_뽑는다():
     assert out["texture_visual"] == "가벼운 제형"
     assert out["how_to_use"] == "이렇게 쓰세요"
     assert _copy_by_module(None) == {}
+
+
+# ── 이미지 상한 배분 우선순위 (2026-08-24) ──────────────────────────────────
+#
+# 계획 순서대로 상한을 채우면 자유생성 카피가 앞에 몰릴 때 사업자가 낸 실증자료
+# 카드가 이미지를 못 받았다. 같은 골든 입력을 세 번 돌렸더니 임상 카드가 각각
+# 2장·1장·0장씩 이미지를 받았다(실측). 실행마다 달라져 시연에서 터지는 유형이다.
+
+
+def test_자유생성_카피가_상한을_다_먹어도_실증자료가_이미지를_받는다():
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("hero_intro", "hero_fullbleed"),
+        ("cause_explain", "section_statement"),
+        ("ingredient_highlight", "image_text_split"),
+        ("texture_visual", "mood_macro"),
+        ("how_to_use", "step_list"),
+        ("bundle_suggestion", "card_list_repeat"),
+        ("clinical_intro", "section_statement"),
+        ("clinical_result", "clinical_bar_compare"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=6)
+    made = {r.module_kind for r in results if r.status == "generated"}
+    assert "clinical_intro" in made, "사업자가 낸 자료가 자유생성 카피에 밀리면 안 된다"
+    assert "clinical_result" in made
+    assert len(made) == 6, "상한 자체는 그대로여야 한다(누가 먼저 가져가는지만 바뀐다)"
+
+
+def test_히어로는_실증자료보다도_먼저_받는다():
+    """맨 위 큰 자리가 비면 제일 티가 난다."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("hero_intro", "hero_fullbleed"),
+        ("clinical_intro", "section_statement"),
+        ("clinical_result", "clinical_bar_compare"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=1)
+    made = [r.module_kind for r in results if r.status == "generated"]
+    assert made == ["hero_intro"]
+
+
+def test_설문도_사업자_자료로_보호된다():
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("hero_intro", "hero_fullbleed"),
+        ("cause_explain", "section_statement"),
+        ("survey_result", "section_statement"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=2)
+    made = {r.module_kind for r in results if r.status == "generated"}
+    assert made == {"hero_intro", "survey_result"}
+
+
+def test_결과는_계획_순서로_돌아온다():
+    """생성은 우선순위 순서지만 읽는 사람 기준은 화면 순서다."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("hero_intro", "hero_fullbleed"),
+        ("cause_explain", "section_statement"),
+        ("clinical_intro", "section_statement"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=6)
+    assert [r.module_kind for r in results] == ["hero_intro", "cause_explain", "clinical_intro"]
+
+
+def test_배경없는_유형은_상한을_안_먹는다():
+    """table_info는 원래 셀 자격이 없다. 회귀 방지."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("full_ingredient_list", "table_info"),
+        ("product_spec", "table_info"),
+        ("hero_intro", "hero_fullbleed"),
+        ("clinical_intro", "section_statement"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=2)
+    made = {r.module_kind for r in results if r.status == "generated"}
+    assert made == {"hero_intro", "clinical_intro"}

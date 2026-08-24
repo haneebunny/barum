@@ -464,6 +464,45 @@ def generate_canvas_background(
     return CanvasBackground(status="generated"), blob
 
 
+# 사업자가 직접 낸 자료를 담는 모듈. 자유생성 카피에 밀려 이미지를 못 받으면 안 된다.
+_SELLER_DATA_PREFIXES = ("clinical",)
+_SELLER_DATA_KINDS = frozenset({"survey_result"})
+
+
+def _budget_tier(index: int, module: LayoutModule) -> int:
+    """이미지 상한을 나눠줄 우선순위. 낮을수록 먼저 받는다.
+
+    0) 첫 모듈(히어로). 맨 위에서 제일 크게 보이는 자리라 여기가 비면 제일 티가 난다.
+    1) 사업자가 낸 자료(실증자료·설문). 우리가 지어낸 게 아니라 사업자가 넣은 값이라
+       이게 빈칸이면 "자료를 넣었는데 안 실렸다"가 된다.
+    2) 나머지 자유생성 카피.
+    """
+    if index == 0:
+        return 0
+    if module.kind.startswith(_SELLER_DATA_PREFIXES) or module.kind in _SELLER_DATA_KINDS:
+        return 1
+    return 2
+
+
+def _budget_order(modules: list[LayoutModule]) -> list[int]:
+    """상한을 나눠줄 순서(계획 인덱스). 이 순서대로 돌면서 상한까지 만든다.
+
+    **왜 계획 순서로 그냥 자르면 안 되나**: 예전엔 계획 순서대로 돌다 6장을 채우면
+    끝냈다. 자유생성 카피가 앞에 몰리면 사업자가 낸 실증자료 카드가 이미지를 못 받고
+    글만 남았다. 같은 입력을 세 번 돌렸더니 임상 카드가 각각 2장·1장·0장씩 이미지를
+    받았다(2026-08-24 실측). 실행마다 달라져서 리허설에선 안 보이다가 시연에서 터진다.
+
+    카드 상한(`layout.py`)에서 이미 세운 원칙과 같다 - 사업자 자료가 자유생성 카피에
+    밀리지 않는다. **상한 자체는 그대로다. 누가 먼저 가져가는지만 바꾼다.**
+
+    그림 그리는 순서만 바뀌고 프롬프트 내용은 안 바뀐다. `build_image_prompt`가 계획
+    위치를 안 쓰기 때문이다(쓰는 건 `variation_index`뿐인데, 그건 같은 layout_type이
+    몇 번째로 **생성**됐는지라 원래도 계획 위치와 별개다).
+    """
+    # 티어가 같으면 계획 순서를 지킨다(sorted는 안정 정렬).
+    return sorted(range(len(modules)), key=lambda i: _budget_tier(i, modules[i]))
+
+
 def generate_module_images(
     plan: LayoutPlan,
     req: GenerateRequest,
@@ -521,7 +560,8 @@ def generate_module_images(
     # 두 번째 임상 모듈도 얹힐 섹션이 생겼다. 게이트만 남아 있어서 그 카드가
     # 글만 있고 이미지가 빈 채로 나왔다(2026-08-24 실측). 이제 다른 모듈과 똑같이
     # max_images 상한만 적용받는다.
-    for module in plan.modules:
+    for module_index in _budget_order(plan.modules):
+        module = plan.modules[module_index]
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
             # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
             # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.
@@ -574,4 +614,8 @@ def generate_module_images(
         seen_layout_types[module.layout_type] = variation_index + 1
         made += 1
 
+    # 결과는 계획 순서로 되돌린다. 카드 짝짓기는 kind로 하니 순서와 무관하지만,
+    # 로그와 응답을 사람이 읽을 때 화면에 뜨는 순서와 같아야 헷갈리지 않는다.
+    position = {m.kind: i for i, m in enumerate(plan.modules)}
+    results.sort(key=lambda r: position.get(r.module_kind, len(position)))
     return results, blobs
