@@ -41,7 +41,7 @@ def main() -> None:
     # 조용히, 무기한으로. 판정 근거가 바뀌는 것이라 응답이 낡는 것보다 훨씬 나쁘다
     # (2026-08-23 발견).
     reload_dirs = [str(ROOT)]
-    pack_dir = ROOT.parent / "reference"
+    pack_dir = ROOT / "reference"
     if pack_dir.exists():
         reload_dirs.append(str(pack_dir))
 

@@ -66,7 +66,7 @@ sys.path.insert(0, "src")
 
 from barum.reference.rules import _normalize  # noqa: E402
 
-_PACK = Path(__file__).resolve().parents[2] / "reference" / "cosmetic_kr"
+_PACK = Path(__file__).resolve().parents[1] / "reference" / "cosmetic_kr"
 _PROHIBITED = _PACK / "prohibited_expressions.md"
 _RULES = Path("src/barum/reference/data/judge_rules.json")
 _SYNONYMS = Path("src/barum/reference/data/synonyms.json")

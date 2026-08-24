@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REF_DIR = ROOT.parent / "reference" / "cosmetic_kr"
+REF_DIR = ROOT / "reference" / "cosmetic_kr"
 OUT_DIR = ROOT / "src" / "barum" / "reference" / "data"
 
 

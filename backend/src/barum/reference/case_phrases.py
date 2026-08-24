@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 
 _BACKEND = Path(__file__).resolve().parents[3]
-_CASES = _BACKEND.parent / "reference" / "cosmetic_kr" / "cases.md"
+_CASES = _BACKEND / "reference" / "cosmetic_kr" / "cases.md"
 
 # 사례 표에서 인용부호로 묶인 광고 문구를 뽑는다. 너무 짧은 건 흔한 말이라 뺀다.
 #
