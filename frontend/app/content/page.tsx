@@ -483,12 +483,31 @@ function ContentGeneratorContent() {
         // 없다"는 지어낸 근거로 위반을 판정하는 사고로 이어짐(베베 확인,
         // 2026-08-23). 실제 전성분 입력값이 없으면 그냥 안 보낸다 - 백엔드는
         // None이면 "전성분 미입력, 확인 못 함"으로 정직하게 검토필요를 낸다.
+        //
+        // approved_replacements: 리포트에서 수용한 대체표현을 그대로 실어
+        // 보낸다. 안 보내면 백엔드가 판정을 처음부터 다시 돌리고(비용 2배)
+        // 검출된 모든 위반을 치환해서, 사용자가 고른 항목이 무시되고 생성마다
+        // 결과가 실행편차로 흔들린다(2026-08-23 베베 감사로 발견). mock
+        // 리포트(report===null)는 승인할 실제 리포트가 없어 그대로 둔다.
+        const approvedReplacements = report
+          ? report.replacements
+              .filter((r) => r.finding_index !== null && r.finding_index !== undefined && acceptedIndices.includes(r.finding_index))
+              .map((r) => ({
+                original: r.original,
+                replaced: r.replaced,
+                finding_index: r.finding_index,
+                violation_type: r.violation_type,
+                note: r.note,
+              }))
+          : undefined;
+
         res = await generateContent({
           mode: "improve",
           content: rawContent,
           result_id: id || undefined,
           product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
           certifications: [],
+          approved_replacements: approvedReplacements,
         });
       }
       if (mode === "improve" && tier === "Free") consume();
