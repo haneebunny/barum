@@ -183,6 +183,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </button>
                     )}
                   </div>
+                  <Link href="/content?mode=create" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
+                    } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${pathname === "/content"
+                      ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
+                      : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                    }`} title="새로 만들기">
+                    <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>새로 만들기</span>
+                  </Link>
                   <Link href="/history" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
                     } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${pathname === "/history"
                       ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
@@ -204,16 +214,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </svg>
                     <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>마이페이지</span>
                   </Link>
-                  <Link href="/content?mode=create" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
-                    } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${pathname === "/content"
-                      ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
-                      : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-                    }`} title="새로 만들기">
-                    <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>새로 만들기</span>
-                  </Link>
+
                 </nav>
               </div>
             </aside>
