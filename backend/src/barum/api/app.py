@@ -567,6 +567,12 @@ def _resolve_reference_photos(client):
 
     id 형식이 안 맞거나 조회에 실패한 사진은 예상된 실패라 건너뛴다(전체 요청을
     막지 않는다. 참조 없이 배경만 생성되는 쪽으로 계속 진행).
+
+    **`product_photo_ids`가 있는데 전부 실패해도 `result_id`로는 안 내려간다**
+    (베베 리뷰, 2026-08-24). 지금은 문제가 안 된다 - create는 이 용도로 result_id를
+    안 보내고 improve는 product_photo_ids를 안 보낸다(둘 다 있는 요청이 없다). 두
+    필드가 실제로 같이 오는 흐름이 생기면 그때 폴백 방향을 정할 것 - 지금 스펙 없이
+    추측으로 넣지 않는다.
     """
     def resolve(req) -> list[bytes]:
         if req.product_photo_ids:
