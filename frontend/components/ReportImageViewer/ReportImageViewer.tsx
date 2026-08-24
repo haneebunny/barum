@@ -12,7 +12,6 @@ interface FindByOrderItem {
 }
 
 interface ReportImageViewerProps {
-  viewMode: "image" | "tile";
   findByOrder: FindByOrderItem[];
   ujByOrder: Unjudged[];
   /** null이면 실제 이미지를 아예 시도 안 한다(목업 result_id 등 - 백엔드에 이미지가 없음, 버그 아님). */
@@ -24,12 +23,8 @@ interface ReportImageViewerProps {
   onHoverChange: (idx: number | null) => void;
 }
 
-/** 원문 하이라이트 패널 본문. "원본 보기"(실제 이미지+좌표 오버레이, 줌/미니맵)와
- * "타일 보기"(좌표 없이 타일별 카드 목록) 둘 다 여기서 그린다 - viewMode는 부모가
- * 관리하는 controlled prop이다(카드 목록과 헤더 토글이 같은 파일 다른 위치에 있어서).
- */
+/** 원문 하이라이트 패널 본문 (실제 이미지 + 좌표 오버레이, 줌/미니맵) */
 export function ReportImageViewer({
-  viewMode,
   findByOrder,
   ujByOrder,
   imageUrl,
@@ -45,81 +40,11 @@ export function ReportImageViewer({
   const hasCoords = typeof srcW === "number" && typeof srcH === "number" && srcW > 0 && srcH > 0;
   const showRealImage = hasCoords && !!imageUrl && !imageErrorGlobal;
 
-  const byTile: Record<
-    string,
-    Array<
-      | { type: "find"; num: number; idx: number; item: Finding }
-      | { type: "uj"; letter: string; item: Unjudged }
-    >
-  > = {};
-  findByOrder.forEach((o) => {
-    const t = o.f.location.tile;
-    if (t) {
-      if (!byTile[t]) byTile[t] = [];
-      byTile[t].push({ type: "find", num: o.num, idx: o.idx, item: o.f });
-    }
-  });
-  ujByOrder.forEach((u, i) => {
-    const t = u.location.tile;
-    if (t) {
-      if (!byTile[t]) byTile[t] = [];
-      byTile[t].push({ type: "uj", letter: String.fromCharCode(65 + i), item: u });
-    }
-  });
-  const tiles = Object.keys(byTile).sort();
-
-  if (viewMode === "tile" || !showRealImage || !imageUrl) {
+  if (!showRealImage || !imageUrl) {
     return (
-      <>
-        {tiles.map((t) => {
-          const rows = byTile[t].sort((a, b) => a.item.location.order - b.item.location.order);
-          return (
-            <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
-              <div className="font-mono text-[11px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
-              <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
-                {rows.map((r, ri) => {
-                  if (r.type === "find") {
-                    const isExcluded = actions[r.idx] === "exclude";
-                    const cls = r.item.flag === "위반" ? "violation" : "review";
-                    const isRowHovered = hoveredIndex === r.idx;
-                    return (
-                      <div
-                        className={`relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border transition-all duration-[120ms] ${isExcluded
-                          ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                          : cls === "violation"
-                            ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
-                            : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
-                          }`}
-                        onMouseEnter={() => onHoverChange(r.idx)}
-                        onMouseLeave={() => onHoverChange(null)}
-                        key={ri}
-                      >
-                        <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
-                          ? "text-[var(--ink-3)] border-[var(--ink-3)]"
-                          : cls === "violation"
-                            ? "text-[var(--crit)] border-[var(--crit)]"
-                            : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                          }`}>{r.num}</span>
-                        <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
-                          }`}>{r.item.span}</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
-                      <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
-                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        <p className="text-[var(--ink-3)] text-[10.5px] mt-2">
-          실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
-        </p>
-      </>
+      <div className="p-8 text-center text-[var(--ink-3)] text-[12.5px] border border-[var(--line-2)] bg-[var(--surface-sub)] font-mono">
+        원본 이미지를 불러올 수 없습니다.
+      </div>
     );
   }
 
