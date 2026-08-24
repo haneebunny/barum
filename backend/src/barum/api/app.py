@@ -601,14 +601,19 @@ def _resolve_reference_photos(client):
                 except Exception as e:
                     print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
             return images
-        if req.result_id:
-            row = get_check(client, req.result_id)
-            if row is None or not row.get("image_path"):
-                return []
-            try:
-                return [download_image(client, row["image_path"])]
-            except Exception as e:
-                print(f"    [skip] 리포트 이미지 조회 실패({req.result_id}): {type(e).__name__}: {e}")
+        # **improve 모드는 참조 사진을 안 쓴다**(팀장 결정, 2026-08-24).
+        # 한때 `req.result_id`로 원본 검사 이미지를 참조로 넘겼는데(#346),
+        # 그 이미지는 '제품 컷'이 아니라 **상세페이지 통짜 스크린샷**이다
+        # (실측 480x2161, 세로가 가로의 4.5배). 프롬프트는 "참조 사진 속 제품의
+        # 형태·라벨을 그대로 유지하고 배경만 합성하라"고 지시하는데, 페이지 전체를
+        # 주면 그게 "이 페이지를 유지하라"로 읽힌다. 결과가 이랬다:
+        #   - 헤더·브레드크럼·가격·버튼·하단 표까지 통째로 재현
+        #   - 그 과정에서 글자가 전부 뭉개짐(YOURBERRY → YOUARFRAY)
+        #   - 참조의 가로세로 비율까지 물려받아 세로로 4.5배 긴 이미지가 카드에 박힘
+        # 프롬프트엔 이미 "남의 페이지 디자인은 옮겨 그리지 마라"가 있었지만
+        # "제품을 유지하라"는 지시가 그걸 이겼다. 지시를 더 세게 쓰는 대신
+        # 원인(잘못된 참조)을 없앤다. improve는 제품 컷 업로드 흐름 자체가 없어서
+        # 참조 없이 배경만 만드는 게 맞다.
         return []
     return resolve
 

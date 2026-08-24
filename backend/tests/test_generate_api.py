@@ -35,7 +35,9 @@ def test_generate_endpoint_returns_structured_content():
     assert r.status_code == 200
     body = r.json()
     assert any(s["kind"] == "광고문구" for s in body["sections"])
-    assert any(s["source"] == "llm" for s in body["sections"])
+    # 개선 모드는 저위험 서술을 LLM으로 만들지 않는다(2026-08-24, 사유는
+    # test_generate_content.py 같은 이름 테스트 주석 참고). 대체표현 섹션이 그 자리다.
+    assert any((s["module_kind"] or "").startswith("replacement_") for s in body["sections"])
     assert body["replacements"][0]["original"] == "재생"
     assert "전화번호" in body["pii_removed"]
     assert body["recheck"] is not None
@@ -261,16 +263,21 @@ class FakeChecksClient(FakeBucketClient):
         return SimpleNamespace(data=[row] if row else [])
 
 
-def test_resolve_reference_photos는_result_id면_리포트_이미지를_참조로_쓴다():
-    """improve 모드는 product_photo_ids가 아니라 result_id로 원본 검사 이미지를
-    찾는다(2026-08-24, PM 요청 - 원본 상품사진이 리포트에 이미 있으니 그걸 참조로
-    쓰면 라벨보존 합성 효과를 improve도 그대로 받는다)."""
+def test_resolve_reference_photos는_result_id로는_참조를_안_만든다():
+    """**리포트 원본 이미지는 참조로 쓰지 않는다**(팀장 결정, 2026-08-24).
+
+    한때 썼다(#346, "원본 상품사진이 리포트에 있으니 라벨보존 합성 효과를 improve도
+    받자"). 그런데 그 이미지는 제품 컷이 아니라 **상세페이지 통짜 스크린샷**이다
+    (실측 480x2161). "참조 속 제품의 형태·라벨을 유지하라"는 지시와 만나면 모델이
+    페이지 전체(헤더·가격·표)를 글자까지 재현하고, 참조의 세로로 긴 비율까지
+    물려받는다. 원인을 없앤다.
+    """
     client_fake = FakeChecksClient({"rid1": {"image_path": "checks/rid1/original.png"}})
     client_fake.files["checks/rid1/original.png"] = b"REPORT_PHOTO"
     resolve = app_module._resolve_reference_photos(client_fake)
 
     req = GenerateRequest(mode="improve", content="x", result_id="rid1")
-    assert resolve(req) == [b"REPORT_PHOTO"]
+    assert resolve(req) == []
 
 
 def test_resolve_reference_photos는_리포트에_이미지가_없으면_빈_목록():
@@ -306,9 +313,13 @@ def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘�
     assert fake_gen.images_received == [[b"PHOTOBYTES"]]
 
 
-def test_generate가_improve_모드에서도_리포트_이미지를_참조로_생성기에_넘긴다(monkeypatch):
-    """improve 모드 /generate end-to-end 배선 확인(2026-08-24). product_photo_ids가
-    아니라 result_id로 원본 검사 이미지를 찾아 참조로 넘긴다."""
+def test_improve_모드는_리포트_이미지를_참조로_넘기지_않는다(monkeypatch):
+    """**참조 없이 배경만 만든다**(팀장 결정, 2026-08-24).
+
+    한때 result_id로 원본 검사 이미지를 참조로 넘겼는데(#346), 그 이미지는 제품
+    컷이 아니라 상세페이지 통짜 스크린샷(480x2161)이라 모델이 페이지 전체를
+    글자까지 재현했다. 이미지는 여전히 생성하되 참조는 안 준다.
+    """
     client_fake = FakeChecksClient({"rid1": {"image_path": "checks/rid1/original.png"}})
     client_fake.files["checks/rid1/original.png"] = b"REPORT_PHOTO"
 
@@ -334,7 +345,8 @@ def test_generate가_improve_모드에서도_리포트_이미지를_참조로_�
     body = r.json()
     images = body["image_plan"]["module_images"]
     assert images and images[0]["status"] == "generated"
-    assert fake_gen.images_received == [[b"REPORT_PHOTO"]]
+    # 이미지는 만들되 참조는 빈 목록이다(원본 페이지 스크린샷을 안 넘긴다).
+    assert fake_gen.images_received == [[]]
 
 
 # ── 승인 대체표현이 HTTP 경로로 실제로 들어오는지 (2026-08-23) ────────────────

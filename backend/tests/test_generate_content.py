@@ -73,7 +73,11 @@ def test_generate_content_end_to_end_offline():
     resp = generate_content(req, judge=StubJudge(), vlm=vlm)
 
     assert any(s.kind == "광고문구" for s in resp.sections)  # 개선된 원문
-    assert any(s.source == "llm" for s in resp.sections)  # 생성 서술
+    # 개선 모드는 저위험 서술(제품개요·사용법·주의사항)을 더 이상 LLM으로 만들지
+    # 않는다(2026-08-24). 입력이 비면 "정보가 제공되지 않았습니다" 같은 사과문이
+    # 카피로 나가던 걸 막으려고 통째로 뺐고, 이미지가 없어 카드로도 안 나가서
+    # 과금만 남는 호출이었다. 대신 대체표현마다 카드(이미지+문구)가 나간다.
+    assert any(s.module_kind and s.module_kind.startswith("replacement_") for s in resp.sections)
     # "재생" → 조건표로 치환됨
     assert resp.replacements and resp.replacements[0].original == "재생"
     assert all("재생" not in s.text for s in resp.sections)
