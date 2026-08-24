@@ -299,6 +299,18 @@ class Section(BaseModel):
         "찾을 때 쓴다. kind와 다를 수 있다 — 위반소지 모듈(hero_intro 등)의 내용은 "
         "LLM이 아니라 인정문구·실증자료가 채우므로 kind가 '광고문구'·'실증자료'로 나온다.",
     )
+    # 실증자료 섹션(source="clinical_evidence")일 때, 사업자가 넣은 값을 쪼갠 채로 같이 준다.
+    #
+    # **왜 text만으로 부족한가**: `clinical_sections_text`가 "다크스팟 개선 87% (4주),
+    # OO 시험"처럼 한 문장으로 이어붙여서, 프론트가 수치를 강조하려면 문장을 도로
+    # 파싱해야 한다. "4주 후 2.1배" 같은 표기에서 그 파싱은 깨진다.
+    #
+    # **입력 모델을 그대로 재사용한다.** 새 모델로 옮겨 담으면 그 사이에 값을 만들어낼
+    # 여지가 생긴다. 같은 객체를 그대로 실어 "화면에 뜨는 수치 = 사업자가 친 수치"를
+    # 구조로 보장한다(2026-08-24).
+    clinical_stat: "ClinicalEvidence | None" = Field(
+        None, description="실증자료 섹션의 원본 입력값. 프론트 수치강조 카드용. 그 외 섹션은 None"
+    )
 
 
 class Replacement(BaseModel):
@@ -511,6 +523,11 @@ class ClinicalEvidence(BaseModel):
     note: str | None = Field(None, description="피험자 수·조건 등 부연")
 
 
+# Section.clinical_stat이 위에서 문자열로 참조한다(ClinicalEvidence가 뒤에 정의돼서).
+# 여기서 확정해두지 않으면 첫 인스턴스 생성 시점까지 미해결로 남는다.
+Section.model_rebuild()
+
+
 class SurveyEvidence(BaseModel):
     """create 모드 전용: 사업자가 입력한 **소비자 설문조사** 결과.
 
@@ -672,6 +689,11 @@ class ContentCard(BaseModel):
     # 이게 없으면 사업자가 입력한 제형·용량이 섹션에만 남고 카드엔 안 실려,
     # 화면에서 표가 통째로 사라진다(2026-08-23 실측).
     table_rows: list[TableRow] | None = None
+    # 실증자료 카드의 원본 입력값(Section.clinical_stat 그대로). 프론트가 이 값이 있으면
+    # 수치강조 카드로 그린다. **layout_type이 아니라 이 필드 유무로 분기해야 한다** -
+    # 계획기가 clinical_bar_compare를 고르든 section_statement를 고르든 우리가 줄 수
+    # 있는 건 단일 수치뿐이라, 유형별로 갈라봐야 그릴 게 같다.
+    clinical_stat: ClinicalEvidence | None = None
 
 
 class GenerateResponse(BaseModel):

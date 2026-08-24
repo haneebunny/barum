@@ -552,8 +552,12 @@ def test_스킵된_모듈은_변주_순번을_소모하지_않는다():
     assert "반드시 다르게 그려라" not in gen.prompts[1]
 
 
-def test_임상_모듈이_여러개여도_이미지는_하나만_만든다():
-    """실증자료 섹션은 하나만 나온다. 나머지 임상 이미지는 얹힐 자리가 없어 버려진다."""
+def test_임상_모듈이_여러개면_이미지도_여러장_만든다():
+    """자료 1건=섹션 1장으로 바뀌어(content.py) 두 번째 임상 모듈도 얹힐 자리가 있다.
+
+    예전 게이트를 그대로 뒀더니 두 번째 임상 카드가 글만 있고 이미지가 빈 채로
+    나왔다(2026-08-24 실측). 데모 골든셋이 실증자료 2건이라 시연에서 바로 보인다.
+    """
     gen = FakeGenerator()
     plan = _plan_with_types(
         ("clinical_intro", "section_statement"),
@@ -562,10 +566,23 @@ def test_임상_모듈이_여러개여도_이미지는_하나만_만든다():
     )
     results, blobs = generate_module_images(plan, _REQ, gen)
     made = [r for r in results if r.status == "generated"]
-    assert len(made) == 1, "임상 이미지를 여러 장 만들면 과금만 나가고 버려진다"
-    assert made[0].module_kind == "clinical_intro"
-    skipped = [r for r in results if r.status == "skipped"]
-    assert all("하나만 만듭니다" in r.reason for r in skipped)
+    assert [r.module_kind for r in made] == [
+        "clinical_intro",
+        "clinical_result",
+        "clinical_result_2",
+    ], "임상 모듈마다 이미지가 나와야 한다"
+
+
+def test_임상_모듈도_상한을_넘지는_않는다():
+    """게이트를 없앤 대신 상한은 그대로 걸려야 한다(과금 폭주 방지)."""
+    gen = FakeGenerator()
+    plan = _plan_with_types(
+        ("clinical_intro", "section_statement"),
+        ("clinical_result", "clinical_bar_compare"),
+        ("clinical_result_2", "clinical_photo_compare"),
+    )
+    results, _ = generate_module_images(plan, _REQ, gen, max_images=2)
+    assert len([r for r in results if r.status == "generated"]) == 2
 
 
 def test_임상이_아닌_모듈은_상한까지_계속_만든다():

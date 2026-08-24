@@ -874,6 +874,7 @@ def build_cards(
                 image_url=img.image_url if img else None,
                 image_status=img.status if img else "skipped",
                 table_rows=sec.table_rows,
+                clinical_stat=sec.clinical_stat,
             )
         )
     return cards
@@ -923,8 +924,15 @@ def _generate_create_content(
         # 묶었는데, 그러면 임상 모듈이 여러 개여도 채울 섹션이 하나뿐이라 나머지가
         # "자료 부족"으로 드롭됐다. 사업자가 실증자료를 3건 넣어도 카드는 1장이었다.
         # 팀장 지시로 뒤집는다(2026-08-23): "실증자료까지 다 넣어."
+        # clinical_stat엔 입력 객체를 그대로 싣는다. text는 그대로 두므로 구버전
+        # 프론트는 지금처럼 문장으로 렌더하고, 새 프론트만 수치를 골라 쓴다.
         sections += [
-            Section(kind="실증자료", text=clinical_sections_text([e]), source="clinical_evidence")
+            Section(
+                kind="실증자료",
+                text=clinical_sections_text([e]),
+                source="clinical_evidence",
+                clinical_stat=e,
+            )
             for e in evidence
         ]
     if surveys:
