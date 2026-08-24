@@ -5,6 +5,7 @@
 """
 
 import base64
+import threading
 
 import pytest
 
@@ -56,6 +57,8 @@ def _generator(response) -> GeminiImageGenerator:
     gen.total_tokens = 0
     gen._min_interval = 0.0
     gen._last_call = 0.0
+    # 병렬 호출 대비 락(2026-08-24) - __init__을 안 타는 테스트 생성자라 직접 채운다.
+    gen._lock = threading.Lock()
     gen.client = type("Client", (), {"interactions": FakeInteractions(response)})()
     return gen
 

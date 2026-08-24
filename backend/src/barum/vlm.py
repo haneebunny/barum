@@ -7,6 +7,7 @@
 import base64
 import json
 import os
+import threading
 import time
 from typing import Protocol
 
@@ -149,15 +150,27 @@ class GeminiVLM:
         # 통째로 스킵되므로, 재시도 대신 호출 간격을 벌려 애초에 안 걸리게 한다.
         self._min_interval = 60.0 / rpm if rpm else 0.0
         self._last_call = 0.0
+        # 모듈 이미지를 병렬로 생성하면(2026-08-24, generate_module_images) 같은
+        # 인스턴스를 여러 스레드가 동시에 부른다. _last_call·total_tokens는 락 없이
+        # 읽고-쓰면 경합한다 - 아래 두 메서드에서 이 락으로 감싼다.
+        self._lock = threading.Lock()
 
     def _throttle(self) -> None:
-        """직전 호출로부터 최소 간격이 지나도록 기다린다."""
+        """직전 호출로부터 최소 간격이 지나도록 기다린다.
+
+        전체를 락으로 감싼다 - 안 그러면 여러 스레드가 동시에 `_last_call`을 같은
+        값으로 읽어 같은 간격만 기다리고, 결과적으로 여러 호출이 거의 동시에
+        나가서 rate limit을 넘는다(PM 지적, 2026-08-24). 실제 API 호출(느린 부분)은
+        이 락 밖에서 일어나므로 병렬화 이득은 그대로 남는다 - 이 문(門)만 한 번에
+        하나씩 통과한다.
+        """
         if not self._min_interval:
             return
-        wait = self._last_call + self._min_interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        self._last_call = time.monotonic()
+        with self._lock:
+            wait = self._last_call + self._min_interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            self._last_call = time.monotonic()
 
     def _build_input(self, prompt: str, images: list[bytes]) -> list[dict]:
         """interactions API 입력(텍스트 + 이미지 파트)을 만든다."""
@@ -173,10 +186,16 @@ class GeminiVLM:
         return parts
 
     def _record_usage(self, interaction) -> None:
-        """토큰 사용량을 누적한다. 구조가 바뀌어도 집계 때문에 터지지 않게 방어한다."""
+        """토큰 사용량을 누적한다. 구조가 바뀌어도 집계 때문에 터지지 않게 방어한다.
+
+        `+=`는 락 없이 병렬 호출하면 갱신이 유실될 수 있다(읽기-더하기-쓰기가
+        원자적이지 않음) - `_throttle`과 같은 락을 재사용한다(둘 다 아주 짧아서
+        나눌 이유가 없다).
+        """
         usage = getattr(interaction, "usage", None)
         if usage is not None:
-            self.total_tokens += getattr(usage, "total_tokens", 0) or 0
+            with self._lock:
+                self.total_tokens += getattr(usage, "total_tokens", 0) or 0
 
     @traceable(run_type="llm", name="gemini.interactions.create", process_inputs=_trace_inputs)
     def generate_json(self, prompt: str, images: list[bytes]) -> dict:
