@@ -219,6 +219,15 @@ export const IngredientAmountSchema = z.object({
 });
 export type IngredientAmount = z.infer<typeof IngredientAmountSchema>;
 
+// POST /uploads/ingredients 응답(엑셀·CSV·txt 파싱, 베베 계약). rows·warnings
+// 둘 다 빠짐없이 넣는다 - 스키마에 필드 하나라도 빠지면 zod가 조용히 버려서
+// 응답에 값이 와도 화면엔 안 뜬다(2026-08-24 나뭇잎 사진 사건과 같은 함정).
+export const IngredientUploadResponseSchema = z.object({
+  rows: z.array(IngredientAmountSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+export type IngredientUploadResponse = z.infer<typeof IngredientUploadResponseSchema>;
+
 export const ImageGenRequestSchema = z.object({
   requested: z.boolean().default(false),
   prompt: z.string().nullable().optional(),

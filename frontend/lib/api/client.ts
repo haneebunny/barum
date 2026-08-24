@@ -6,6 +6,7 @@ import {
   RemediationResponseSchema,
   USPreflightReportSchema,
   GenerateResponseSchema,
+  IngredientUploadResponseSchema,
 } from "./schema";
 import type {
   Region,
@@ -17,6 +18,7 @@ import type {
   GenerateRequest,
   GenerateResponse,
   USPreflightReport,
+  IngredientUploadResponse,
 } from "./schema";
 
 export interface CheckAdInput {
@@ -552,6 +554,30 @@ export async function uploadProductPhoto(file: File): Promise<{ photo_id: string
     UploadProductPhotoResponseSchema,
     await response.json(),
     "POST /uploads/product-photo"
+  );
+}
+
+// 전성분+함량 손입력이 20~30개면 지옥이라, 엑셀·CSV·txt로 한 번에 올리면
+// 백엔드(openpyxl)가 파싱해서 rows로 돌려준다(팀장 지시, 2026-08-24).
+export async function uploadIngredients(file: File): Promise<IngredientUploadResponse> {
+  const url = `${getApiUrl()}/uploads/ingredients`;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to upload ingredients file: ${response.status} - ${errText}`);
+  }
+
+  return validateResponse(
+    IngredientUploadResponseSchema,
+    await response.json(),
+    "POST /uploads/ingredients"
   );
 }
 
