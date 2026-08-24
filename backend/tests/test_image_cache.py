@@ -68,11 +68,21 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
     from barum.api import app as app_module
 
     run_check_calls = []
-    orig_run_check = app_module.run_check
 
     def mock_run_check(*args, **kwargs):
+        """**실제 판정을 부르지 않는다.** 예전엔 진짜 `run_check`에 위임했는데,
+        그러면 이 테스트가 실제 Gemini OCR을 호출한다(과금이고 네트워크 의존이다).
+        크레딧이 떨어지거나 429가 나면 OCR이 전부 실패하고, 그 실패 리포트는
+        캐시하지 않는 게 정상 동작이라(`app.py`, 2026-08-24) 이 테스트가 엉뚱하게
+        깨진다. 여기서 검증할 건 "같은 이미지면 run_check를 두 번 안 부른다"
+        하나뿐이므로 판정 결과는 고정값으로 둔다.
+        """
         run_check_calls.append(kwargs)
-        return orig_run_check(*args, **kwargs)
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        )
 
     monkeypatch.setattr(app_module, "run_check", mock_run_check)
 
@@ -108,26 +118,7 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
     assert len(run_check_calls) == 2  # run_check 재호출됨!
 
 
-def test_supabase_fallback_cache_restore():
-    """메모리 캐시에 없어도 Supabase에 sha256으로 저장된 레코드가 있으면 복원한다."""
-    img_sha = sha256_hex(b"supabase-stored-image")
-    cache_key = build_cache_key(img_sha, "KR")
-
-    fake_row = {
-        "id": "rid_from_db_123",
-        "region": "KR",
-        "image_sha256": img_sha,
-        "report": {
-            "findings": [],
-            "unjudged": [],
-            "summary": {
-                "region": "KR",
-                "n_sentences": 1,
-                "n_findings": 0,
-            },
-        },
-    }
-
+def _fake_client_with_row(fake_row):
     class FakeQuery:
         def select(self, *a, **k): return self
         def eq(self, *a, **k): return self
@@ -140,7 +131,65 @@ def test_supabase_fallback_cache_restore():
     class FakeClient:
         def table(self, name): return FakeQuery()
 
-    cached = get_cached_check(FakeClient(), cache_key, img_sha)
+    return FakeClient()
+
+
+def _fake_row(img_sha, cache_key=None):
+    report = {
+        "findings": [],
+        "unjudged": [],
+        "summary": {"region": "KR", "n_sentences": 1, "n_findings": 0},
+    }
+    if cache_key is not None:
+        report["_cache_key"] = cache_key
+    return {"id": "rid_from_db_123", "region": "KR", "image_sha256": img_sha, "report": report}
+
+
+def test_supabase_fallback_restores_when_cache_key_matches():
+    """메모리에 없어도, 저장된 _cache_key가 요청 키와 같으면 Supabase에서 복원한다."""
+    img_sha = sha256_hex(b"supabase-stored-image")
+    cache_key = build_cache_key(img_sha, "KR")
+    row = _fake_row(img_sha, cache_key=cache_key)
+
+    cached = get_cached_check(_fake_client_with_row(row), cache_key, img_sha)
     assert cached is not None
     assert isinstance(cached, CheckReport)
     assert cached.result_id == "rid_from_db_123"
+
+
+def test_supabase_fallback_rejects_mismatched_inputs_same_image():
+    """같은 이미지라도 입력(광고문구)이 다르면 2차 캐시를 복원하지 않는다(엉뚱한 옛 결과 방지)."""
+    img_sha = sha256_hex(b"supabase-stored-image")
+    stored_key = build_cache_key(img_sha, "KR", ad_text="옛날 문구")
+    requested_key = build_cache_key(img_sha, "KR", ad_text="새 문구")
+    row = _fake_row(img_sha, cache_key=stored_key)
+
+    cached = get_cached_check(_fake_client_with_row(row), requested_key, img_sha)
+    assert cached is None  # 키 불일치 -> 재검사
+
+
+def test_supabase_fallback_rejects_legacy_row_without_cache_key():
+    """_cache_key가 없는 옛 레코드는 로직 버전을 알 수 없어 복원하지 않는다(스테일 방지)."""
+    img_sha = sha256_hex(b"supabase-stored-image")
+    cache_key = build_cache_key(img_sha, "KR")
+    row = _fake_row(img_sha, cache_key=None)  # 옛 스키마: _cache_key 없음
+
+    cached = get_cached_check(_fake_client_with_row(row), cache_key, img_sha)
+    assert cached is None
+
+
+def test_cache_key_changes_with_logic_version():
+    """로직 버전이 키에 들어가 있어, 같은 입력이어도 버전이 바뀌면 키가 달라진다."""
+    from barum.storage import checks_store
+
+    img_sha = sha256_hex(b"same-image")
+    key_v_current = build_cache_key(img_sha, "KR", ad_text="문구")
+
+    original = checks_store._CACHE_LOGIC_VERSION
+    try:
+        checks_store._CACHE_LOGIC_VERSION = "999"
+        key_v_bumped = build_cache_key(img_sha, "KR", ad_text="문구")
+    finally:
+        checks_store._CACHE_LOGIC_VERSION = original
+
+    assert key_v_current != key_v_bumped

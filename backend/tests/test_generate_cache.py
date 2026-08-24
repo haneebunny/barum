@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from barum.api import app as app_module  # noqa: E402
 from barum.models import GenerateRequest  # noqa: E402
+import barum.storage.generate_cache as gc  # noqa: E402
 from barum.storage.generate_cache import (  # noqa: E402
     build_generate_cache_key,
     clear_generate_cache,
@@ -30,7 +31,14 @@ class CountingVLM:
 
 
 @pytest.fixture(autouse=True)
-def _fresh(monkeypatch):
+def _fresh(monkeypatch, tmp_path):
+    # **디스크 캐시 경로를 임시 폴더로 돌린다.** `clear_generate_cache()`는
+    # `_CACHE_FILE.unlink()`로 파일을 지우는데, 경로를 안 바꾸면 개발자가 실제로
+    # 돈 주고 만들어둔 `backend/.cache/generate_cache.json`을 테스트가 삭제한다
+    # (2026-08-24에 실제로 날렸다. 같은 입력을 다시 넣으면 이미지가 재생성돼
+    # 과금된다). 테스트는 자기 캐시만 건드려야 한다.
+    monkeypatch.setattr(gc, "_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(gc, "_CACHE_FILE", tmp_path / "generate_cache.json")
     clear_generate_cache()
     CountingVLM.calls = 0
     monkeypatch.setattr(app_module, "_section_vlm", lambda: CountingVLM())

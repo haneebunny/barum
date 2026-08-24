@@ -50,6 +50,8 @@ const EVIDENCE_STATE_OPTIONS: Array<{ value: ReadinessInputState; label: string 
 ];
 
 function evidence(input_state: ReadinessInputState) { return { input_state, evidence: [] }; }
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
+import { useDailyChecks, useTickets } from "@/lib/tickets";
 
 interface FileItem {
   id: string;
@@ -115,6 +117,16 @@ function InspectContent() {
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingP, setIsDraggingP] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+
+  // 실행 게이팅. 국내는 하루 3회까지 무료고, 소진 후에도 이용권이 있으면 돌릴 수 있다.
+  // 해외 프리플라이트는 무료 체험이 없어서 처음부터 이용권을 요구한다.
+  // 이용권 차감 자체는 리포트를 열 때 일어난다(무료 요약을 나중에 업그레이드하는 흐름 때문).
+  const daily = useDailyChecks();
+  const { has } = useTickets();
+  const [isBlockedOpen, setIsBlockedOpen] = useState(false);
+  const isUS = regionParam === "US";
+  const hasPaidTicket = isUS ? has("overseas") : has("domestic") || has("combo");
+  const canRunCheck = isUS ? hasPaidTicket : daily.canRunFreeCheck || hasPaidTicket;
 
   // 홈 화면에서 붙여넣거나 끌어다 놓은 초안을 그대로 이어받는다 (1단계 입력 UI 자체는 그대로).
   useEffect(() => {
@@ -286,6 +298,13 @@ function InspectContent() {
   const handleRun = async () => {
     const hasInput = adText.trim() || adFiles.length > 0 || ingText.trim() || productName.trim();
     if (status === "running" || !hasInput) return;
+
+    if (!canRunCheck) {
+      setIsBlockedOpen(true);
+      return;
+    }
+    // 무료분으로 돌린 경우에만 카운트한다. 이용권 보유자의 실행까지 세면 한도 표시가 넘친다.
+    if (!isUS && daily.canRunFreeCheck) daily.record();
 
     setInspectStatus("running");
     setResultId(null);
@@ -843,6 +862,21 @@ function InspectContent() {
           >
             초기화
           </button>
+
+          {/* 남은 무료 실행 안내. 상태 표시라 색은 쓰지 않는다 */}
+          <span className="self-center font-mono text-[11.5px] text-[var(--ink-3)] tabular-nums break-keep">
+            {isUS ? (
+              hasPaidTicket
+                ? "해외 프리플라이트 이용권 보유"
+                : "해외 프리플라이트는 이용권이 필요합니다"
+            ) : daily.canRunFreeCheck ? (
+              `오늘 무료 검사 ${daily.remaining}/${daily.limit}회 남음`
+            ) : hasPaidTicket ? (
+              "오늘 무료 검사 소진 · 이용권으로 실행"
+            ) : (
+              "오늘 무료 검사를 모두 사용했습니다"
+            )}
+          </span>
         </div>
 
         <div className="flex gap-2.5 items-center">
@@ -960,6 +994,19 @@ function InspectContent() {
           })}
         </div>
       </Modal>
+
+      {/* 실행이 막혔을 때 띄우는 구매 유도. 결제 후 영수증을 닫으면 실행 버튼이 풀린다. */}
+      <TicketCheckoutModal
+        isOpen={isBlockedOpen}
+        onClose={() => setIsBlockedOpen(false)}
+        kinds={isUS ? ["overseas"] : ["domestic", "combo"]}
+        defaultKind={isUS ? "overseas" : "domestic"}
+        reason={
+          isUS
+            ? "해외 프리플라이트는 무료 체험이 없습니다. 이용권을 구매하면 검사를 실행할 수 있어요."
+            : `국내 검사는 하루 ${daily.limit}회까지 무료입니다. 오늘 무료 검사를 모두 사용해서 더 돌리려면 이용권이 필요해요.`
+        }
+      />
 
       <PageFooter />
     </>

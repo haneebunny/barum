@@ -16,6 +16,8 @@
 제품을 유지하며 그 주위만 합성하므로 가짜 라벨 문제가 없다.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 from barum.models import CanvasBackground, GenerateRequest, LayoutModule, LayoutPlan, ModuleImage
 from barum.reference.impersonation import check_impersonation
 
@@ -85,6 +87,9 @@ _PROMPT = """화장품 상세페이지에 쓸 **배경 이미지**를 만들어�
 무엇을 그릴지:
 {composition_lines}
 {body_part_line}
+- **가로가 세로보다 긴 비율로 그려라(가로:세로 = 3:2 정도).** 카드 위쪽에 눕혀
+  얹히는 배경이라 세로로 긴 이미지는 화면을 아래로 한없이 늘린다. 세로로 긴
+  구도로는 절대 그리지 마라.
 - 위에 명시한 컬러톤·분위기를 따를 것
 - **선명하고 또렷하게 그려라.** 안개 낀 듯 뿌옇거나 과도한 소프트포커스·흐림 효과는
   쓰지 마라. 실제 상품 사진처럼 디테일과 초점이 또렷해야 한다
@@ -525,6 +530,15 @@ def generate_module_images(
     참조다 - 저장 위치가 서로 달라 photo_resolver가 req를 통째로 받아 내부에서
     가른다(`api/app.py` `_resolve_reference_photos`, 2026-08-24). 이 함수는
     photo_resolver가 있기만 하면 그냥 부르고, 참조가 없다는 판단은 콜백에 맡긴다.
+
+    **실제 API 호출(`generator.generate_image`)은 우선순위 묶음(파도) 단위로
+    병렬로 나간다**(2026-08-24, PM 지시 - 장당 ~13초 순차 호출이 6장이면 80초대
+    였다). 프롬프트 조립·사칭가드·상한 판정은 순차로 하고(빠르고 상태 의존적),
+    실제 네트워크 호출만 `ThreadPoolExecutor`로 동시에 보낸다. 상한(`max_images`)은
+    "성공한 개수" 기준 그대로다 - 한 파도에서 일부가 실패하면 다음 파도가 그
+    빈자리를 우선순위 다음 모듈로 채운다(순차 버전과 같은 성질). `vlm.py`의
+    `GeminiVLM._throttle`/`_record_usage`가 락 없이 공유 상태를 건드려서 동시
+    호출이면 경합했는데, 그쪽에 락을 걸어 해결했다(같은 커밋).
     """
     results: list[ModuleImage] = []
     blobs: dict[str, bytes] = {}
@@ -550,21 +564,12 @@ def generate_module_images(
             # 예상된 실패(사진 조회 실패)라 참조 없이 계속 진행한다(배경만 생성).
             print(f"    [skip] 제품사진 조회 실패(참조 없이 진행): {type(e).__name__}: {e}")
 
-    made = 0
-    # layout_type별 등장 횟수. 같은 유형이 반복될 때 프롬프트를 갈라주는 데 쓴다
-    # (실제로 이미지를 만든 것만 센다 — 스킵된 모듈은 화면에 안 나오므로 "앞선
-    # 같은 유형 이미지"에 해당하지 않는다).
-    seen_layout_types: dict[str, int] = {}
-    # 예전엔 첫 임상 모듈만 이미지를 만들었다. "실증자료 섹션이 하나만 나온다"는
-    # 2026-08-20 당시 가정이었는데, 자료 1건=섹션 1장으로 뒤집히면서(content.py)
-    # 두 번째 임상 모듈도 얹힐 섹션이 생겼다. 게이트만 남아 있어서 그 카드가
-    # 글만 있고 이미지가 빈 채로 나왔다(2026-08-24 실측). 이제 다른 모듈과 똑같이
-    # max_images 상한만 적용받는다.
+    # 이미지 배정 대상만 추린다. 사진 배경이 필요없는 유형은 상한을 소모하지 않고
+    # 즉시 skip이라 파도 계산에서 아예 뺀다(원래 셀 자격이 없던 이미지).
+    eligible: list[int] = []
     for module_index in _budget_order(plan.modules):
         module = plan.modules[module_index]
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
-            # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
-            # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.
             results.append(
                 ModuleImage(
                     module_kind=module.kind,
@@ -573,9 +578,75 @@ def generate_module_images(
                 )
             )
             continue
+        eligible.append(module_index)
 
-        if made >= max_images:
-            # 상한으로 잘린 것도 기록한다. 조용히 자르면 "다 만들었다"로 오해된다.
+    # layout_type별 등장 횟수. 같은 유형이 반복될 때 프롬프트를 갈라주는 데 쓴다.
+    # **병렬화 이후엔 "시도한" 순서로 센다(성공 여부와 무관).** 순차 버전은 실제
+    # 성공한 것만 셌지만, 병렬 호출은 어느 게 먼저 성공하는지가 실행마다 흔들려서
+    # 그 성질을 그대로 재현할 수 없다 - 결과가 갈리는 건 이 변주 문구 한 줄뿐이고
+    # (짝짓기·성패에는 영향 없음), 실사용엔 지장이 없다고 판단했다.
+    seen_layout_types: dict[str, int] = {}
+
+    def _run(job: tuple[LayoutModule, str]) -> tuple[LayoutModule, bytes | None, Exception | None]:
+        module, prompt = job
+        try:
+            return module, generator.generate_image(prompt, reference_images), None
+        except Exception as e:
+            return module, None, e
+
+    made = 0
+    cursor = 0
+    # 우선순위 순서대로, 성공 개수가 상한(max_images)을 채우거나 후보가 떨어질
+    # 때까지 파도 단위로 돈다. **상한은 "성공한 개수" 기준**(순차 버전과 동일) -
+    # 실패·사칭가드 거부는 안 세므로 다음 파도가 우선순위상 다음 모듈로 그 자리를
+    # 채운다. 한 파도 안의 실제 API 호출만 동시에 보낸다.
+    while made < max_images and cursor < len(eligible):
+        wave = eligible[cursor : cursor + (max_images - made)]
+        cursor += len(wave)
+
+        # 프롬프트 조립·사칭가드는 상태(seen_layout_types)를 쓰고 빠르므로 순차로.
+        jobs: list[tuple[LayoutModule, str]] = []
+        for module_index in wave:
+            module = plan.modules[module_index]
+            variation_index = seen_layout_types.get(module.layout_type, 0)
+            seen_layout_types[module.layout_type] = variation_index + 1
+            prompt = build_image_prompt(
+                module,
+                req,
+                plan.product_type,
+                has_product_photo=bool(reference_images),
+                variation_index=variation_index,
+                copy_text=(copy_by_kind or {}).get(module.kind),
+            )
+            allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
+            if not allowed:
+                results.append(
+                    ModuleImage(module_kind=module.kind, status="skipped", reason=deny_reason)
+                )
+                continue
+            jobs.append((module, prompt))
+
+        if not jobs:
+            continue
+
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+            outcomes = list(pool.map(_run, jobs))
+
+        for module, blob, err in outcomes:
+            if err is not None:
+                # 과금 호출이라 재시도하지 않는다. 이 모듈만 스킵하고 나머지는 계속.
+                reason = f"이미지 생성 실패: {type(err).__name__}"
+                print(f"    [skip] 이미지 생성 실패({module.kind}): {type(err).__name__}: {err}")
+                results.append(ModuleImage(module_kind=module.kind, status="skipped", reason=reason))
+                continue
+            blobs[module.kind] = blob
+            results.append(ModuleImage(module_kind=module.kind, status="generated"))
+            made += 1
+
+    if cursor < len(eligible):
+        # 상한으로 잘린 것도 기록한다. 조용히 자르면 "다 만들었다"로 오해된다.
+        for module_index in eligible[cursor:]:
+            module = plan.modules[module_index]
             results.append(
                 ModuleImage(
                     module_kind=module.kind,
@@ -583,36 +654,6 @@ def generate_module_images(
                     reason=f"이미지 생성 상한({max_images}장)을 넘어 건너뛰었습니다",
                 )
             )
-            continue
-
-        variation_index = seen_layout_types.get(module.layout_type, 0)
-        prompt = build_image_prompt(
-            module,
-            req,
-            plan.product_type,
-            has_product_photo=bool(reference_images),
-            variation_index=variation_index,
-            copy_text=(copy_by_kind or {}).get(module.kind),
-        )
-        allowed, deny_reason = check_impersonation(_user_controlled_text(module, req))
-        if not allowed:
-            results.append(
-                ModuleImage(module_kind=module.kind, status="skipped", reason=deny_reason)
-            )
-            continue
-
-        try:
-            blobs[module.kind] = generator.generate_image(prompt, reference_images)
-        except Exception as e:
-            # 과금 호출이라 재시도하지 않는다. 이 모듈만 스킵하고 나머지는 계속.
-            reason = f"이미지 생성 실패: {type(e).__name__}"
-            print(f"    [skip] 이미지 생성 실패({module.kind}): {type(e).__name__}: {e}")
-            results.append(ModuleImage(module_kind=module.kind, status="skipped", reason=reason))
-            continue
-
-        results.append(ModuleImage(module_kind=module.kind, status="generated"))
-        seen_layout_types[module.layout_type] = variation_index + 1
-        made += 1
 
     # 결과는 계획 순서로 되돌린다. 카드 짝짓기는 kind로 하니 순서와 무관하지만,
     # 로그와 응답을 사람이 읽을 때 화면에 뜨는 순서와 같아야 헷갈리지 않는다.

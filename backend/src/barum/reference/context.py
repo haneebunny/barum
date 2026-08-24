@@ -19,8 +19,10 @@ from functools import lru_cache
 from pathlib import Path
 
 # context.py: backend/src/barum/reference/context.py → parents[3] = backend.
+# reference 팩은 backend/reference/ 안에 있다(예전엔 저장소 루트였으나 Railway가
+# backend만 배포해 팩이 빠지면서 create 판정이 500 났다, 2026-08-24. backend 안으로 이동).
 _BACKEND = Path(__file__).resolve().parents[3]
-_REF_DIR = _BACKEND.parent / "reference" / "cosmetic_kr"
+_REF_DIR = _BACKEND / "reference" / "cosmetic_kr"
 
 # 규정·판정기준 문서(정본 md). 순서 = 프롬프트에 붙는 순서. 실사례(cases.md)는 별도.
 # `approved_efficacy_statements.md`는 2026-08-20에 추가했다. 그 전까지 이 목록은 전부

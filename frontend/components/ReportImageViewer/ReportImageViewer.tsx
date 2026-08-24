@@ -1,41 +1,61 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Finding, Unjudged } from "@/lib/api/schema";
+import type { Location } from "@/lib/api/schema";
 
 const ZOOM_LEVELS = [100, 160, 220] as const;
 
+/** 하이라이트 대상이 갖춰야 할 최소 계약. 국내 Finding(flag: 위반/검토필요)과
+ * 미국 USPreflightFinding(flag 없음, category만 있음)이 둘 다 구조적으로 만족한다
+ * (둘 다 이 필드들을 갖고 있어 타입 변환 없이 그대로 넘길 수 있다). flag가 있으면
+ * 그걸로 심각도 색을 정하고(국내 기존 동작 그대로), 없으면 isCrit으로 정한다
+ * (미국 - 호출부에서 category==="미국_미승인_성분"일 때만 true로 채워 넘긴다).
+ */
+interface HighlightSource {
+  location: Location;
+  span: string;
+  sentence: string;
+  flag?: "위반" | "검토필요";
+  isCrit?: boolean;
+}
+
+interface UnjudgedLike {
+  sentence: string;
+  location: Location;
+}
+
+function isCritOf(item: HighlightSource): boolean {
+  return item.flag ? item.flag === "위반" : !!item.isCrit;
+}
+
 interface FindByOrderItem {
-  f: Finding;
+  f: HighlightSource;
   idx: number;
   num: number;
 }
 
 interface ReportImageViewerProps {
-  viewMode: "image" | "tile";
   findByOrder: FindByOrderItem[];
-  ujByOrder: Unjudged[];
+  /** 미판정 개념이 없는 도메인(미국 등)은 생략하면 빈 배열로 취급한다. */
+  ujByOrder?: UnjudgedLike[];
   /** null이면 실제 이미지를 아예 시도 안 한다(목업 result_id 등 - 백엔드에 이미지가 없음, 버그 아님). */
   imageUrl: string | null;
   imageErrorGlobal: boolean;
   onImageError: () => void;
-  actions: Record<number, "accept" | "exclude" | null>;
+  /** accept/exclude 개념이 없는 도메인은 생략하면 빈 객체로 취급한다(전부 표시). */
+  actions?: Record<number, "accept" | "exclude" | null>;
   hoveredIndex: number | null;
   onHoverChange: (idx: number | null) => void;
 }
 
-/** 원문 하이라이트 패널 본문. "원본 보기"(실제 이미지+좌표 오버레이, 줌/미니맵)와
- * "타일 보기"(좌표 없이 타일별 카드 목록) 둘 다 여기서 그린다 - viewMode는 부모가
- * 관리하는 controlled prop이다(카드 목록과 헤더 토글이 같은 파일 다른 위치에 있어서).
- */
+/** 원문 하이라이트 패널 본문 (실제 이미지 + 좌표 오버레이, 줌/미니맵) */
 export function ReportImageViewer({
-  viewMode,
   findByOrder,
-  ujByOrder,
+  ujByOrder = [],
   imageUrl,
   imageErrorGlobal,
   onImageError,
-  actions,
+  actions = {},
   hoveredIndex,
   onHoverChange,
 }: ReportImageViewerProps) {
@@ -45,81 +65,11 @@ export function ReportImageViewer({
   const hasCoords = typeof srcW === "number" && typeof srcH === "number" && srcW > 0 && srcH > 0;
   const showRealImage = hasCoords && !!imageUrl && !imageErrorGlobal;
 
-  const byTile: Record<
-    string,
-    Array<
-      | { type: "find"; num: number; idx: number; item: Finding }
-      | { type: "uj"; letter: string; item: Unjudged }
-    >
-  > = {};
-  findByOrder.forEach((o) => {
-    const t = o.f.location.tile;
-    if (t) {
-      if (!byTile[t]) byTile[t] = [];
-      byTile[t].push({ type: "find", num: o.num, idx: o.idx, item: o.f });
-    }
-  });
-  ujByOrder.forEach((u, i) => {
-    const t = u.location.tile;
-    if (t) {
-      if (!byTile[t]) byTile[t] = [];
-      byTile[t].push({ type: "uj", letter: String.fromCharCode(65 + i), item: u });
-    }
-  });
-  const tiles = Object.keys(byTile).sort();
-
-  if (viewMode === "tile" || !showRealImage || !imageUrl) {
+  if (!showRealImage || !imageUrl) {
     return (
-      <>
-        {tiles.map((t) => {
-          const rows = byTile[t].sort((a, b) => a.item.location.order - b.item.location.order);
-          return (
-            <div className="border border-[var(--line-2)] mb-3.5 last:mb-0" key={t}>
-              <div className="font-mono text-[11px] text-[var(--ink-3)] p-[6px_10px] border-b border-[var(--line)] bg-[var(--surface-sub)]">{t}</div>
-              <div className="relative aspect-[4/5] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] p-2.5 flex flex-col gap-2">
-                {rows.map((r, ri) => {
-                  if (r.type === "find") {
-                    const isExcluded = actions[r.idx] === "exclude";
-                    const cls = r.item.flag === "위반" ? "violation" : "review";
-                    const isRowHovered = hoveredIndex === r.idx;
-                    return (
-                      <div
-                        className={`relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border transition-all duration-[120ms] ${isExcluded
-                          ? "opacity-50 border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                          : cls === "violation"
-                            ? `border-[var(--crit-bd)] ${isRowHovered ? "bg-[rgba(239,68,68,0.18)] border-[var(--crit)] scale-[1.01]" : "bg-[var(--crit-bg)]"} text-[var(--crit)]`
-                            : `border-[var(--line-2)] ${isRowHovered ? "bg-[var(--surface-sub)] border-[var(--ink-2)] scale-[1.01]" : "bg-[var(--surface)]"} text-[var(--ink-2)] border-solid`
-                          }`}
-                        onMouseEnter={() => onHoverChange(r.idx)}
-                        onMouseLeave={() => onHoverChange(null)}
-                        key={ri}
-                      >
-                        <span className={`shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border-[1.5px] border-current ${isExcluded
-                          ? "text-[var(--ink-3)] border-[var(--ink-3)]"
-                          : cls === "violation"
-                            ? "text-[var(--crit)] border-[var(--crit)]"
-                            : "text-[var(--ink-3)] border-[var(--ink-3)]"
-                          }`}>{r.num}</span>
-                        <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${cls === "violation" && !isExcluded ? "text-[var(--crit)]" : ""
-                          }`}>{r.item.span}</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="relative flex items-center gap-2 p-[7px_9px] text-[12.5px] border border-dashed border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]" key={ri}>
-                      <span className="shrink-0 w-[19px] h-[19px] inline-flex items-center justify-center font-mono text-[11px] font-bold rounded-full border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]">{r.letter}</span>
-                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{r.item.sentence}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        <p className="text-[var(--ink-3)] text-[10.5px] mt-2">
-          실제 좌표(bbox)는 없어 타일 내 순서대로만 배치(문서 참조)
-        </p>
-      </>
+      <div className="p-8 text-center text-[var(--ink-3)] text-[12.5px] border border-[var(--line-2)] bg-[var(--surface-sub)] font-mono">
+        원본 이미지를 불러올 수 없습니다.
+      </div>
     );
   }
 
@@ -144,7 +94,7 @@ interface ZoomableImageProps {
   imageUrl: string;
   onImageError: () => void;
   findByOrder: FindByOrderItem[];
-  ujByOrder: Unjudged[];
+  ujByOrder: UnjudgedLike[];
   actions: Record<number, "accept" | "exclude" | null>;
   hoveredIndex: number | null;
   onHoverChange: (idx: number | null) => void;
@@ -255,7 +205,7 @@ function ZoomableImage({
     : null;
 
   return (
-    <div className="border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
+    <div className="h-full border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] text-[var(--ink-3)]">
           원본 광고 검증 이미지 ({srcW}x{srcH} px) · {zoomPct}%
@@ -283,7 +233,7 @@ function ZoomableImage({
       <div
         ref={viewerRef}
         onScroll={handleScroll}
-        className="relative w-full h-[65vh] overflow-auto"
+        className="relative w-full h-[78vh] min-h-[580px] max-h-[920px] overflow-auto"
         style={{ backgroundColor: "var(--surface)" }}
       >
         <div
@@ -326,7 +276,7 @@ function ZoomableImage({
                 const widthPct = hasX ? Math.min(100 - leftPct, rawWidthPct + padXPct * 2) : 100;
                 const topPct = Math.max(0, rawTopPct - padYPct);
                 const heightPct = Math.min(100 - topPct, rawHeightPct + padYPct * 2);
-                const isViolation = o.f.flag === "위반";
+                const isViolation = isCritOf(o.f);
                 const isHovered = hoveredIndex === o.idx;
                 const badgeOffset = (itemSubIndices[o.idx] || 0) * 22;
 

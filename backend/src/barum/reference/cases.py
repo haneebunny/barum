@@ -14,7 +14,7 @@ from pathlib import Path
 
 # cases.py: backend/src/barum/reference/cases.py → parents[3] = backend.
 _BACKEND = Path(__file__).resolve().parents[3]
-_CASES_MD = _BACKEND.parent / "reference" / "cosmetic_kr" / "cases.md"
+_CASES_MD = _BACKEND / "reference" / "cosmetic_kr" / "cases.md"
 
 
 def _find_column(header: list[str], keyword: str) -> str:

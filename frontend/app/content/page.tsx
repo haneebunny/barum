@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getReport, generateContent, resolveImageUrl, uploadProductPhoto } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl, uploadProductPhoto, uploadIngredients } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section, SurveyEvidence } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -11,7 +11,8 @@ import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { GenerationLoading } from "@/components/GenerationLoading/GenerationLoading";
 import { Dropzone } from "@/components/Dropzone";
-import { useTier, useImproveQuota } from "@/lib/tier";
+import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
+import { useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 import { useError } from "@/lib/error/ErrorContext";
 
 interface ProductPhotoItem {
@@ -111,7 +112,20 @@ function nextProductPhotoId() {
   return `pp-${productPhotoSeq}`;
 }
 
-function UpgradeCard({ title, desc, children }: { title: string; desc: string; children?: React.ReactNode }) {
+/**
+ * 콘텐츠 생성 잠금 카드. 보유 이용권이 있으면 바로 쓰게 하고, 없으면 결제 모달로 보낸다.
+ */
+function ContentLockCard({
+  title,
+  desc,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  desc: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
   return (
     <div className="p-[18px_20px]">
       <div className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[32px_24px] flex flex-col items-center gap-3 text-center">
@@ -120,14 +134,14 @@ function UpgradeCard({ title, desc, children }: { title: string; desc: string; c
           <path d="M8 11V7a4 4 0 0 1 8 0v4" />
         </svg>
         <p className="m-0 text-[14px] font-bold text-[var(--ink)]">{title}</p>
-        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[44ch]">{desc}</p>
-        {children}
-        <Link
-          href="/#pricing"
-          className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[46ch] leading-[1.7] break-keep">{desc}</p>
+        <button
+          type="button"
+          onClick={onAction}
+          className="font-sans text-[13px] font-bold p-[11px_16px] border border-[var(--brand-deep)] dark:border-[var(--brand)] bg-[var(--brand-deep)] dark:bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:opacity-90 inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
         >
-          요금제 보기 <span className="font-mono">→</span>
-        </Link>
+          {actionLabel} <span className="font-mono">→</span>
+        </button>
       </div>
     </div>
   );
@@ -141,10 +155,33 @@ function ContentGeneratorContent() {
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
 
-  const { tier } = useTier();
-  const { remaining, consume, resetWithAd } = useImproveQuota();
+  // 상세페이지 1건 = 이용권 1장. 리포트에서 넘어왔으면 그 리포트에 붙은 생성 권한을
+  // 쓰고, 리포트 없이 직접 들어온 create 모드는 독립 작업공간 하나에 권한을 쌓는다.
+  const accessKey = id || "standalone-content";
+  const { contentRemaining, canGenerateContent, grantContent, consumeContent } = useReportAccess(accessKey);
+  const { has, consume: consumeTicket } = useTickets();
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  // 콘텐츠 단독을 먼저 쓰고, 없으면 결합형을 쓴다(단독이 더 싸서 사용자에게 유리).
+  const ownedContentKind: TicketKind | null = has("content")
+    ? "content"
+    : has("combo")
+      ? "combo"
+      : null;
+
+  /** 보유 이용권 1장을 이 작업공간에 붙인다. 잔액이 없으면 결제 모달로 보낸다. */
+  const useContentTicket = () => {
+    if (!ownedContentKind || !consumeTicket(ownedContentKind)) {
+      setCheckoutOpen(true);
+      return;
+    }
+    grantContent();
+  };
 
   const [report, setReport] = useState<CheckReport | null>(null);
+  // 검사 때 입력된 상품명(리포트 envelope). 개선 모드엔 상품명 입력칸이 없어서
+  // 이게 유일한 출처다. 없으면 null이고, 그땐 백엔드가 상품 종류를 못 정한다.
+  const [reportProductName, setReportProductName] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!id);
   // 클릭 후 /generate 응답을 기다리는 동안. 초기 리포트 로딩(loading)과 분리한다 -
   // 하나로 묶으면 "리포트 불러오는 중"이라는 문구가 생성 대기에도 그대로 뜬다
@@ -167,6 +204,15 @@ function ContentGeneratorContent() {
   const [createIngredientAmounts, setCreateIngredientAmounts] = useState<
     Array<IngredientAmount & { id: string }>
   >([]);
+  // 엑셀·CSV·txt 업로드 상태. warnings는 파싱 중 건너뛴 행 안내(팀장 지시로
+  // 반드시 표시 - 조용히 넘어가면 "20개 넣었는데 왜 17개만"을 못 알아챈다,
+  // 2026-08-24). error는 업로드 자체 실패(네트워크 등)라 급한 문제라서
+  // warnings와 달리 --crit로 보여준다(§F - 경고와 실패는 급함이 다르다).
+  const [ingredientUpload, setIngredientUpload] = useState<{
+    uploading: boolean;
+    error: string | null;
+    warnings: string[];
+  }>({ uploading: false, error: null, warnings: [] });
   const [createCertifications, setCreateCertifications] = useState<Set<string>>(new Set());
   // 상품 스펙표(제형·용량) 입력. 둘 다 비워두면 백엔드가 표 모듈 자체를 안
   // 만든다(ensure_product_spec_module) - 표 카드가 화면에서 사라지는 버그의
@@ -227,6 +273,32 @@ function ContentGeneratorContent() {
       ...prev,
       { id: nextIngredientAmountId(), name: "", amount: "" }
     ]);
+  };
+  // 손입력 행이 이미 채워져 있으면(빈 자리표시자 행 제외) 이어붙이고, 비어있으면
+  // 통째로 교체한다 - 업로드가 항상 기존 입력을 지우면 실수로 날아가고, 항상
+  // 이어붙이면 빈 자리표시자 행이 계속 쌓인다(PM 판단 요청, 2026-08-24).
+  const handleIngredientFileUpload = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const file = Array.from(files)[0];
+    if (!file) return;
+    setIngredientUpload({ uploading: true, error: null, warnings: [] });
+    uploadIngredients(file)
+      .then((res) => {
+        const newRows = res.rows.map((r) => ({ id: nextIngredientAmountId(), name: r.name, amount: r.amount }));
+        setCreateIngredientAmounts((prev) => {
+          const hasExisting = prev.some((row) => row.name.trim() || row.amount.trim());
+          return hasExisting ? [...prev, ...newRows] : newRows;
+        });
+        setIngredientUpload({ uploading: false, error: null, warnings: res.warnings });
+      })
+      .catch((err) => {
+        console.error("Failed to upload ingredients file", err);
+        setIngredientUpload({
+          uploading: false,
+          error: err instanceof Error ? err.message : String(err),
+          warnings: [],
+        });
+      });
   };
   const updateIngredientAmount = (id: string, field: "name" | "amount", value: string) => {
     setCreateIngredientAmounts((prev) =>
@@ -319,6 +391,8 @@ function ContentGeneratorContent() {
     getReport(id)
       .then((envelope) => {
         setReport(envelope.report as CheckReport);
+        // 검사할 때 입력한 상품명. 개선 모드는 이걸 그대로 생성에 넘긴다.
+        setReportProductName(envelope.product_name ?? null);
       })
       .catch((err) => {
         console.error("Failed to fetch report context, falling back to mock", err);
@@ -337,13 +411,19 @@ function ContentGeneratorContent() {
   }
   const mockData = DEFAULT_MOCKS[mockKey];
 
-  // 미리보기·내보내기에 쓰는 제품명. create 모드는 입력한 제품명, 아니면 기존 improve 모드 로직 그대로
+  // 미리보기·내보내기에 쓰는 제품명.
+  // create는 폼 입력칸, improve는 검사 때 입력한 상품명(리포트 envelope)을 쓴다.
+  // 개선 모드에서 createProductName을 보면 항상 비어서 "제품"으로 떨어진다
+  // (내보낸 파일이 전부 `제품_draft.html`이 되던 원인, 2026-08-24).
   const displayProductName =
-    mode === "create"
-      ? createProductName || "제품"
-      : report
-        ? (mockKey === "image" ? "글로우 세럼" : "수분 크림")
-        : "선크림";
+    (mode === "create" ? createProductName : reportProductName) ||
+    (report ? "제품" : "선크림");
+
+  // 내보내기 파일명. 예전엔 "detail_draft.html"·"${mockKey}_detail_draft.png"로
+  // 상품명과 무관하게 고정이었다(파일 여러 개 받으면 다 같은 이름이라 구분이 안 됨,
+  // 2026-08-24 팀장 지적). 상품명을 파일명에 쓰되 경로 구분자·따옴표 등은 지운다.
+  const exportFileBase =
+    displayProductName.trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_").slice(0, 60) || "detail";
 
   // 수용된 지적 목록 추출
   const acceptedIndices = acceptedParam
@@ -361,10 +441,10 @@ function ContentGeneratorContent() {
     findingIdx: number;
     mockReplacement?: string;
   }> = report
-    ? report.findings
+      ? report.findings
         .map((f, idx) => ({ span: f.span, violation_type: f.violation_type, findingIdx: idx }))
         .filter((f) => acceptedIndices.includes(f.findingIdx))
-    : [
+      : [
         {
           span: "손상된 피부를 재생",
           violation_type: "1호_의약품오인",
@@ -378,16 +458,6 @@ function ContentGeneratorContent() {
           mockReplacement: "산뜻하고 빠르게 흡수",
         },
       ];
-
-  // 업로드된 이미지 칩 추출
-  const uploadedImages = report
-    ? Array.from(
-        new Set([
-          ...report.findings.map((f) => f.location?.tile).filter(Boolean),
-          ...report.unjudged.map((u) => u.location?.tile).filter(Boolean),
-        ])
-      )
-    : mockData.imagesUploaded;
 
   // 모달 포커스 및 키보드 접근성 처리
   useEffect(() => {
@@ -457,26 +527,26 @@ function ContentGeneratorContent() {
           volume: createVolume.trim() || undefined,
           clinical_evidence: createClinicalEvidence.length
             ? createClinicalEvidence
-                .filter((row) => row.claim.trim() && row.value.trim())
-                .map(({ claim, value, institution, period, note }) => ({
-                  claim,
-                  value,
-                  institution: institution || undefined,
-                  period: period || undefined,
-                  note: note || undefined,
-                }))
+              .filter((row) => row.claim.trim() && row.value.trim())
+              .map(({ claim, value, institution, period, note }) => ({
+                claim,
+                value,
+                institution: institution || undefined,
+                period: period || undefined,
+                note: note || undefined,
+              }))
             : undefined,
           survey_evidence: createSurveyEvidence.some(isSurveyEvidenceComplete)
             ? createSurveyEvidence
-                .filter(isSurveyEvidenceComplete)
-                .map(({ claim, value, sample_size, institution, period, method }) => ({
-                  claim,
-                  value,
-                  sample_size,
-                  institution,
-                  period,
-                  method,
-                }))
+              .filter(isSurveyEvidenceComplete)
+              .map(({ claim, value, sample_size, institution, period, method }) => ({
+                claim,
+                value,
+                sample_size,
+                institution,
+                period,
+                method,
+              }))
             : undefined,
           notes: createNotes || undefined,
           color_tone: createColorTone || undefined,
@@ -507,26 +577,31 @@ function ContentGeneratorContent() {
         // 리포트(report===null)는 승인할 실제 리포트가 없어 그대로 둔다.
         const approvedReplacements = report
           ? report.replacements
-              .filter((r) => r.finding_index !== null && r.finding_index !== undefined && acceptedIndices.includes(r.finding_index))
-              .map((r) => ({
-                original: r.original,
-                replaced: r.replaced,
-                finding_index: r.finding_index,
-                violation_type: r.violation_type,
-                note: r.note,
-              }))
+            .filter((r) => r.finding_index !== null && r.finding_index !== undefined && acceptedIndices.includes(r.finding_index))
+            .map((r) => ({
+              original: r.original,
+              replaced: r.replaced,
+              finding_index: r.finding_index,
+              violation_type: r.violation_type,
+              note: r.note,
+            }))
           : undefined;
 
         res = await generateContent({
           mode: "improve",
           content: rawContent,
           result_id: id || undefined,
-          product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
+          // **create 폼의 입력칸(createProductName)을 쓰면 안 된다.** 개선 모드엔
+          // 그 칸이 없어서 항상 비고, 그러면 백엔드가 상품 종류를 못 알아내
+          // (`infer_product_type` -> None) 이미지 힌트가 중립 폴백("잎, 물방울,
+          // 천, 돌 표면")으로 떨어진다. 그래서 어떤 제품이든 나뭇잎·대리석
+          // 사진만 나왔다(2026-08-24 팀장 실측). 검사 때 입력한 상품명을 쓴다.
+          product_name: reportProductName || undefined,
           certifications: [],
           approved_replacements: approvedReplacements,
         });
       }
-      if (mode === "improve" && tier === "Free") consume();
+      consumeContent(); // 결합형 1장에 딸린 생성 횟수를 1회 차감
       setGenResult(res);
       setConfirmedRisks({});
       setIsModalOpen(true);
@@ -557,22 +632,76 @@ function ContentGeneratorContent() {
     });
   };
 
+  // 원본 그대로 data URI로 굽던 걸 canvas로 리사이즈·재인코딩한다. 상세페이지
+  // 카드는 max-width:520px(.detailpage)인데 원본 생성 이미지는 1264x848·
+  // 450~590KB짜리라 카드 5~6장이면 내보낸 HTML이 2.7MB까지 불었다(팀장 지적,
+  // 2026-08-24 실측 3,239,743바이트). 레티나 감안 폭 1040px+JPEG q0.82로
+  // 실측 확인: 573KB→52KB(11배 감소), 원본과 나란히 놓고 봐도(전체·확대 크롭
+  // 둘 다) 눈에 띄는 화질 저하 없음. 알파 채널 있는 이미지만 WebP(JPEG는 알파를
+  // 못 담는다) - 실제 생성 이미지는 전부 불투명 사진이라 대부분 JPEG로 간다.
+  const hasAlphaChannel = (ctx: CanvasRenderingContext2D, w: number, h: number): boolean => {
+    const { data } = ctx.getImageData(0, 0, w, h);
+    // 전체 픽셀을 다 보면 큰 이미지에서 느려서 37픽셀 간격으로 샘플링한다(소수 스텝이라
+    // 격자 패턴과 안 겹친다). 실측 대상이 전부 사진이라 이 정도 샘플로 충분하다.
+    for (let i = 3; i < data.length; i += 4 * 37) {
+      if (data[i] < 255) return true;
+    }
+    return false;
+  };
+
+  const compressImage = (blob: Blob, maxWidth = 1040, quality = 0.82): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const scale = Math.min(1, maxWidth / img.naturalWidth);
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("2d context 생성 실패"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const mime = hasAlphaChannel(ctx, w, h) ? "image/webp" : "image/jpeg";
+        resolve(canvas.toDataURL(mime, quality));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("이미지 디코드 실패"));
+      };
+      img.src = objectUrl;
+    });
+  };
+
   // HTML 내보내기 (Blob)
-  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다.
+  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다 (타임아웃 3초 시 원본 URL로 안전 폴백).
   const toDataUri = async (url: string): Promise<string | null> => {
     try {
-      const res = await fetch(resolveImageUrl(url));
-      if (!res.ok) return null;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(resolveImageUrl(url), { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) return resolveImageUrl(url);
       const blob = await res.blob();
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error("Failed to inline image for export", url, e);
-      return null;
+      try {
+        return await compressImage(blob);
+      } catch {
+        // 리사이즈 실패(디코드 안 되는 포맷 등)해도 "네트워크 없이 혼자 열리는" 보장은
+        // 지킨다 - 용량 절감만 포기하고 원본 그대로 data URI로 굽는다.
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve(resolveImageUrl(url));
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      return resolveImageUrl(url);
     }
   };
 
@@ -759,9 +888,11 @@ function ContentGeneratorContent() {
     if (useCards) {
       const cardBlocks = await Promise.all(
         [...result.cards].sort((a, b) => a.order - b.order).map(async (card) => {
-          const dataUri = card.image_status === "generated" && card.image_url
+          const dataUri = card.image_url
             ? await resolveOrInline(card.image_url)
             : null;
+          const isAiGenerated = card.image_status === "generated";
+          const imageCaption = isAiGenerated && dataUri ? aiImageCaption : "";
           const finePrintCard = isFinePrintKind(card.module_kind) ? " dp-fine" : "";
           const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(card.module_kind)}" -->`;
           // 실증자료 필요 고지. 있으면 카드 유형과 무관하게 항상 같이 낸다(빠뜨리면
@@ -815,73 +946,29 @@ function ContentGeneratorContent() {
           // 보였다. 옛 sections 경로가 쓰던 .dp-subcopy를 그대로 재사용한다.
           const bodyHtml = card.body ? `<p class="dp-subcopy">${escapeHtml(card.body)}</p>` : "";
 
-          if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
-            return `${swapComment}
-    <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
-    </div>
-    ${aiImageCaption}
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "image_text_split" && dataUri) {
-            const side = statementAltIndex % 2 === 0 ? "left" : "right";
-            statementAltIndex++;
-            return `${swapComment}
-    <div class="dp-split dp-split-${side}">
-      <div class="dp-split-media-wrap">
-        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${aiImageCaption}
-      </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
-    </div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "step_list" && dataUri) {
-            const side = statementAltIndex % 2 === 0 ? "left" : "right";
-            statementAltIndex++;
-            return `${swapComment}
-    <div class="dp-split dp-split-${side}">
-      <div class="dp-split-media-wrap">
-        <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${aiImageCaption}
-      </div>
-      <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
-    </div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "section_statement") {
-            const tone = statementAltIndex % 2 === 0 ? "" : " dp-statement-sub";
-            statementAltIndex++;
-            return `<div class="dp-statement${tone}${finePrintCard}">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "mood_macro" && dataUri) {
-            return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${aiImageCaption}
-    ${card.headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
-    ${card.body ? `<p class="dp-caption">${escapeHtml(card.body)}</p>` : ""}
-    ${noteHtml}`;
-          }
-
-          if (card.layout_type === "banner_strip") {
-            return `<div class="dp-banner">${claimTagOnLight}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
-    ${noteHtml}`;
-          }
-
           if (dataUri) {
-            // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
             return `${swapComment}
-    <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${aiImageCaption}
-    <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
+    <div class="dp-card" data-swap="${escapeAttr(card.module_kind)}">
+      <div class="dp-card-media-wrap">
+        <img src="${dataUri}" alt="${escapeAttr(card.headline || '상세 이미지')}" class="dp-card-img" />
+        ${imageCaption}
+      </div>
+      <div class="dp-card-body">
+        ${claimTagOnLight}
+        ${card.headline ? `<p class="dp-headline">${escapeHtml(card.headline)}</p>` : ""}
+        ${bodyHtml}
+      </div>
+    </div>
     ${noteHtml}`;
           }
-          return `<div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
+
+          return `<div class="dp-card-text${finePrintCard}">
+      <div class="dp-card-body">
+        ${claimTagOnLight}
+        ${card.headline ? `<p class="dp-headline">${escapeHtml(card.headline)}</p>` : ""}
+        ${bodyHtml}
+      </div>
+    </div>
     ${noteHtml}`;
         })
       );
@@ -916,52 +1003,24 @@ function ContentGeneratorContent() {
     }
     .detailpage * { box-sizing: border-box; }
     .detailpage { width: 100%; max-width: 520px; background: var(--dp-surface); border: 1px solid var(--dp-line); border-radius: var(--dp-radius); overflow: hidden; font-family: "Pretendard Variable", Pretendard, -apple-system, sans-serif; color: var(--dp-ink-2); }
-    .dp-hero { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 24px; }
-    /* 불투명 카드는 이미지를 가려 "발표자료" 느낌이 난다(팀장 지시, 2026-08-20). 카드 대신
-       아래에서 올라오는 스크림 위에 글자만 얹는다. 스크림 최하단 alpha 0.6은 최악 조건
-       (순백 이미지)에서도 흰 글자 대비 5.74:1로 WCAG AA 본문 기준(4.5:1)을 넘는다(DESIGN.md §3.1). */
-    .dp-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.34) 34%, rgba(0,0,0,0) 68%); pointer-events: none; }
-    .dp-hero-card { position: relative; z-index: 1; max-width: 88%; }
-    .dp-hero-card span { display: block; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.4; color: #ffffff; margin: 0 0 7px; }
-    .dp-hero-card p { margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.92); }
-    /* 인정문구(법정 고정 문구)로 채워진 히어로 본문이 짧게 끝나도 "빈 카드"가
-       아니라 의도된 짧음이라는 걸 드러내는 작은 태그. 새 색 없이 흰 배경
-       투명도만 조절(--dp-* 토큰 체계와 별개인 히어로 위 오버레이 전용 표기). */
-    /* .dp-hero-card span(1클래스+1태그, 특이성 0,1,1)이 바로 위에 있어 이
-       배지가 .dp-claim-tag 단독(0,1,0)이면 밀린다 - .dp-hero-card와 묶어서
-       특이성을 0,2,0으로 올려야 이긴다(실측 확인, 2026-08-23). */
-    .dp-hero-card .dp-claim-tag { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.32); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
-    /* 히어로 밖(밝은 배경) 전용 톤 - 어느 모듈에나 인정문구가 붙을 수 있어
-       (베베 확인) 밝은 배경용 변형이 필요하다. 새 색 없이 기존 --dp-ink-3·
-       --dp-surface-sub·--dp-line 토큰만 재사용. */
-    .dp-claim-tag-onlight { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: var(--dp-ink-3); background: var(--dp-surface-sub); border: 1px solid var(--dp-line); border-radius: 3px; padding: 2px 7px; margin: 0 0 6px; }
+    .dp-card { margin-bottom: 0; background: var(--dp-surface); border-bottom: 1px solid var(--dp-line); }
+    .dp-card:last-child { border-bottom: none; }
+    .dp-card-media-wrap { position: relative; width: 100%; background: var(--dp-surface-sub); }
+    .dp-card-img { width: 100%; height: auto; display: block; object-fit: contain; }
+    .dp-ai-caption { margin: 6px 16px 8px; font-size: 10px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
+    .dp-card-body { padding: 22px 24px 26px; text-align: center; }
+    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
+    .dp-subcopy { margin: 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 13.5px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-2); word-break: keep-all; }
+    .dp-card-text { padding: 28px 24px; text-align: center; border-bottom: 1px solid var(--dp-line); background: var(--dp-surface); }
+    .dp-card-text.dp-fine { background: var(--dp-surface-sub); padding: 18px 24px; }
+    .dp-card-text:last-child { border-bottom: none; }
+    .dp-claim-tag-onlight { display: inline-block; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; color: var(--dp-ink-3); background: var(--dp-surface-sub); border: 1px solid var(--dp-line); border-radius: 3px; padding: 2px 7px; margin: 0 0 8px; }
     .dp-ai-notice { padding: 12px 24px; font-size: 11px; color: var(--dp-ink-3); background: var(--dp-surface-sub); line-height: 1.6; }
     .dp-block { padding: 34px 24px; }
     .dp-block p { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-block.dp-fine { padding: 20px 24px; background: var(--dp-surface-sub); }
     .dp-block.dp-fine p { font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11.5px; font-weight: 400; line-height: 1.7; color: var(--dp-ink-3); }
     .dp-step-text { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 14.5px; font-weight: 500; line-height: 1.8; color: var(--dp-ink-2); white-space: pre-line; }
-    .dp-mood { position: relative; aspect-ratio: 4/3; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; margin: 0 24px; border-radius: var(--dp-radius); overflow: hidden; }
-    .dp-mood-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 10px; color: var(--dp-ink-3); }
-    .dp-ai-caption { margin: 5px 24px 0; font-size: 9.5px; font-weight: 500; letter-spacing: .2px; color: var(--dp-ink-3); text-align: right; }
-    .dp-headline { margin: 0 0 8px; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.45; color: var(--dp-ink); }
-    .dp-subcopy { margin: 0; font-size: 13px; font-weight: 400; line-height: 1.75; color: var(--dp-ink-3); }
-    .dp-statement { padding: 40px 24px; background: var(--dp-surface); text-align: center; }
-    .dp-statement.dp-statement-sub { background: var(--dp-surface-sub); }
-    .dp-statement .dp-headline { font-size: 20px; }
-    .dp-split { display: flex; align-items: stretch; gap: 0; }
-    .dp-split-right { flex-direction: row-reverse; }
-    .dp-split-media-wrap { flex: 0 0 42%; display: flex; flex-direction: column; margin: 24px 0 24px 24px; }
-    .dp-split-right .dp-split-media-wrap { margin: 24px 24px 24px 0; }
-    /* .dp-split이 align-items: stretch라 본문(copy)이 아주 짧거나 없으면 그
-       칸 높이에 맞춰 이미지가 14~26px로 찌그러든다(실측, 2026-08-23). 최소
-       높이로 방지 - 본문이 길면 원래대로 늘어난다(min-height라 위쪽만 막음). */
-    .dp-split-media { flex: 1; min-height: 200px; position: relative; background-color: var(--dp-surface-sub); background-size: cover; background-position: center; border-radius: var(--dp-radius); }
-    .dp-split-media-wrap .dp-ai-caption { margin: 5px 0 0; }
-    .dp-split-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; min-width: 0; }
-    .dp-caption { margin: 10px 24px 0; font-size: 11.5px; color: var(--dp-ink-3); text-align: center; }
-    .dp-banner { padding: 14px 24px; background: var(--dp-surface-sub); text-align: center; }
-    .dp-banner p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dp-ink-2); letter-spacing: -0.1px; }
     .dp-table-wrap { padding: 20px 24px; }
     .dp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
     .dp-table tr { border-bottom: 1px solid var(--dp-line); }
@@ -969,19 +1028,15 @@ function ContentGeneratorContent() {
     .dp-table td { padding: 10px 4px; }
     .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
     .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
-    /* 실증자료 수치강조 카드(히어로 figure). 비교 대상 없는 단일 값이라 큰
-       글자 하나로만 낸다 - 막대·게이지 등 비교용 시각화를 붙이지 않는다
-       (value가 자유표기라 그릴 수도 없다, 2026-08-24). */
-    .dp-stat { padding: 36px 24px; background: var(--dp-surface); text-align: center; }
+    .dp-stat { padding: 32px 24px; background: var(--dp-surface); text-align: center; border-bottom: 1px solid var(--dp-line); }
     .dp-stat-label { margin: 0 0 10px; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 13px; font-weight: 600; color: var(--dp-ink-3); }
-    .dp-stat-value { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 44px; font-weight: 700; color: var(--dp-accent); letter-spacing: -0.5px; line-height: 1.2; }
-    .dp-stat-foot { margin: 12px 0 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11px; color: var(--dp-ink-3); }
+    .dp-stat-value { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 40px; font-weight: 700; color: var(--dp-accent); letter-spacing: -0.5px; line-height: 1.2; }
+    .dp-stat-foot { margin: 10px 0 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11px; color: var(--dp-ink-3); }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>`;
 
     const detailPageHtml = `<div class="detailpage">
-    ${useCards ? cardsHtml : sectionsHtml}
-    ${imagesHtml}
+    ${useCards ? cardsHtml : `${sectionsHtml}\n${imagesHtml}`}
     ${aiPageNotice}
     <div class="dp-close">${escapeHtml(result.disclaimer)}</div>
   </div>`;
@@ -1020,7 +1075,7 @@ function ContentGeneratorContent() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `detail_draft.html`;
+    a.download = `${exportFileBase}_draft.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1072,7 +1127,7 @@ function ContentGeneratorContent() {
       const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${mockKey}_detail_draft.png`;
+      a.download = `${exportFileBase}_draft.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1114,7 +1169,7 @@ function ContentGeneratorContent() {
         heightLeft -= pageHeight;
       }
 
-      pdf.save(`${mockKey}_detail_draft.pdf`);
+      pdf.save(`${exportFileBase}_draft.pdf`);
     } catch (e) {
       console.error("Failed PDF generation", e);
       alert("PDF 변환 중 오류가 발생했습니다.");
@@ -1174,708 +1229,703 @@ function ContentGeneratorContent() {
             </>
           )}
         </span>
+        {canGenerateContent && (
+          <span className="ml-auto tabular-nums">상세페이지 {contentRemaining}건 생성 가능</span>
+        )}
       </div>
 
-      {/* 티어 게이팅 */}
-      {mode === "create" && tier !== "Pro" ? (
-        <UpgradeCard
-          title="콘텐츠 생성은 Pro에서 이용 가능합니다"
-          desc="제품 정보를 입력하면 화장품법을 준수하는 상세페이지 초안을 자동으로 만들어줍니다. Pro 요금제에서 월 5회까지 사용할 수 있어요."
+      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. */}
+      {!canGenerateContent ? (
+        <ContentLockCard
+          title="상세페이지 초안을 만들려면 이용권이 필요합니다"
+          desc="제품 정보나 수정 권고안을 바탕으로 화장품법을 지키는 상세페이지 초안 1건을 만들어 드립니다. 콘텐츠 생성 이용권 1장이 상세페이지 1건이고, 결합형을 쓰면 리포트 열람까지 함께 처리됩니다."
+          actionLabel={
+            ownedContentKind === "content"
+              ? "보유 콘텐츠 이용권 쓰기"
+              : ownedContentKind === "combo"
+                ? "보유 결합형 쓰기"
+                : "콘텐츠 생성 이용권 구매"
+          }
+          onAction={useContentTicket}
         />
-      ) : mode === "improve" && tier === "Free" && remaining <= 0 ? (
-        <UpgradeCard
-          title="무료 체험 1회를 모두 사용했습니다"
-          desc="수정 권고안 기반 콘텐츠 개선은 Basic부터 무제한으로 이용할 수 있어요."
-        >
-          <button
-            type="button"
-            onClick={resetWithAd}
-            className="font-sans text-[12px] font-semibold p-[8px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5 transition-all duration-[120ms]"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-              <polygon points="6,4 20,12 6,20" />
-            </svg>
-            광고 보고 1회 추가 사용
-          </button>
-        </UpgradeCard>
       ) : (
-      <>
+        <>
 
-      {/* 입력 요약 / create 모드 입력 폼 */}
-      {mode === "create" ? (
-        <div className="p-[18px_20px] border-b border-[var(--line)]">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">제품 정보 입력</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">* 필수 표시 외 항목은 없으면 해당 모듈이 제외됩니다</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1">
-            {/* 좌측 열: 기본 제품 정보 & 비주얼 */}
-            <div className="flex flex-col gap-3.5">
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">
-                  제품명 <span className="text-[var(--crit)]">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={createProductName}
-                  onChange={(e) => setCreateProductName(e.target.value)}
-                  placeholder="예: 글로우 세럼"
-                  className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)]"
-                />
+          {/* 입력 요약 / create 모드 입력 폼 */}
+          {mode === "create" ? (
+            <div className="p-[18px_20px] border-b border-[var(--line)]">
+              <div className="flex items-center gap-[11px] m-[0_0_13px]">
+                <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">제품 정보 입력</h2>
+                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">* 필수 표시 외 항목은 없으면 해당 모듈이 제외됩니다</span>
               </div>
 
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
-                  제품 사진 (AI 합성 시 참고 이미지로 사용)
-                </p>
-                <Dropzone
-                  accept="image/png,image/jpeg,image/webp"
-                  supportedExtensions="PNG · JPG · WEBP"
-                  title="제품 사진 던져넣기"
-                  subtitle="drop or click · 여러 장 가능"
-                  compact
-                  onFilesSelected={addProductPhotos}
-                />
-                {createProductPhotos.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2.5">
-                    {createProductPhotos.map((p) => (
-                      <div key={p.id} className="relative w-[76px] h-[76px] border border-[var(--line-2)] bg-[var(--surface-sub)] overflow-hidden">
-                        <img src={p.previewUrl} alt="제품 사진 미리보기" className="w-full h-full object-cover" />
-                        {p.uploading && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-mono">업로드중</div>
-                        )}
-                        {p.error && (
-                          <div className="absolute inset-0 bg-[var(--crit-bg)]/90 flex items-center justify-center text-[var(--crit)] text-[9px] font-mono text-center p-1">업로드 실패</div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeProductPhoto(p.id)}
-                          aria-label="제품 사진 삭제"
-                          className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-black/60 text-white cursor-pointer hover:bg-black/80"
-                        >
-                          <Trash size={10} weight="bold" />
-                        </button>
-                      </div>
-                    ))}
+              <div className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1">
+                {/* 좌측 열: 기본 제품 정보 & 비주얼 */}
+                <div className="flex flex-col gap-3.5">
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">
+                      제품명 <span className="text-[var(--crit)]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={createProductName}
+                      onChange={(e) => setCreateProductName(e.target.value)}
+                      placeholder="예: 글로우 세럼"
+                      className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)]"
+                    />
                   </div>
-                )}
-              </div>
 
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">제형·용량 (상품 스펙표 모듈용)</p>
-                <div className="grid grid-cols-2 gap-2 max-[600px]:grid-cols-1">
-                  <input
-                    type="text"
-                    value={createFormulationType}
-                    onChange={(e) => setCreateFormulationType(e.target.value)}
-                    placeholder="제형 (예: 크림, 액상)"
-                    className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                  />
-                  <input
-                    type="text"
-                    value={createVolume}
-                    onChange={(e) => setCreateVolume(e.target.value)}
-                    placeholder="용량 (예: 50ml)"
-                    className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                  />
-                </div>
-                <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">둘 다 비워두면 상품 스펙표 모듈 자체를 안 만들어요.</p>
-              </div>
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
+                      제품 사진 (AI 합성 시 참고 이미지로 사용)
+                    </p>
+                    <Dropzone
+                      accept="image/png,image/jpeg,image/webp"
+                      supportedExtensions="PNG · JPG · WEBP"
+                      title="제품 사진 던져넣기"
+                      subtitle="drop or click · 여러 장 가능"
+                      compact
+                      onFilesSelected={addProductPhotos}
+                    />
+                    {createProductPhotos.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2.5">
+                        {createProductPhotos.map((p) => (
+                          <div key={p.id} className="relative w-[76px] h-[76px] border border-[var(--line-2)] bg-[var(--surface-sub)] overflow-hidden">
+                            <img src={p.previewUrl} alt="제품 사진 미리보기" className="w-full h-full object-cover" />
+                            {p.uploading && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-mono">업로드중</div>
+                            )}
+                            {p.error && (
+                              <div className="absolute inset-0 bg-[var(--crit-bg)]/90 flex items-center justify-center text-[var(--crit)] text-[9px] font-mono text-center p-1">업로드 실패</div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeProductPhoto(p.id)}
+                              aria-label="제품 사진 삭제"
+                              className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-black/60 text-white cursor-pointer hover:bg-black/80"
+                            >
+                              <Trash size={10} weight="bold" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">색상톤·분위기 (이미지·문구 생성에 반영)</p>
-                <div className="grid grid-cols-2 gap-2 max-[600px]:grid-cols-1">
-                  <input
-                    type="text"
-                    value={createColorTone}
-                    onChange={(e) => setCreateColorTone(e.target.value)}
-                    placeholder="색상톤 (예: 베이지·아이보리 톤)"
-                    className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                  />
-                  <input
-                    type="text"
-                    value={createMood}
-                    onChange={(e) => setCreateMood(e.target.value)}
-                    placeholder="분위기 (예: 미니멀하고 차분한)"
-                    className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                  />
-                </div>
-                <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">비워두면 상품 종류에 맞춰 기본 톤으로 생성돼요.</p>
-              </div>
-            </div>
-
-            {/* 우측 열: 법적 근거 & 증빙 자료 */}
-            <div className="flex flex-col gap-3.5">
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">전성분 + 함량 (인정문구 함량기준 대조용)</p>
-                <div className="flex flex-col gap-1.5">
-                  {createIngredientAmounts.map((row) => (
-                    <div key={row.id} className="flex items-center gap-1.5">
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">제형·용량 (상품 스펙표 모듈용)</p>
+                    <div className="grid grid-cols-2 gap-2 max-[600px]:grid-cols-1">
                       <input
                         type="text"
-                        value={row.name}
-                        onChange={(e) => updateIngredientAmount(row.id, "name", e.target.value)}
-                        placeholder="성분명 (예: 나이아신아마이드)"
-                        className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                        value={createFormulationType}
+                        onChange={(e) => setCreateFormulationType(e.target.value)}
+                        placeholder="제형 (예: 크림, 액상)"
+                        className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                       />
                       <input
                         type="text"
-                        value={row.amount}
-                        onChange={(e) => updateIngredientAmount(row.id, "amount", e.target.value)}
-                        placeholder="함량 (예: 2%)"
-                        className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                        value={createVolume}
+                        onChange={(e) => setCreateVolume(e.target.value)}
+                        placeholder="용량 (예: 50ml)"
+                        className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                       />
+                    </div>
+                    <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">둘 다 비워두면 상품 스펙표 모듈 자체를 안 만들어요.</p>
+                  </div>
+
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">색상톤·분위기 (이미지·문구 생성에 반영)</p>
+                    <div className="grid grid-cols-2 gap-2 max-[600px]:grid-cols-1">
+                      <input
+                        type="text"
+                        value={createColorTone}
+                        onChange={(e) => setCreateColorTone(e.target.value)}
+                        placeholder="색상톤 (예: 베이지·아이보리 톤)"
+                        className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                      <input
+                        type="text"
+                        value={createMood}
+                        onChange={(e) => setCreateMood(e.target.value)}
+                        placeholder="분위기 (예: 미니멀하고 차분한)"
+                        className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                      />
+                    </div>
+                    <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">비워두면 상품 종류에 맞춰 기본 톤으로 생성돼요.</p>
+                  </div>
+                </div>
+
+                {/* 우측 열: 법적 근거 & 증빙 자료 */}
+                <div className="flex flex-col gap-3.5">
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">전성분 + 함량 (인정문구 함량기준 대조용)</p>
+                    <Dropzone
+                      accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+                      supportedExtensions="XLSX · CSV · TXT"
+                      title="엑셀·CSV·txt로 한 번에 넣기"
+                      subtitle="drop or click"
+                      multiple={false}
+                      compact
+                      disabled={ingredientUpload.uploading}
+                      onFilesSelected={handleIngredientFileUpload}
+                      className="mb-2.5"
+                    />
+                    {ingredientUpload.uploading && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--ink-3)]">업로드 중...</p>
+                    )}
+                    {ingredientUpload.error && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--crit)]">업로드 실패: {ingredientUpload.error}</p>
+                    )}
+                    {ingredientUpload.warnings.length > 0 && (
+                      <div className="m-[0_0_8px] flex flex-col gap-0.5">
+                        {ingredientUpload.warnings.map((w, i) => (
+                          <p key={i} className="m-0 text-[11px] text-[var(--ink-3)]">{w}</p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5">
+                      {createIngredientAmounts.map((row) => (
+                        <div key={row.id} className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={row.name}
+                            onChange={(e) => updateIngredientAmount(row.id, "name", e.target.value)}
+                            placeholder="성분명 (예: 나이아신아마이드)"
+                            className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                          />
+                          <input
+                            type="text"
+                            value={row.amount}
+                            onChange={(e) => updateIngredientAmount(row.id, "amount", e.target.value)}
+                            placeholder="함량 (예: 2%)"
+                            className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeIngredientAmount(row.id)}
+                            aria-label="성분 삭제"
+                            className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                          >
+                            <Trash size={14} weight="bold" />
+                          </button>
+                        </div>
+                      ))}
                       <button
                         type="button"
-                        onClick={() => removeIngredientAmount(row.id)}
-                        aria-label="성분 삭제"
-                        className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                        onClick={addIngredientAmount}
+                        className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
                       >
-                        <Trash size={14} weight="bold" />
+                        <Plus size={12} weight="bold" /> 성분 추가
                       </button>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addIngredientAmount}
-                    className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
-                  >
-                    <Plus size={12} weight="bold" /> 성분 추가
-                  </button>
-                </div>
-              </div>
-
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">보유 인증서 (인정문구 매칭용)</p>
-                <div className="flex flex-wrap gap-3">
-                  {CERT_CATEGORIES.map((cat) => (
-                    <label key={cat} className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={createCertifications.has(cat)}
-                        onChange={() => toggleCertification(cat)}
-                      />
-                      {cat} 기능성 인증
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (임상 수치 모듈에만 필요. barum은 진위를 검증하지 않습니다)</p>
-                <div className="flex flex-col gap-2.5">
-                  {createClinicalEvidence.map((row) => (
-                    <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.claim}
-                          onChange={(e) => updateClinicalEvidence(row.id, "claim", e.target.value)}
-                          placeholder="무엇을 개선했는지 (예: 다크스팟 개선)"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <input
-                          type="text"
-                          value={row.value}
-                          onChange={(e) => updateClinicalEvidence(row.id, "value", e.target.value)}
-                          placeholder="결과 수치 (예: 87%)"
-                          className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeClinicalEvidence(row.id)}
-                          aria-label="실증자료 삭제"
-                          className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
-                        >
-                          <Trash size={14} weight="bold" />
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.institution || ""}
-                          onChange={(e) => updateClinicalEvidence(row.id, "institution", e.target.value)}
-                          placeholder="시험기관명"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <input
-                          type="text"
-                          value={row.period || ""}
-                          onChange={(e) => updateClinicalEvidence(row.id, "period", e.target.value)}
-                          placeholder="시험기간 (예: 4주)"
-                          className="w-[130px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={row.note || ""}
-                        onChange={(e) => updateClinicalEvidence(row.id, "note", e.target.value)}
-                        placeholder="피험자 수·조건 등 부연"
-                        className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                      />
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addClinicalEvidence}
-                    className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
-                  >
-                    <Plus size={12} weight="bold" /> 실증자료 추가
-                  </button>
-                </div>
-              </div>
-
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (향·발림성·재구매의향 등 비효능 항목만. 실증자료 아님)</p>
-                <div className="flex flex-col gap-2.5">
-                  {createSurveyEvidence.map((row) => (
-                    <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.claim}
-                          onChange={(e) => updateSurveyEvidence(row.id, "claim", e.target.value)}
-                          placeholder="무엇에 대한 응답인지 · 필수 (예: 향에 만족)"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <input
-                          type="text"
-                          value={row.value}
-                          onChange={(e) => updateSurveyEvidence(row.id, "value", e.target.value)}
-                          placeholder="결과 수치 · 필수 (예: 96%)"
-                          className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeSurveyEvidence(row.id)}
-                          aria-label="설문조사 삭제"
-                          className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
-                        >
-                          <Trash size={14} weight="bold" />
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.sample_size}
-                          onChange={(e) => updateSurveyEvidence(row.id, "sample_size", e.target.value)}
-                          placeholder="표본 수 · 필수 (예: 200명)"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <input
-                          type="text"
-                          value={row.institution}
-                          onChange={(e) => updateSurveyEvidence(row.id, "institution", e.target.value)}
-                          placeholder="조사기관명 · 필수"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.period}
-                          onChange={(e) => updateSurveyEvidence(row.id, "period", e.target.value)}
-                          placeholder="조사 시기 · 필수 (예: 2026년 3월)"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                        <input
-                          type="text"
-                          value={row.method}
-                          onChange={(e) => updateSurveyEvidence(row.id, "method", e.target.value)}
-                          placeholder="조사 방법 · 필수 (예: 온라인 자기기입식 설문)"
-                          className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
-                        />
-                      </div>
-                      {!isSurveyEvidenceComplete(row) && (
-                        <p className="m-0 text-[11px] text-[var(--ink-3)]">6개 항목을 모두 채워야 사용돼요. 비어있으면 이 설문은 생성에서 빠져요.</p>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addSurveyEvidence}
-                    className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
-                  >
-                    <Plus size={12} weight="bold" /> 설문조사 추가
-                  </button>
-                </div>
-                <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">
-                  피부 변화(효능) 주장은 설문으로 못 받쳐서 생성에서 빠지고 사유가 남아요. 6개 항목을 다 채워도 판정에서 자동으로 안전해지는 건 아니에요. 검토 범위만 좁혀줄 뿐이에요.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 하단 전폭: 추가정보 및 이미지 생성 설정 */}
-          <div className="flex flex-col gap-3.5 mt-3.5">
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보</label>
-              <textarea
-                value={createNotes}
-                onChange={(e) => setCreateNotes(e.target.value)}
-                placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
-                className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
-              />
-            </div>
-
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <label className="flex items-center gap-2 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={createGenerateImages}
-                  onChange={(e) => setCreateGenerateImages(e.target.checked)}
-                />
-                모듈별 배경 이미지도 생성하기
-              </label>
-              <p className="m-[6px_0_0] text-[11px] text-[var(--ink-3)]">
-                제품·라벨·글자는 안 그리고 배경·질감만 만들어요. 이미지 생성은 별도 비용이 발생해서 기본은 꺼져 있어요.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="p-[18px_20px] border-b border-[var(--line)]">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">입력 요약</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">리포트에서 수용 처리된 항목</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3.5 max-[900px]:grid-cols-1">
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
-              <ul className="list-none m-0 p-0 flex flex-col gap-2">
-                {acceptedFindings.map((f, i) => {
-                  const rep = report?.replacements.find((r) => r.finding_index === f.findingIdx);
-                  const replacedText = rep?.replaced || f.mockReplacement;
-                  const isReplaced = !!replacedText;
-
-                  return (
-                    <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-2">
-                      {isReplaced ? (
-                        <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
-                          <path d="M4 12l5 5L20 6" />
-                        </svg>
-                      ) : (
-                        <span className="shrink-0 mt-0.5 text-[var(--ink-3)] font-mono text-[11px]">[-]</span>
-                      )}
-                      <span>
-                        {isReplaced ? (
-                          <>
-                            <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
-                            <span className="text-[var(--ink-3)] mx-1">→</span>
-                            <span className="font-semibold text-[var(--ink)]">{replacedText}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-[var(--ink-2)]">{f.span}</span>
-                            <span className="text-[var(--ink-3)] text-[11.5px] ml-1.5">(자동 수정 불가 · 원문 유지)</span>
-                          </>
-                        )}
-                        {rep?.note && (
-                          <span className="block text-[11px] text-[var(--ink-3)] mt-0.5">ⓘ {rep.note}</span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-                {acceptedFindings.length === 0 && (
-                  <li style={{ color: "var(--ink-3)" }}>수용 처리된 수정 권고안이 없습니다.</li>
-                )}
-              </ul>
-            </div>
-            <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-              <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">재사용한 업로드 이미지 · {uploadedImages.length}장</p>
-              {uploadedImages.length > 0 ? (
-                <>
-                  <div className="flex flex-wrap gap-1.75">
-                    {uploadedImages.map((img, i) => (
-                      <span key={i} className="font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px] inline-flex items-center gap-1.5">
-                        <FileImage size={13} className="text-[var(--brand-ink)]" />
-                        {img}
-                      </span>
-                    ))}
                   </div>
-                  <p style={{ margin: "11px 0 0", fontSize: "11.5px", color: "var(--ink-3)" }}>
-                    이미지는 새로 생성하지 않고 원본 첨부본을 레이아웃에 재배치합니다.
-                  </p>
-                </>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[var(--ink-3)] text-[12px]">
-                    첨부된 원본 이미지가 없습니다.
-                  </span>
-                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--ink-3)" }}>
-                    텍스트 카피 및 레이아웃을 중심으로 상세페이지 초안을 생성합니다.
+
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">보유 인증서 (인정문구 매칭용)</p>
+                    <div className="flex flex-wrap gap-3">
+                      {CERT_CATEGORIES.map((cat) => (
+                        <label key={cat} className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={createCertifications.has(cat)}
+                            onChange={() => toggleCertification(cat)}
+                          />
+                          {cat} 기능성 인증
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (임상 수치 모듈에만 필요. barum은 진위를 검증하지 않습니다)</p>
+                    <div className="flex flex-col gap-2.5">
+                      {createClinicalEvidence.map((row) => (
+                        <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.claim}
+                              onChange={(e) => updateClinicalEvidence(row.id, "claim", e.target.value)}
+                              placeholder="무엇을 개선했는지 (예: 다크스팟 개선)"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <input
+                              type="text"
+                              value={row.value}
+                              onChange={(e) => updateClinicalEvidence(row.id, "value", e.target.value)}
+                              placeholder="결과 수치 (예: 87%)"
+                              className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeClinicalEvidence(row.id)}
+                              aria-label="실증자료 삭제"
+                              className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                            >
+                              <Trash size={14} weight="bold" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.institution || ""}
+                              onChange={(e) => updateClinicalEvidence(row.id, "institution", e.target.value)}
+                              placeholder="시험기관명"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <input
+                              type="text"
+                              value={row.period || ""}
+                              onChange={(e) => updateClinicalEvidence(row.id, "period", e.target.value)}
+                              placeholder="시험기간 (예: 4주)"
+                              className="w-[130px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={row.note || ""}
+                            onChange={(e) => updateClinicalEvidence(row.id, "note", e.target.value)}
+                            placeholder="피험자 수·조건 등 부연"
+                            className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                          />
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addClinicalEvidence}
+                        className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
+                      >
+                        <Plus size={12} weight="bold" /> 실증자료 추가
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (향·발림성·재구매의향 등 비효능 항목만. 실증자료 아님)</p>
+                    <div className="flex flex-col gap-2.5">
+                      {createSurveyEvidence.map((row) => (
+                        <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.claim}
+                              onChange={(e) => updateSurveyEvidence(row.id, "claim", e.target.value)}
+                              placeholder="무엇에 대한 응답인지 · 필수 (예: 향에 만족)"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <input
+                              type="text"
+                              value={row.value}
+                              onChange={(e) => updateSurveyEvidence(row.id, "value", e.target.value)}
+                              placeholder="결과 수치 · 필수 (예: 96%)"
+                              className="w-[110px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeSurveyEvidence(row.id)}
+                              aria-label="설문조사 삭제"
+                              className="text-[var(--ink-3)] hover:text-[var(--crit)] p-1 cursor-pointer"
+                            >
+                              <Trash size={14} weight="bold" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.sample_size}
+                              onChange={(e) => updateSurveyEvidence(row.id, "sample_size", e.target.value)}
+                              placeholder="표본 수 · 필수 (예: 200명)"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <input
+                              type="text"
+                              value={row.institution}
+                              onChange={(e) => updateSurveyEvidence(row.id, "institution", e.target.value)}
+                              placeholder="조사기관명 · 필수"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.period}
+                              onChange={(e) => updateSurveyEvidence(row.id, "period", e.target.value)}
+                              placeholder="조사 시기 · 필수 (예: 2026년 3월)"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                            <input
+                              type="text"
+                              value={row.method}
+                              onChange={(e) => updateSurveyEvidence(row.id, "method", e.target.value)}
+                              placeholder="조사 방법 · 필수 (예: 온라인 자기기입식 설문)"
+                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            />
+                          </div>
+                          {!isSurveyEvidenceComplete(row) && (
+                            <p className="m-0 text-[11px] text-[var(--ink-3)]">6개 항목을 모두 채워야 사용돼요. 비어있으면 이 설문은 생성에서 빠져요.</p>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addSurveyEvidence}
+                        className="flex items-center gap-1.5 self-start text-[11.5px] text-[var(--ink-3)] hover:text-[var(--ink)] border border-dashed border-[var(--line-2)] p-[6px_10px] cursor-pointer"
+                      >
+                        <Plus size={12} weight="bold" /> 설문조사 추가
+                      </button>
+                    </div>
+                    <p className="m-[8px_0_0] text-[11px] text-[var(--ink-3)]">
+                      피부 변화(효능) 주장은 설문으로 못 받쳐서 생성에서 빠지고 사유가 남아요. 6개 항목을 다 채워도 판정에서 자동으로 안전해지는 건 아니에요. 검토 범위만 좁혀줄 뿐이에요.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 하단 전폭: 추가정보 및 이미지 생성 설정 */}
+              <div className="flex flex-col gap-3.5 mt-3.5">
+                <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                  <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보</label>
+                  <textarea
+                    value={createNotes}
+                    onChange={(e) => setCreateNotes(e.target.value)}
+                    placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
+                    className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
+                  />
+                </div>
+
+                <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                  <label className="flex items-center gap-2 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createGenerateImages}
+                      onChange={(e) => setCreateGenerateImages(e.target.checked)}
+                    />
+                    모듈별 배경 이미지도 생성하기
+                  </label>
+                  <p className="m-[6px_0_0] text-[11px] text-[var(--ink-3)]">
+                    제품·라벨·글자는 안 그리고 배경·질감만 만들어요. 이미지 생성은 별도 비용이 발생해서 기본은 꺼져 있어요.
                   </p>
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          ) : (
+            <div className="p-[18px_20px] border-b border-[var(--line)]">
+              <div className="flex items-center gap-[11px] m-[0_0_13px]">
+                <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
+                <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">입력 요약</h2>
+                <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+                <span className="text-[var(--ink-3)] font-mono text-[10.5px]">리포트에서 수용 처리된 항목</span>
+              </div>
+              <div className="w-full">
+                <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+                  <p className="font-mono text-[11px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">수용된 수정 권고안 · {acceptedFindings.length}건</p>
+                  <ul className="list-none m-0 p-0 flex flex-col gap-2">
+                    {acceptedFindings.map((f, i) => {
+                      const rep = report?.replacements.find((r) => r.finding_index === f.findingIdx);
+                      const replacedText = rep?.replaced || f.mockReplacement;
+                      const isReplaced = !!replacedText;
 
-      {/* 생성 결과 */}
-      <div className="p-[18px_20px] border-b-0">
-        <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
-          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">생성된 상세페이지 초안</h2>
-          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          {/* "재검증 통과"를 여기 고정 문구로 박아뒀더니 실제로 재검증에
+                      return (
+                        <li key={i} className="text-[12.5px] text-[var(--ink-2)] flex items-start gap-2">
+                          {isReplaced ? (
+                            <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--brand-ink)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                              <path d="M4 12l5 5L20 6" />
+                            </svg>
+                          ) : (
+                            <span className="shrink-0 mt-0.5 text-[var(--ink-3)] font-mono text-[11px]">[-]</span>
+                          )}
+                          <span>
+                            {isReplaced ? (
+                              <>
+                                <span className="text-[var(--ink-3)] line-through decoration-[var(--ink-3)]">{f.span}</span>
+                                <span className="text-[var(--ink-3)] mx-1">→</span>
+                                <span className="font-semibold text-[var(--ink)]">{replacedText}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[var(--ink-2)]">{f.span}</span>
+                                <span className="text-[var(--ink-3)] text-[11.5px] ml-1.5">(자동 수정 불가 · 원문 유지)</span>
+                              </>
+                            )}
+                            {rep?.note && (
+                              <span className="block text-[11px] text-[var(--ink-3)] mt-0.5">ⓘ {rep.note}</span>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {acceptedFindings.length === 0 && (
+                      <li style={{ color: "var(--ink-3)" }}>수용 처리된 수정 권고안이 없습니다.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 생성 결과 */}
+          <div className="p-[18px_20px] border-b-0">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+              <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">생성된 상세페이지 초안</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+              {/* "재검증 통과"를 여기 고정 문구로 박아뒀더니 실제로 재검증에
               실패해도(아래 recheckBadge가 "재검증 실패"를 보여줄 때도) 이
               문구는 그대로 "통과"라고 말해서 같은 화면에 통과/실패가 동시에
               떴다(팀장 실측, 2026-08-23). 여긴 결과가 아니라 파이프라인
               설명 자리라 결과를 암시하는 말을 빼고 "포함"으로 바꾼다 -
               실제 결과는 아래 recheckBadge 하나만 말한다. */}
-          <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="secHint">
-            {isGenerated ? "원샷 생성 · 편집 불가 · 재검증 포함" : "원샷 생성 · 편집 불가"}
-          </span>
-        </div>
+              <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="secHint">
+                {isGenerated ? "원샷 생성 · 편집 불가 · 재검증 포함" : "원샷 생성 · 편집 불가"}
+              </span>
+            </div>
 
-        {/* 생성 전 게이트 */}
-        {!isGenerated && (
-          <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
-            <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">
-              {mode === "create"
-                ? "입력한 제품 정보로 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."
-                : "입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."}
-            </p>
-            {mode === "create" && !createProductName.trim() && (
-              <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
+            {/* 생성 전 게이트 */}
+            {!isGenerated && (
+              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[26px_20px] flex flex-col items-center gap-3 text-center" id="gateCard">
+                <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[52ch]">
+                  {mode === "create"
+                    ? "입력한 제품 정보로 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."
+                    : "입력 요약을 반영해 상세페이지 초안 1안을 만듭니다. 생성 후 확인이 필요한 항목이 있으면 결과를 보여드리기 전에 먼저 보여드려요."}
+                </p>
+                {mode === "create" && !createProductName.trim() && (
+                  <p className="m-0 text-[11.5px] text-[var(--crit)]">제품명을 입력해야 생성할 수 있어요.</p>
+                )}
+                {mode === "create" && createCertifications.size === 0 && createClinicalEvidence.length === 0 && (
+                  <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[52ch]">
+                    인증서·실증자료가 없으면 효능을 주장하는 문단은 만들지 않아요. 도입부를 포함해 일부 구성이 빠질 수 있어요.
+                  </p>
+                )}
+                {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
+                  <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
+                )}
+                <button
+                  className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
+                  id="startGen"
+                  ref={startGenRef}
+                  disabled={
+                    (mode === "create" && !createProductName.trim()) ||
+                    createProductPhotos.some((p) => p.uploading)
+                  }
+                  onClick={handleGenerate}
+                >
+                  생성하기 <span className="font-mono">→</span>
+                </button>
+              </div>
             )}
-            {mode === "create" && createCertifications.size === 0 && createClinicalEvidence.length === 0 && (
-              <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[52ch]">
-                인증서·실증자료가 없으면 효능을 주장하는 문단은 만들지 않아요. 도입부를 포함해 일부 구성이 빠질 수 있어요.
-              </p>
-            )}
-            {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
-              <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
-            )}
-            <button
-              className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
-              id="startGen"
-              ref={startGenRef}
-              disabled={
-                (mode === "create" && !createProductName.trim()) ||
-                createProductPhotos.some((p) => p.uploading)
-              }
-              onClick={handleGenerate}
-            >
-              생성하기 <span className="font-mono">→</span>
-            </button>
-          </div>
-        )}
 
-        {/* 생성 결과 (게이트 통과 후 표시) */}
-        {isGenerated && genResult && (
-          <div id="resultWrap">
-            {/* recheck.safe(=n_findings===0)는 위반·검토필요를 안 갈랐다. 검토필요는
+            {/* 생성 결과 (게이트 통과 후 표시) */}
+            {isGenerated && genResult && (
+              <div id="resultWrap">
+                {/* recheck.safe(=n_findings===0)는 위반·검토필요를 안 갈랐다. 검토필요는
                 실증자료를 요구하는 정상 동작이지 실패가 아닌데, safe 기준으로 배지를
                 그리면 "위반 0건, 검토필요만 있음"도 "재검증 실패"로 떴다(팀장 실측,
                 2026-08-23). 위반 유무만으로 통과/실패를 가르고, 검토필요는 경고색
                 없이 별도 정보로 안내한다. 구조적 불가/재판정 3분류는 백엔드
                 dropped 노출이 아직 없어 보류(베베 후속 PR 예정) - 이번엔 위반
                 유무 기준까지만. */}
-            <div className="mb-3.5">
-              {(() => {
-                const hasViolation = genResult.recheck.n_violation > 0;
-                return (
-                  <div
-                    className={`inline-flex items-center gap-1.75 font-mono text-[11.5px] p-[5px_10px] border ${
-                      hasViolation
-                        ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
-                        : "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
-                    }`}
-                    id="recheckBadge"
-                  >
-                    {hasViolation ? (
-                      <>
-                        <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
-                        재검증 실패 · 위반 {genResult.recheck.n_violation}건
-                      </>
-                    ) : (
-                      <>
-                        <Check size={14} weight="bold" className="text-[var(--brand-ink)] mr-1" />
-                        재검증 통과
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-              {genResult.recheck.n_needs_review > 0 && (
-                <p className="m-0 mt-1.5 text-[11px] text-[var(--ink-3)]">
-                  검토필요 {genResult.recheck.n_needs_review}건 - 실증자료 확인이 필요한 표현입니다(재검증 실패 아님).
-                </p>
-              )}
-            </div>
-
-            {genResult.layout_plan && genResult.layout_plan.modules.length > 0 && (
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mb-3.5">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
-                  구성 계획 · {genResult.layout_plan.modules.length}개 모듈
-                  {genResult.layout_plan.product_type && ` · ${genResult.layout_plan.product_type}`}
-                  {" · "}
-                  {genResult.layout_plan.source === "planner" ? "AI 계획" : "고정 플랜"}
-                </p>
-                <ol className="list-none m-0 p-0 flex flex-wrap gap-1.5">
-                  {genResult.layout_plan.modules.map((m, i) => (
-                    <li
-                      key={`${m.kind}-${i}`}
-                      className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
-                    >
-                      <span className="text-[var(--ink-3)]">{i + 1}.</span>
-                      {m.kind}
-                      {m.has_claim_risk && (
-                        <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
-                          ✓근거
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {genResult.skipped_claims.length > 0 && (
-              <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[15px_16px] mb-3.5">
-                <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
-                  근거 부족으로 제외됨 · {genResult.skipped_claims.length}건
-                </p>
-                <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
-                  {genResult.skipped_claims.map((s, i) => (
-                    <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
-                      <X size={13} weight="bold" className="shrink-0 mt-0.5" />
-                      <span>
-                        <b className="text-[var(--ink-2)] font-semibold">{s.category}</b>: {s.reason}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="border border-[var(--line-2)] bg-[var(--surface-sub)]">
-              <div className="flex items-center gap-2 p-[8px_12px] border-b border-[var(--line-2)] font-mono text-[11px] text-[var(--ink-3)]">
-                <span className="w-1.75 h-1.75 rounded-full bg-[var(--line-2)] shrink-0"></span>
-                <span className="text-[var(--ink-2)]">detail_draft.html</span>
-              </div>
-              <div className="p-[22px] flex justify-center">
-                {previewContent ? (
-                  <div
-                    className="w-full max-w-[520px]"
-                    id="detailPage"
-                    // export HTML과 같은 buildDetailContent() 결과를 그대로 꽂는다(렌더러 통합).
-                    // dp-* 클래스는 barum 서비스 토큰과 안 겹치게 이미 분리 설계돼 있다.
-                    dangerouslySetInnerHTML={{ __html: previewContent.styleTag + previewContent.detailPageHtml }}
-                  />
-                ) : (
-                  <div className="w-full max-w-[520px] aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4 border border-[var(--line-2)]">
-                    <span className="text-[var(--ink)] text-[19px] font-extrabold tracking-[-0.3px] bg-[var(--surface)] p-[6px_10px] border border-[var(--line-2)]">
-                      {displayProductName}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-            {genResult.risk_confirmations.length > 0 && (
-              <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mt-3.5 w-full border-[var(--crit)]" style={{ border: "1px solid var(--crit)" }}>
-                <p className="font-mono text-[10.5px] text-[var(--crit)] m-[0_0_10px] tracking-[0.3px] font-bold">⚠️ 자동 수정 불가 잔존 위험 · {genResult.risk_confirmations.length}건 (확인 필요)</p>
-                <ul className="list-none m-0 p-0 flex flex-col gap-1.25 p-[8px_12px]">
-                  {genResult.risk_confirmations.map((rc) => (
-                    <li key={rc.id} className="flex gap-2 items-start mb-2">
-                      <input
-                        type="checkbox"
-                        id={rc.id}
-                        checked={!!confirmedRisks[rc.id]}
-                        onChange={(e) => setConfirmedRisks(prev => ({ ...prev, [rc.id]: e.target.checked }))}
-                        className="mt-0.75"
-                      />
-                      <label className="cursor-pointer" htmlFor={rc.id}>
-                        <span className="font-bold text-[13px]">{rc.text}</span>
-                        {/* 문장 하나에 지적이 여러 건이면 사유가 \n으로 이어붙어 온다
-                            (PR #324, 베베) - pre-line 없으면 한 줄로 붙어 보인다. */}
-                        <p className="m-[2px_0_0] text-[11.5px] text-[var(--ink-3)] whitespace-pre-line">{rc.reason}</p>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-3.5 p-[13px_20px] flex-wrap">
-              <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[44ch]">
-                생성된 문구는 리포트에서 수용한 권고안을 조건표 안에서 재배열한 것으로, 원문에 없던 효능을 새로 만들지
-                않았습니다.
-                {genResult.risk_confirmations.length > 0 && " (잔존 위험 항목 확인 후 사용을 권장합니다.)"}
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                    copied
-                      ? "text-[var(--brand-ink)] border-[var(--brand)] bg-[var(--surface-sub)]"
-                      : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
-                  }`}
-                  id="copyBtn"
-                  onClick={handleCopy}
-                >
-                  {copied ? "복사됨" : "텍스트 복사"}
-                </button>
-                <div className="relative" id="expDd">
-                  <button
-                    className={`font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed ${
-                      exportingType ? "" : "cursor-pointer hover:bg-[var(--brand-deep)]"
-                    }`}
-                    id="expTrigger"
-                    ref={dropdownTriggerRef}
-                    aria-haspopup="true"
-                    aria-expanded={dropdownOpen}
-                    onClick={toggleDropdown}
-                    disabled={exportingType !== null}
-                  >
-                    {exportingType ? "내보내는 중…" : "내보내기"}{" "}
-                    <CaretDown className={`w-3.25 h-3.25 transition-transform duration-150 ${dropdownOpen ? "rotate-180" : ""}`} size={13} weight="bold" />
-                  </button>
-                  {dropdownOpen && (
-                    <div className="absolute right-0 bottom-[calc(100%+6px)] min-w-[190px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_26px_rgba(20,35,27,0.14)] z-10" id="expMenu">
-                      <button
-                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
-                        id="expHtml"
-                        onClick={() => handleExport("html")}
-                        disabled={exportingType !== null}
+                <div className="mb-3.5">
+                  {(() => {
+                    const hasViolation = genResult.recheck.n_violation > 0;
+                    return (
+                      <div
+                        className={`inline-flex items-center gap-1.75 font-mono text-[11.5px] p-[5px_10px] border ${hasViolation
+                          ? "border-[var(--crit-bd)] bg-[var(--crit-bg)] text-[var(--crit)]"
+                          : "border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)]"
+                          }`}
+                        id="recheckBadge"
                       >
-                        <FileCode className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
-                        HTML로 내보내기
-                      </button>
-                      <button
-                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
-                        id="expPng"
-                        onClick={() => handleExport("png")}
-                        disabled={exportingType !== null}
-                      >
-                        <FileImage className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
-                        PNG로 내보내기
-                      </button>
-                      <button
-                        className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
-                        id="expPdf"
-                        onClick={() => handleExport("pdf")}
-                        disabled={exportingType !== null}
-                      >
-                        <FilePdf className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
-                        PDF로 내보내기
-                      </button>
-                    </div>
+                        {/* "재검증 실패"라고 쓰지 않는다(팀장 지시, 2026-08-24). 생성이
+                        실패한 게 아니라 자동으로 고칠 수 없는 표현이 남은 것이고,
+                        "실패"는 산출물 전체가 못 쓰는 것처럼 읽힌다. 무엇을 해야
+                        하는지(수정 필요)를 건수와 함께 사실대로 적는다. 색은
+                        그대로 crit을 쓴다 - 남은 위반은 실제로 지금 급한 항목이라
+                        DESIGN.md "빨강만 경보" 기준에 맞는다. */}
+                        {hasViolation ? (
+                          <>
+                            <X size={14} weight="bold" className="text-[var(--crit)] mr-1" />
+                            수정 필요 · 위반 {genResult.recheck.n_violation}건
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} weight="bold" className="text-[var(--brand-ink)] mr-1" />
+                            재검증 통과
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {genResult.recheck.n_needs_review > 0 && (
+                    <p className="m-0 mt-1.5 text-[11px] text-[var(--ink-3)]">
+                      검토필요 {genResult.recheck.n_needs_review}건 - 실증자료 확인이 필요한 표현입니다(위반 아님).
+                    </p>
                   )}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
-      </>
+                {genResult.layout_plan && genResult.layout_plan.modules.length > 0 && (
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mb-3.5">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
+                      구성 계획 · {genResult.layout_plan.modules.length}개 모듈
+                      {genResult.layout_plan.product_type && ` · ${genResult.layout_plan.product_type}`}
+                      {" · "}
+                      {genResult.layout_plan.source === "planner" ? "AI 계획" : "고정 플랜"}
+                    </p>
+                    <ol className="list-none m-0 p-0 flex flex-wrap gap-1.5">
+                      {genResult.layout_plan.modules.map((m, i) => (
+                        <li
+                          key={`${m.kind}-${i}`}
+                          className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
+                        >
+                          <span className="text-[var(--ink-3)]">{i + 1}.</span>
+                          {m.kind}
+                          {m.has_claim_risk && (
+                            <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
+                              ✓근거
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {genResult.skipped_claims.length > 0 && (
+                  <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[15px_16px] mb-3.5">
+                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
+                      근거 부족으로 제외됨 · {genResult.skipped_claims.length}건
+                    </p>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+                      {genResult.skipped_claims.map((s, i) => (
+                        <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
+                          <X size={13} weight="bold" className="shrink-0 mt-0.5" />
+                          <span>
+                            <b className="text-[var(--ink-2)] font-semibold">{s.category}</b>: {s.reason}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="border border-[var(--line-2)] bg-[var(--surface-sub)]">
+                  <div className="flex items-center gap-2 p-[8px_12px] border-b border-[var(--line-2)] font-mono text-[11px] text-[var(--ink-3)]">
+                    <span className="w-1.75 h-1.75 rounded-full bg-[var(--line-2)] shrink-0"></span>
+                    <span className="text-[var(--ink-2)]">{exportFileBase}_draft.html</span>
+                  </div>
+                  <div className="p-[22px] flex justify-center">
+                    {previewContent ? (
+                      <div
+                        className="w-full max-w-[520px]"
+                        id="detailPage"
+                        // export HTML과 같은 buildDetailContent() 결과를 그대로 꽂는다(렌더러 통합).
+                        // dp-* 클래스는 barum 서비스 토큰과 안 겹치게 이미 분리 설계돼 있다.
+                        dangerouslySetInnerHTML={{ __html: previewContent.styleTag + previewContent.detailPageHtml }}
+                      />
+                    ) : (
+                      <div className="w-full max-w-[520px] aspect-[4/3] bg-[repeating-linear-gradient(135deg,var(--surface-sub)_0_10px,var(--surface)_10px_20px)] flex items-end p-4 border border-[var(--line-2)]">
+                        <span className="text-[var(--ink)] text-[19px] font-extrabold tracking-[-0.3px] bg-[var(--surface)] p-[6px_10px] border border-[var(--line-2)]">
+                          {displayProductName}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {genResult.risk_confirmations.length > 0 && (
+                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mt-3.5 w-full border-[var(--crit)]" style={{ border: "1px solid var(--crit)" }}>
+                    <p className="font-mono text-[10.5px] text-[var(--crit)] m-[0_0_10px] tracking-[0.3px] font-bold">⚠️ 자동 수정 불가 잔존 위험 · {genResult.risk_confirmations.length}건 (확인 필요)</p>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-1.25 p-[8px_12px]">
+                      {genResult.risk_confirmations.map((rc) => (
+                        <li key={rc.id} className="flex gap-2 items-start mb-2">
+                          <input
+                            type="checkbox"
+                            id={rc.id}
+                            checked={!!confirmedRisks[rc.id]}
+                            onChange={(e) => setConfirmedRisks(prev => ({ ...prev, [rc.id]: e.target.checked }))}
+                            className="mt-0.75"
+                          />
+                          <label className="cursor-pointer" htmlFor={rc.id}>
+                            <span className="font-bold text-[13px]">{rc.text}</span>
+                            {/* 문장 하나에 지적이 여러 건이면 사유가 \n으로 이어붙어 온다
+                            (PR #324, 베베) - pre-line 없으면 한 줄로 붙어 보인다. */}
+                            <p className="m-[2px_0_0] text-[11.5px] text-[var(--ink-3)] whitespace-pre-line">{rc.reason}</p>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-3.5 p-[13px_20px] flex-wrap">
+                  <p className="m-0 text-[11.5px] text-[var(--ink-3)] max-w-[44ch]">
+                    생성된 문구는 리포트에서 수용한 권고안을 조건표 안에서 재배열한 것으로, 원문에 없던 효능을 새로 만들지
+                    않았습니다.
+                    {genResult.risk_confirmations.length > 0 && " (잔존 위험 항목 확인 후 사용을 권장합니다.)"}
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      className={`font-sans text-[13px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${copied
+                        ? "text-[var(--brand-ink)] border-[var(--brand)] bg-[var(--surface-sub)]"
+                        : "text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+                        }`}
+                      id="copyBtn"
+                      onClick={handleCopy}
+                    >
+                      {copied ? "복사됨" : "텍스트 복사"}
+                    </button>
+                    <div className="relative" id="expDd">
+                      <button
+                        className={`font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed ${exportingType ? "" : "cursor-pointer hover:bg-[var(--brand-deep)]"
+                          }`}
+                        id="expTrigger"
+                        ref={dropdownTriggerRef}
+                        aria-haspopup="true"
+                        aria-expanded={dropdownOpen}
+                        onClick={toggleDropdown}
+                        disabled={exportingType !== null}
+                      >
+                        {exportingType ? "내보내는 중…" : "내보내기"}{" "}
+                        <CaretDown className={`w-3.25 h-3.25 transition-transform duration-150 ${dropdownOpen ? "rotate-180" : ""}`} size={13} weight="bold" />
+                      </button>
+                      {dropdownOpen && (
+                        <div className="absolute right-0 bottom-[calc(100%+6px)] min-w-[190px] bg-[var(--surface)] border border-[var(--line-2)] shadow-[0_10px_26px_rgba(20,35,27,0.14)] z-10" id="expMenu">
+                          <button
+                            className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                            id="expHtml"
+                            onClick={() => handleExport("html")}
+                            disabled={exportingType !== null}
+                          >
+                            <FileCode className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
+                            HTML로 내보내기
+                          </button>
+                          <button
+                            className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                            id="expPng"
+                            onClick={() => handleExport("png")}
+                            disabled={exportingType !== null}
+                          >
+                            <FileImage className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
+                            PNG로 내보내기
+                          </button>
+                          <button
+                            className="flex items-center gap-2 w-full text-left p-[9px_12px] font-sans text-[12.5px] font-semibold text-[var(--ink-2)] bg-transparent border-0 border-b border-[var(--line)] cursor-pointer whitespace-nowrap transition-all duration-120 hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed last:border-b-0"
+                            id="expPdf"
+                            onClick={() => handleExport("pdf")}
+                            disabled={exportingType !== null}
+                          >
+                            <FilePdf className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)]" size={14} weight="regular" />
+                            PDF로 내보내기
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </>
       )}
 
       <PageFooter />
@@ -1901,11 +1951,10 @@ function ContentGeneratorContent() {
               취소
             </button>
             <button
-              className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${
-                !allRisksConfirmed
-                  ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
-                  : "bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
-              }`}
+              className={`font-sans text-[13px] font-bold p-[11px_16px] border inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] ${!allRisksConfirmed
+                ? "bg-[var(--surface-sub)] text-[var(--ink-3)] border-[var(--line-2)] cursor-not-allowed"
+                : "bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
+                }`}
               id="cmConfirm"
               disabled={!allRisksConfirmed}
               onClick={handleConfirmResult}
@@ -1966,6 +2015,19 @@ function ContentGeneratorContent() {
           <p className="m-0 mb-1.5 px-2.5 text-[13px] text-[var(--ink-3)]">확인이 필요한 항목이 없습니다.</p>
         )}
       </Modal>
+
+      {/* 결제 직후 이 작업공간에 생성 권한을 붙인다. 리포트를 낀 경우(id 있음)엔
+          결합형이 리포트 열람까지 덮지만, 그 처리는 리포트 화면이 맡는다. */}
+      <TicketCheckoutModal
+        isOpen={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        kinds={["content", "combo"]}
+        defaultKind="content"
+        reason="상세페이지 초안 1건을 만듭니다. 콘텐츠 생성 이용권 1장이 1건이고, 결합형은 리포트 열람까지 함께 포함합니다."
+        onPurchased={(kind) => {
+          if (consumeTicket(kind)) grantContent();
+        }}
+      />
     </>
   );
 }

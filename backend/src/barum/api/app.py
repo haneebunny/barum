@@ -26,6 +26,7 @@ from barum.models import (
     ExportReadinessRequest,
     GenerateRequest,
     GenerateResponse,
+    IngredientUploadResponse,
     Region,
     RegulatoryBasis,
     RemediationRequest,
@@ -40,6 +41,7 @@ from barum.generate.content import generate_content
 from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
+from barum.preprocess.ingredient_upload import IngredientParseError, parse_ingredient_upload
 from barum.pipeline import run_check, run_us_sunscreen_check, run_us_export_readiness
 from barum.storage.checks_store import (
     build_cache_key,
@@ -193,6 +195,7 @@ def _persist_check(
     image_bytes: bytes | None,
     content_type: str | None,
     product_name: str | None = None,
+    cache_key: str | None = None,
 ) -> str | None:
     """검사 결과·증거를 저장하고 result_id를 낸다. 저장 못 하면 None(응답은 계속).
 
@@ -214,7 +217,7 @@ def _persist_check(
             upload_image(client, image_path, image_bytes, content_type or "application/octet-stream")
         row = build_check_row(
             result_id, region, report.model_dump(mode="json"), image_sha256, image_path,
-            product_name=product_name,
+            product_name=product_name, cache_key=cache_key,
         )
         save_check(client, row)
         return result_id
@@ -398,10 +401,21 @@ async def check(
         product_name=product_name,
         rewriter=_replacement_rewriter(),
     )
+    # **OCR이 깨진 결과는 캐시하지 않는다**(2026-08-24 팀장 발견).
+    # 실패한 리포트를 캐시에 박으면 화면이 "다시 시도해 주세요"라고 안내해도
+    # 재시도가 같은 실패를 캐시에서 그대로 돌려받는다. 재시도가 원천적으로
+    # 불가능해진다. 캐시 키를 지워 저장·복원 양쪽을 다 건너뛴다(리포트 자체는
+    # 증거로 남긴다 - result_id는 계속 발급된다).
+    if cache_key and getattr(report.summary, "n_ocr_failed_tiles", 0) > 0:
+        print(
+            f"    [info] OCR 실패 타일 {report.summary.n_ocr_failed_tiles}개 "
+            f"-> 이 결과는 캐시하지 않는다(재시도가 가능해야 한다)"
+        )
+        cache_key = None
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.
     report.result_id = _persist_check(
         report, region.value, image_bytes, image.content_type if image else None,
-        product_name=product_name,
+        product_name=product_name, cache_key=cache_key,
     )
     if cache_key:
         save_cached_check(cache_key, report)
@@ -471,12 +485,20 @@ async def check_us_sunscreen(
         ingredients=ingredients,
         product_name=product_name,
     )
+    # 국내 경로와 같은 이유로 OCR이 깨진 결과는 캐시하지 않는다(재시도 가능해야 한다).
+    if cache_key and getattr(report.summary, "n_ocr_failed_tiles", 0) > 0:
+        print(
+            f"    [info] OCR 실패 타일 {report.summary.n_ocr_failed_tiles}개 "
+            f"-> 이 결과는 캐시하지 않는다(재시도가 가능해야 한다)"
+        )
+        cache_key = None
     report.result_id = _persist_check(
         report,
         region="US",
         image_bytes=image_bytes,
         content_type=image.content_type if image is not None else None,
         product_name=product_name,
+        cache_key=cache_key,
     )
     if cache_key:
         save_cached_check(cache_key, report)
@@ -669,6 +691,59 @@ def get_generated_image(image_id: str) -> Response:
 _PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
 
 
+# 전성분 업로드 확장자 화이트리스트. content-type은 브라우저·OS마다 제각각이라
+# (csv를 application/vnd.ms-excel로 보내는 경우도 흔하다) 확장자를 판단 기준으로
+# 삼고, content-type은 명백히 엉뚱한 값만 걸러내는 보조 신호로만 쓴다.
+_INGREDIENT_EXTS = {".xlsx", ".csv", ".txt"}
+_INGREDIENT_CT_ALLOW = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "text/csv",
+    "application/csv",
+    "text/plain",
+    "application/octet-stream",
+    "",
+}
+_MAX_INGREDIENT_FILE_BYTES = 5 * 1024 * 1024
+
+
+@app.post("/uploads/ingredients")
+async def upload_ingredients(file: UploadFile = File(...)) -> IngredientUploadResponse:
+    """엑셀/CSV/TXT로 올린 전성분+함량을 파싱한다(create 모드, PM 요청 2026-08-24).
+
+    성분 20~30개를 한 줄씩 손으로 치는 게 지옥이라 파일 업로드로 대체한다. 저장은
+    안 한다 - 파싱 결과만 즉시 돌려주고 프론트가 `ingredient_amounts`에 채운다
+    (사진 업로드처럼 나중에 id로 다시 참조할 이유가 없다).
+
+    파일 자체를 못 읽으면(헤더 없음·시트 없음·손상) 422. 행 단위 문제는 조용히
+    건너뛰지 않고 `warnings`로 같이 낸다.
+    """
+    filename = file.filename or ""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _INGREDIENT_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
+        )
+    if file.content_type not in _INGREDIENT_CT_ALLOW:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
+        )
+    try:
+        rows, warnings = parse_ingredient_upload(ext, data)
+    except IngredientParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return IngredientUploadResponse(rows=rows, warnings=warnings)
+
+
 @app.post("/uploads/product-photo")
 async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     """판매자가 올리는 제품사진을 저장하고 photo_id를 낸다(create 모드, AI 합성 참조용).
@@ -691,6 +766,19 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     ensure_bucket(client)
     upload_image(client, f"uploads/{photo_id}", data, photo.content_type)
     return {"photo_id": photo_id}
+
+
+@app.get("/uploads/{photo_id}")
+def get_uploaded_photo(photo_id: str) -> Response:
+    """`POST /uploads/product-photo`로 업로드된 원본 제품사진을 스트리밍한다."""
+    if not _PHOTO_ID_RE.match(photo_id):
+        raise HTTPException(status_code=404, detail="잘못된 사진 id입니다.")
+    try:
+        data = download_image(_checks_client(), f"uploads/{photo_id}")
+    except Exception:
+        raise HTTPException(status_code=404, detail="해당 업로드 사진을 찾을 수 없습니다.")
+    ext = photo_id[photo_id.rfind(".") :] if "." in photo_id else ""
+    return Response(content=data, media_type=_EXT_TO_CT.get(ext, "application/octet-stream"))
 
 
 def _resolve_reference_photos(client):
@@ -722,14 +810,19 @@ def _resolve_reference_photos(client):
                 except Exception as e:
                     print(f"    [skip] 제품사진 조회 실패({photo_id}): {type(e).__name__}: {e}")
             return images
-        if req.result_id:
-            row = get_check(client, req.result_id)
-            if row is None or not row.get("image_path"):
-                return []
-            try:
-                return [download_image(client, row["image_path"])]
-            except Exception as e:
-                print(f"    [skip] 리포트 이미지 조회 실패({req.result_id}): {type(e).__name__}: {e}")
+        # **improve 모드는 참조 사진을 안 쓴다**(팀장 결정, 2026-08-24).
+        # 한때 `req.result_id`로 원본 검사 이미지를 참조로 넘겼는데(#346),
+        # 그 이미지는 '제품 컷'이 아니라 **상세페이지 통짜 스크린샷**이다
+        # (실측 480x2161, 세로가 가로의 4.5배). 프롬프트는 "참조 사진 속 제품의
+        # 형태·라벨을 그대로 유지하고 배경만 합성하라"고 지시하는데, 페이지 전체를
+        # 주면 그게 "이 페이지를 유지하라"로 읽힌다. 결과가 이랬다:
+        #   - 헤더·브레드크럼·가격·버튼·하단 표까지 통째로 재현
+        #   - 그 과정에서 글자가 전부 뭉개짐(YOURBERRY → YOUARFRAY)
+        #   - 참조의 가로세로 비율까지 물려받아 세로로 4.5배 긴 이미지가 카드에 박힘
+        # 프롬프트엔 이미 "남의 페이지 디자인은 옮겨 그리지 마라"가 있었지만
+        # "제품을 유지하라"는 지시가 그걸 이겼다. 지시를 더 세게 쓰는 대신
+        # 원인(잘못된 참조)을 없앤다. improve는 제품 컷 업로드 흐름 자체가 없어서
+        # 참조 없이 배경만 만드는 게 맞다.
         return []
     return resolve
 

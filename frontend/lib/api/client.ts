@@ -8,6 +8,7 @@ import {
   USExportReadinessReportSchema,
   ExportReadinessReportSchema,
   GenerateResponseSchema,
+  IngredientUploadResponseSchema,
 } from "./schema";
 import type {
   Region,
@@ -27,6 +28,7 @@ import type {
   GenericLabelEvidence,
   GenericProductEvidence,
   ReadinessInputState,
+  IngredientUploadResponse,
 } from "./schema";
 
 export interface CheckAdInput {
@@ -639,6 +641,39 @@ export async function uploadProductPhoto(file: File): Promise<{ photo_id: string
     UploadProductPhotoResponseSchema,
     await response.json(),
     "POST /uploads/product-photo"
+  );
+}
+
+// 전성분+함량 손입력이 20~30개면 지옥이라, 엑셀·CSV·txt로 한 번에 올리면
+// 백엔드(openpyxl)가 파싱해서 rows로 돌려준다(팀장 지시, 2026-08-24).
+export async function uploadIngredients(file: File): Promise<IngredientUploadResponse> {
+  const url = `${getApiUrl()}/uploads/ingredients`;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    // 415(형식 불량)·422(빈 파일·파싱 불가)·413(5MB 초과) 전부 detail에 사람이
+    // 읽을 이유를 담아 보낸다(백엔드 계약, 2026-08-24) - 그대로 화면에 쓴다.
+    // JSON이 아니거나 detail이 없는 응답(프록시 에러 등)만 일반 문구로 폴백.
+    let detail = `업로드에 실패했습니다 (${response.status}).`;
+    try {
+      const body = await response.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // JSON 파싱 실패 시 기본 문구 그대로
+    }
+    throw new Error(detail);
+  }
+
+  return validateResponse(
+    IngredientUploadResponseSchema,
+    await response.json(),
+    "POST /uploads/ingredients"
   );
 }
 

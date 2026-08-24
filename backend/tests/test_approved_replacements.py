@@ -62,8 +62,10 @@ def test_승인목록이_있으면_판정도_재작성도_안_부른다():
     )
     vlm = QuietVLM()
     generate_content(req, judge=StubJudge(), vlm=vlm)
-    # 섹션 생성 1회뿐. 판정(prescreen+judge)·재작성 배치가 없다.
-    assert vlm.calls == 1
+    # LLM 호출이 0이다. 판정(prescreen+judge)·재작성 배치가 없고, 저위험 서술
+    # 생성도 2026-08-24에 빠졌다(입력이 비면 사과문을 카피로 쓰던 문제 + 이미지가
+    # 없어 카드로 안 나가는데 과금만 되던 문제). 개선 모드는 이제 텍스트 과금 0이다.
+    assert vlm.calls == 0
 
 
 def test_클라이언트가_보낸_위반_문구는_게이트에서_걸린다():
@@ -112,8 +114,8 @@ def test_승인목록이_없으면_예전_경로를_그대로_탄다():
     req = _req()  # approved_replacements 없음
     vlm = QuietVLM()
     resp = generate_content(req, judge=StubJudge(), vlm=vlm)
-    # 판정·재작성 경로를 타므로 섹션 생성 1회보다 많이 불린다.
-    assert vlm.calls >= 1
+    # 판정 경로는 그대로 탄다(StubJudge라 LLM은 안 불린다). 재작성은 위반이
+    # 잡혔을 때만 부르고, 저위험 서술 생성은 2026-08-24에 빠졌다.
     assert resp.unapplied_replacements == []
 
 
@@ -122,5 +124,6 @@ def test_빈_승인목록도_재계산_경로로_안_샌다():
     req = _req(approved_replacements=[])
     vlm = QuietVLM()
     resp = generate_content(req, judge=StubJudge(), vlm=vlm)
-    assert vlm.calls == 1
+    # 재계산 경로로 안 샌다 = 판정·재작성 호출이 없다(저위험 서술 생성도 빠져 0회).
+    assert vlm.calls == 0
     assert resp.replacements == []
