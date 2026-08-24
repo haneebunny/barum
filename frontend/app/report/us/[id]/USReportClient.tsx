@@ -6,12 +6,7 @@ import { Warning, ShieldWarning, Question, ArrowsClockwise, CaretDown, Check } f
 import type { USPreflightReport, USPreflightFinding, USPreflightCategory } from "@/lib/api/schema";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { getReport, getReportImageUrl } from "@/lib/api/client";
-import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
-
-const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
-  { value: "image", label: "원본 보기" },
-];
 
 const CATEGORY_META: Record<
   USPreflightCategory,
@@ -132,7 +127,6 @@ export function USReportClient({ resultId }: USReportClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [openIdx, setOpenIdx] = useState<number | null>(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"image" | "tile">("image");
   const [imageErrorGlobal, setImageErrorGlobal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<USPreflightCategory | null>(null);
 
@@ -317,11 +311,7 @@ export function USReportClient({ resultId }: USReportClientProps) {
               <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
               {isImageMode ? (
-                canShowRealImage ? (
-                  <TabSwitch options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
-                ) : (
-                  <span className="text-[var(--ink-3)] font-mono text-[11px]">타일 오버레이</span>
-                )
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
               ) : (
                 <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
               )}
@@ -329,7 +319,6 @@ export function USReportClient({ resultId }: USReportClientProps) {
             <div id="origPanel">
               {isImageMode ? (
                 <ReportImageViewer
-                  viewMode={viewMode}
                   findByOrder={highlightItems}
                   imageUrl={canShowRealImage ? getReportImageUrl(resultId) : null}
                   imageErrorGlobal={imageErrorGlobal}
