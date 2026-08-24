@@ -185,6 +185,7 @@ def _persist_check(
     image_bytes: bytes | None,
     content_type: str | None,
     product_name: str | None = None,
+    cache_key: str | None = None,
 ) -> str | None:
     """검사 결과·증거를 저장하고 result_id를 낸다. 저장 못 하면 None(응답은 계속).
 
@@ -206,7 +207,7 @@ def _persist_check(
             upload_image(client, image_path, image_bytes, content_type or "application/octet-stream")
         row = build_check_row(
             result_id, region, report.model_dump(mode="json"), image_sha256, image_path,
-            product_name=product_name,
+            product_name=product_name, cache_key=cache_key,
         )
         save_check(client, row)
         return result_id
@@ -337,7 +338,7 @@ async def check(
     # 결과·증거 저장(실패해도 응답은 살아있게). 저장되면 result_id를 응답에 싣는다.
     report.result_id = _persist_check(
         report, region.value, image_bytes, image.content_type if image else None,
-        product_name=product_name,
+        product_name=product_name, cache_key=cache_key,
     )
     if cache_key:
         save_cached_check(cache_key, report)
@@ -413,6 +414,7 @@ async def check_us_sunscreen(
         image_bytes=image_bytes,
         content_type=image.content_type if image is not None else None,
         product_name=product_name,
+        cache_key=cache_key,
     )
     if cache_key:
         save_cached_check(cache_key, report)
