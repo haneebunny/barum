@@ -8,6 +8,8 @@ import { Modal } from "@/components/Modal/Modal";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
 import { useTier } from "@/lib/tier";
 import { recentHistory, rowProps } from "@/lib/mockHistory";
+import type { ExportProfile } from "@/lib/api/schema";
+import { DEFAULT_EXPORT_PROFILE, readExportProfile, writeExportProfile } from "@/lib/exportProfile";
 
 interface FeatItem {
   text: string;
@@ -87,6 +89,20 @@ export default function MyPage() {
   const modal_close_btn_ref = useRef<HTMLButtonElement>(null);
 
   const active_tier = TIERS[tier];
+  const [exportProfile, setExportProfile] = useState<ExportProfile>(DEFAULT_EXPORT_PROFILE);
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setExportProfile(readExportProfile()));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const updateProfile = <K extends keyof ExportProfile>(key: K, value: ExportProfile[K]) => {
+    setExportProfile((previous) => ({ ...previous, [key]: value }));
+    setProfileSaved(false);
+  };
+
+  const textValue = (key: keyof ExportProfile) => String(exportProfile[key] ?? "");
 
   return (
     <>
@@ -210,11 +226,95 @@ export default function MyPage() {
         </div>
       </div>
 
+      {/* 미국 수출 프로필: 로그인 없는 MVP의 브라우저 재사용 프로필 */}
+      <div className="py-[18px] border-b border-[var(--line)]">
+        <div className="flex items-center gap-[11px] m-[0_0_13px]">
+          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+          <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">미국 수출 프로필</h2>
+          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
+          <span className="text-[var(--ink-3)] font-mono text-[10.5px]">이 브라우저에 저장</span>
+        </div>
+        <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
+          <p className="m-[0_0_12px] text-[12px] text-[var(--ink-3)] leading-[1.6]">
+            제조·수출 정보를 한 번 저장하면 다음 미국 수출 준비도 검사에서 다시 사용할 수 있습니다. 서버 계정이나 FDA 실시간 조회에는 연결되지 않습니다.
+          </p>
+          <div className="grid grid-cols-2 gap-2.5 max-[900px]:grid-cols-1">
+            {[
+              ["legal_manufacturer", "법인명"],
+              ["manufacturer_name", "제조사명"],
+              ["manufacturing_site", "제조시설명"],
+              ["manufacturing_site_address", "제조시설 주소"],
+              ["us_agent_name", "U.S. Agent 이름"],
+              ["us_agent_contact", "U.S. Agent 연락처"],
+              ["importer_name", "미국 수입자"],
+              ["importer_contact", "수입자 연락처"],
+              ["fda_establishment_registration_number", "FDA establishment 등록번호"],
+              ["registration_renewal_date", "등록 갱신일"],
+              ["ndc_or_listing_number", "미국 판매 등록 식별번호"],
+            ].map(([key, label]) => (
+              <label key={key} className="text-[11.5px] text-[var(--ink-2)]">
+                {label}
+                <input
+                  className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                  value={textValue(key as keyof ExportProfile)}
+                  onChange={(event) => updateProfile(key as keyof ExportProfile, event.target.value)}
+                />
+              </label>
+            ))}
+            <label className="text-[11.5px] text-[var(--ink-2)]">
+              FDA establishment 등록 상태
+              <select
+                className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                value={textValue("registration_status")}
+                onChange={(event) => updateProfile("registration_status", event.target.value)}
+              >
+                <option value="">미입력</option><option value="준비 전">준비 전</option><option value="확인 필요">확인 필요</option><option value="등록 완료">등록 완료</option>
+              </select>
+            </label>
+            <label className="text-[11.5px] text-[var(--ink-2)]">
+              CGMP 자료
+              <select
+                className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                value={exportProfile.cgmp_ready === null || exportProfile.cgmp_ready === undefined ? "" : exportProfile.cgmp_ready ? "true" : "false"}
+                onChange={(event) => updateProfile("cgmp_ready", event.target.value === "" ? null : event.target.value === "true")}
+              >
+                <option value="">미입력</option><option value="true">보유</option><option value="false">미보유</option>
+              </select>
+            </label>
+            <label className="text-[11.5px] text-[var(--ink-2)]">
+              미국 판매 등록 상태
+              <select
+                className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                value={textValue("drug_listing_status")}
+                onChange={(event) => updateProfile("drug_listing_status", event.target.value)}
+              >
+                <option value="">미입력</option><option value="준비 전">준비 전</option><option value="확인 필요">확인 필요</option><option value="등록 완료">등록 완료</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              className="font-sans text-[12.5px] font-bold p-[9px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
+              onClick={() => {
+                writeExportProfile(exportProfile);
+                setProfileSaved(true);
+              }}
+            >
+              프로필 저장
+            </button>
+            <span className="font-mono text-[10.5px] text-[var(--brand-ink)]" aria-live="polite">
+              {profileSaved ? "저장됨 · 다음 미국 검사에서 재사용" : "저장 전 변경사항 있음"}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Pro 전용: 이력 통합 대시보드 */}
       {tier === "Pro" && (
         <div className="py-[18px] border-b border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">03</span>
             <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">이력 통합 대시보드</h2>
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
             <span className="text-[var(--ink-3)] font-mono text-[10.5px]">Pro · 이번 분기</span>
@@ -284,7 +384,7 @@ export default function MyPage() {
       {/* 검사 이력 */}
       <div className="py-[18px] border-b-0">
         <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">{tier === "Pro" ? "03" : "02"}</span>
+          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center" id="histNo">{tier === "Pro" ? "04" : "03"}</span>
           <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">검사 이력</h2>
           <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
           <span className="text-[var(--ink-3)] font-mono text-[10.5px]" id="histHint">최근 5건</span>

@@ -146,12 +146,16 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
         row = get_check_by_sha256(client, image_sha256)
         if row and "report" in row:
             try:
-                from barum.models import CheckReport, USPreflightReport
+                from barum.models import CheckReport, USExportReadinessReport, USPreflightReport
 
                 report_dict = row["report"]
                 result_id = row.get("id")
 
-                if (
+                if report_dict.get("report_type") == "us_export_readiness":
+                    report = USExportReadinessReport(**report_dict)
+                    if result_id:
+                        report.result_id = result_id
+                elif (
                     "disclaimer" in report_dict
                     and "summary" in report_dict
                     and "n_sentences" in report_dict["summary"]
@@ -191,4 +195,3 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
 def save_cached_check(cache_key: str, report: object) -> None:
     """리포트를 메모리 캐시에 저장한다."""
     _IMAGE_CACHE[cache_key] = report
-

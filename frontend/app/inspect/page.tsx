@@ -3,14 +3,53 @@
 import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { checkAd, checkUSPreflight } from "@/lib/api/client";
-import type { USPreflightReport } from "@/lib/api/schema";
+import { checkAd, createExportReadiness } from "@/lib/api/client";
+import type { CheckReport, DomesticProductCategory, ExportProfile, ExportReadinessReport, GenericLabelEvidence, GenericProductEvidence, ReadinessInputState } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { useError } from "@/lib/error/ErrorContext";
 import { takeDraft } from "@/lib/draftHandoff";
+import { DEFAULT_EXPORT_PROFILE, readExportProfile } from "@/lib/exportProfile";
+
+type NullableBoolean = boolean | null;
+
+function parseNullableBoolean(value: string): NullableBoolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
+function nullableBooleanValue(value: NullableBoolean): string {
+  return value === null ? "" : value ? "true" : "false";
+}
+
+function getAnalysisStats(report: CheckReport | ExportReadinessReport) {
+  if ("items" in report) {
+    return {
+      issueCount: report.items.filter((item) => item.status !== "COMPLIANT").length,
+      imageFindings: 0,
+    };
+  }
+  return {
+    issueCount: report.findings.length,
+    imageFindings: report.findings.filter((finding) => finding.location?.tile).length,
+  };
+}
+
+const CATEGORY_OPTIONS: Array<{ value: DomesticProductCategory; label: string }> = [
+  { value: "skincare", label: "기초 화장품" }, { value: "sun_care", label: "선케어·자외선 차단" },
+  { value: "cleansing", label: "클렌징" }, { value: "makeup", label: "메이크업" }, { value: "mask_pack", label: "마스크팩" },
+  { value: "haircare", label: "헤어케어" }, { value: "bodycare", label: "바디케어" }, { value: "fragrance", label: "향수·향 제품" }, { value: "other", label: "기타" },
+];
+
+const EVIDENCE_STATE_OPTIONS: Array<{ value: ReadinessInputState; label: string }> = [
+  { value: "PROVIDED", label: "자료 있음" }, { value: "NOT_AVAILABLE", label: "자료 없음" },
+  { value: "UNKNOWN", label: "있는지 모름" }, { value: "NOT_ENTERED", label: "나중에 입력" },
+];
+
+function evidence(input_state: ReadinessInputState) { return { input_state, evidence: [] }; }
 
 interface FileItem {
   id: string;
@@ -44,9 +83,34 @@ function InspectContent() {
       : []
   );
   const [pFiles, setPFiles] = useState<FileItem[]>([]);
+  const [productName, setProductName] = useState(isSunscreenDraft ? "미국 수출 선스크린 데모" : "");
+  const [domesticCategory, setDomesticCategory] = useState<DomesticProductCategory>(isSunscreenDraft ? "sun_care" : "skincare");
+  const [domesticSubcategory, setDomesticSubcategory] = useState("");
+  const [labelEvidenceState, setLabelEvidenceState] = useState<ReadinessInputState>("NOT_ENTERED");
+  const [sunLabelState, setSunLabelState] = useState<ReadinessInputState>("NOT_ENTERED");
+  const [sunTestState, setSunTestState] = useState<ReadinessInputState>("NOT_ENTERED");
+  const [intendedUse, setIntendedUse] = useState(isSunscreenDraft ? "sunscreen" : "");
+  const [spfValue, setSpfValue] = useState("");
+  const [spfDisplayed, setSpfDisplayed] = useState<NullableBoolean>(null);
+  const [broadSpectrum, setBroadSpectrum] = useState<NullableBoolean>(null);
+  const [waterResistant, setWaterResistant] = useState<NullableBoolean>(null);
+  const [waterResistanceMinutes, setWaterResistanceMinutes] = useState("");
+  const [spfTestReport, setSpfTestReport] = useState<NullableBoolean>(null);
+  const [broadSpectrumTestReport, setBroadSpectrumTestReport] = useState<NullableBoolean>(null);
+  const [waterResistanceTestReport, setWaterResistanceTestReport] = useState<NullableBoolean>(null);
+  const [drugFactsReady, setDrugFactsReady] = useState<NullableBoolean>(null);
+  const [claimsReviewed, setClaimsReviewed] = useState<NullableBoolean>(null);
+  const [drugListingReady, setDrugListingReady] = useState<NullableBoolean>(null);
+  const [exportProfile, setExportProfile] = useState<ExportProfile>(DEFAULT_EXPORT_PROFILE);
 
   const [inspectStatus, setInspectStatus] = useState<"running" | "done" | null>(null);
-  const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 ? "ready" : "idle");
+  const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 || ingText.trim().length > 0 || productName.trim().length > 0 ? "ready" : "idle");
+
+  useEffect(() => {
+    if (regionParam !== "US") return;
+    const frame = window.requestAnimationFrame(() => setExportProfile(readExportProfile()));
+    return () => window.cancelAnimationFrame(frame);
+  }, [regionParam]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingP, setIsDraggingP] = useState(false);
@@ -56,9 +120,9 @@ function InspectContent() {
   useEffect(() => {
     const draft = takeDraft();
     if (!draft) return;
-    if (draft.ad_text) setAdText(draft.ad_text);
-    if (draft.files?.length) {
-      setAdFiles(draft.files.map((file, i) => {
+    const frame = window.requestAnimationFrame(() => {
+      if (draft.ad_text) setAdText(draft.ad_text);
+      if (draft.files?.length) setAdFiles(draft.files.map((file, i) => {
         const lastDot = file.name.lastIndexOf(".");
         return {
           id: `ad-file-draft-${Date.now()}-${i}`,
@@ -67,8 +131,8 @@ function InspectContent() {
           file,
         };
       }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   interface TaskStep {
@@ -82,7 +146,7 @@ function InspectContent() {
     { id: 1, label: "자료 확인", status: "idle" },
     { id: 2, label: "광고 문구 분석", status: "idle" },
     { id: 3, label: "규제 기준 대조", status: "idle" },
-    { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+    { id: 4, label: regionParam === "US" ? "이미지 참고자료" : "이미지 내 위험 표현 검사", status: "idle" },
     { id: 5, label: "수정 권고안 준비", status: "idle" },
   ]);
   const [resultId, setResultId] = useState<string | null>(null);
@@ -188,6 +252,24 @@ function InspectContent() {
     setIngText("");
     setAdFiles([]);
     setPFiles([]);
+    setProductName("");
+    setDomesticCategory("skincare");
+    setDomesticSubcategory("");
+    setLabelEvidenceState("NOT_ENTERED");
+    setSunLabelState("NOT_ENTERED");
+    setSunTestState("NOT_ENTERED");
+    setIntendedUse("");
+    setSpfValue("");
+    setSpfDisplayed(null);
+    setBroadSpectrum(null);
+    setWaterResistant(null);
+    setWaterResistanceMinutes("");
+    setSpfTestReport(null);
+    setBroadSpectrumTestReport(null);
+    setWaterResistanceTestReport(null);
+    setDrugFactsReady(null);
+    setClaimsReviewed(null);
+    setDrugListingReady(null);
     setInspectStatus(null);
     setResultId(null);
     setIsLogModalOpen(false);
@@ -195,14 +277,15 @@ function InspectContent() {
       { id: 1, label: "자료 확인", status: "idle" },
       { id: 2, label: "광고 문구 분석", status: "idle" },
       { id: 3, label: "규제 기준 대조", status: "idle" },
-      { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+      { id: 4, label: regionParam === "US" ? "이미지 참고자료" : "이미지 내 위험 표현 검사", status: "idle" },
       { id: 5, label: "수정 권고안 준비", status: "idle" },
     ]);
   };
 
 
   const handleRun = async () => {
-    if (status === "running" || (!adText.trim() && adFiles.length === 0)) return;
+    const hasInput = adText.trim() || adFiles.length > 0 || ingText.trim() || productName.trim();
+    if (status === "running" || !hasInput) return;
 
     setInspectStatus("running");
     setResultId(null);
@@ -213,13 +296,31 @@ function InspectContent() {
     // API 호출용 파라미터 조립
     const actualImage = adFiles.find((f) => f.file)?.file;
     const ingredients = ingText || pFiles.map((f) => `${f.name}${f.ext}`).join(", ");
+    // generic US readiness는 현재 JSON 계약이라 광고 이미지를 전송하지 않는다.
+    // 사용자가 이미지가 분석됐다고 오해하지 않도록 해당 진행 단계의 문구를 분리한다.
+    const imageAnalysisSupported = regionParam !== "US";
 
     // 1단계: API 호출 시작 (US면 전용 엔드포인트)
     const apiPromise = regionParam === "US"
-      ? checkUSPreflight({
-          adText: adText || undefined,
-          image: actualImage,
-          ingredients: ingredients || undefined,
+      ? createExportReadiness({
+          destination_country: "US",
+          domestic_category: domesticCategory,
+          domestic_subcategory: domesticSubcategory || null,
+          product_name: productName || null,
+          intended_use: intendedUse || null,
+          claims: adText ? [adText] : [],
+          ingredients: ingredients ? ingredients.split(",").map((item) => item.trim()).filter(Boolean) : [],
+          label_evidence: {
+            statement_of_identity: evidence(labelEvidenceState), net_quantity: evidence(labelEvidenceState),
+            business_name_address: evidence(labelEvidenceState), ingredient_declaration: evidence(labelEvidenceState),
+            english_required_information: evidence(labelEvidenceState), adverse_event_contact: evidence(labelEvidenceState),
+          } satisfies GenericLabelEvidence,
+          product_evidence: {
+            facility_registration: evidence("NOT_ENTERED"), product_listing: evidence("NOT_ENTERED"), safety_substantiation: evidence("NOT_ENTERED"), color_additives: evidence("NOT_ENTERED"),
+            spf_test: evidence(sunTestState), broad_spectrum_test: evidence(sunTestState), water_resistance_test: evidence(sunTestState), drug_facts_label: evidence(sunLabelState),
+          } satisfies GenericProductEvidence,
+          profile_state: Object.values(exportProfile).some((value) => value !== null && value !== "" && value !== undefined) ? "PROVIDED" : "NOT_ENTERED",
+          profile: exportProfile,
         })
       : checkAd({
           region: regionParam,
@@ -236,17 +337,16 @@ function InspectContent() {
         const rid = report.result_id ?? `us-${Date.now()}`;
         setResultId(rid);
         if (regionParam === "US") {
-          sessionStorage.setItem(`us-preflight-${rid}`, JSON.stringify(report));
+          sessionStorage.setItem(`us-readiness-${rid}`, JSON.stringify(report));
         }
 
-        const findingsCount = report.findings.length;
-        const imageFindings = report.findings.filter((f: { location?: { tile?: string | null } }) => f.location?.tile);
+        const { issueCount, imageFindings } = getAnalysisStats(report);
 
         setSteps([
           { id: 1, label: "자료 확인", status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" },
           { id: 2, label: "광고 문구 분석", status: "done", valueText: "완료" },
-          { id: 3, label: "규제 기준 대조", status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" },
-          { id: 4, label: "이미지 내 위험 표현 검사", status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" },
+          { id: 3, label: "규제 기준 대조", status: issueCount > 0 ? "warn" : "done", valueText: issueCount > 0 ? `${issueCount}건 확인 필요` : "이상 없음" },
+          { id: 4, label: imageAnalysisSupported ? "이미지 내 위험 표현 검사" : "이미지 참고자료", status: imageAnalysisSupported && isImage ? (imageFindings > 0 ? "warn" : "done") : "done", valueText: !imageAnalysisSupported ? (isImage ? "별도 분석 안 함" : "대상 없음") : (isImage ? (imageFindings > 0 ? `${imageFindings}건 감지` : "이상 없음") : "대상 없음") },
           { id: 5, label: "수정 권고안 준비", status: "done", valueText: "준비 완료" },
         ]);
         setInspectStatus("done");
@@ -267,7 +367,7 @@ function InspectContent() {
         { id: 1, label: "자료 확인", status: "running" },
         { id: 2, label: "광고 문구 분석", status: "idle" },
         { id: 3, label: "규제 기준 대조", status: "idle" },
-        { id: 4, label: "이미지 내 위험 표현 검사", status: "idle" },
+        { id: 4, label: imageAnalysisSupported ? "이미지 내 위험 표현 검사" : "이미지 참고자료", status: "idle" },
         { id: 5, label: "수정 권고안 준비", status: "idle" },
       ]);
 
@@ -292,15 +392,14 @@ function InspectContent() {
       const rid = report.result_id ?? `us-${Date.now()}`;
       setResultId(rid);
       if (regionParam === "US") {
-        sessionStorage.setItem(`us-preflight-${rid}`, JSON.stringify(report));
+        sessionStorage.setItem(`us-readiness-${rid}`, JSON.stringify(report));
       }
 
-      const findingsCount = report.findings.length;
-      const imageFindings = report.findings.filter((f: { location?: { tile?: string | null } }) => f.location?.tile);
+      const { issueCount, imageFindings } = getAnalysisStats(report);
 
       // 3단계 완료 처리 후 4단계 시작
       setSteps(prev => prev.map(s => {
-        if (s.id === 3) return { ...s, status: findingsCount > 0 ? "warn" : "done", valueText: findingsCount > 0 ? `${findingsCount}건 감지` : "이상 없음" };
+        if (s.id === 3) return { ...s, status: issueCount > 0 ? "warn" : "done", valueText: issueCount > 0 ? `${issueCount}건 확인 필요` : "이상 없음" };
         if (s.id === 4) return { ...s, status: "running" };
         return s;
       }));
@@ -308,7 +407,7 @@ function InspectContent() {
 
       // 4단계 완료 처리 후 5단계 시작
       setSteps(prev => prev.map(s => {
-        if (s.id === 4) return { ...s, status: isImage ? (imageFindings.length > 0 ? "warn" : "done") : "done", valueText: isImage ? (imageFindings.length > 0 ? `${imageFindings.length}건 감지` : "이상 없음") : "대상 없음" };
+        if (s.id === 4) return { ...s, status: imageAnalysisSupported && isImage ? (imageFindings > 0 ? "warn" : "done") : "done", valueText: !imageAnalysisSupported ? (isImage ? "별도 분석 안 함" : "대상 없음") : (isImage ? (imageFindings > 0 ? `${imageFindings}건 감지` : "이상 없음") : "대상 없음") };
         if (s.id === 5) return { ...s, status: "running" };
         return s;
       }));
@@ -503,6 +602,118 @@ function InspectContent() {
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
               <span className="text-[var(--ink-3)] font-mono text-[10.5px]">전성분 · 선택</span>
             </div>
+            {regionParam === "US" && (
+              <div className="mb-4 border border-[var(--line-2)] bg-[var(--surface-sub)] p-[13px_14px]">
+                <div className="flex items-center gap-2 mb-2.5"><span className="font-mono text-[10.5px] text-[var(--brand-ink)] border border-[var(--line-2)] bg-[var(--surface)] p-[3px_7px]">01–04</span><span className="text-[12px] font-semibold text-[var(--ink)]">선택한 제품에 맞는 준비 항목을 정리하고 있습니다</span></div>
+                <div className="grid grid-cols-2 gap-2.5 max-[650px]:grid-cols-1">
+                  <label className="text-[11.5px] text-[var(--ink-2)]">국내 판매 카테고리
+                    <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={domesticCategory} onChange={(event) => setDomesticCategory(event.target.value as DomesticProductCategory)} disabled={status === "running"}>{CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                  </label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">세부 제품 유형 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={domesticSubcategory} onChange={(event) => setDomesticSubcategory(event.target.value)} disabled={status === "running"} placeholder="예: 에센스, 크림, 로션" /></label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">제품명 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={productName} onChange={(event) => setProductName(event.target.value)} disabled={status === "running"} placeholder="제품명" /></label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">미국 판매 목적 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={intendedUse} onChange={(event) => setIntendedUse(event.target.value)} disabled={status === "running"} placeholder="예: 보습, 세정, 자외선 차단" /></label>
+                </div>
+                <label className="block mt-2.5 text-[11.5px] text-[var(--ink-2)]">미국 판매용 라벨 초안·필수 표기 자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={labelEvidenceState} onChange={(event) => setLabelEvidenceState(event.target.value as ReadinessInputState)} disabled={status === "running"}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                <details className="mt-2 text-[11px] text-[var(--ink-3)]"><summary className="cursor-pointer">왜 필요한가 / 어떤 자료인가 / 모르면 어디에 확인하나</summary><p className="m-[6px_0_0] leading-[1.55]">미국 판매용 라벨의 기본 표기와 연락처를 확인하기 위한 자료입니다. 포장 시안 또는 라벨 PDF를 준비하고, 없으면 디자인·품질 담당자에게 확인하세요.</p></details>
+                {domesticCategory === "sun_care" && <div className="mt-3 border-t border-dashed border-[var(--line-2)] pt-3"><p className="m-[0_0_2px] text-[12px] font-semibold text-[var(--ink)]">자외선 차단 제품 추가 확인</p><p className="m-[0_0_2px] text-[11px] text-[var(--ink-3)]">표기와 시험·라벨 자료의 준비 상태만 확인합니다.</p><div className="grid grid-cols-2 gap-2.5 mt-2 max-[650px]:grid-cols-1"><label className="text-[11.5px] text-[var(--ink-2)]">자외선 차단 관련 시험자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)]" value={sunTestState} onChange={(event) => setSunTestState(event.target.value as ReadinessInputState)}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-[11.5px] text-[var(--ink-2)]">미국 판매용 라벨 자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)]" value={sunLabelState} onChange={(event) => setSunLabelState(event.target.value as ReadinessInputState)}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div></div>}
+                <div className="mt-3 border-t border-dashed border-[var(--line-2)] pt-2.5 text-[11px] text-[var(--ink-3)]">{Object.values(exportProfile).some((value) => value !== null && value !== "") ? <>저장된 수출 프로필을 이번 분석에 사용합니다. <Link href="/mypage" className="text-[var(--brand-ink)] underline">수정하기</Link></> : <>저장된 프로필이 없습니다. 프로필 없이 계속할 수 있으며, 제조시설·수입자 관련 준비 항목은 결과에서 안내합니다. <Link href="/mypage" className="text-[var(--brand-ink)] underline">지금 저장하기</Link></>}</div>
+              </div>
+            )}
+            {false && regionParam === "US" && (
+              <div className="mb-4 border border-[var(--line-2)] bg-[var(--surface-sub)] p-[13px_14px]">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <span className="font-mono text-[10.5px] text-[var(--brand-ink)] border border-[var(--line-2)] bg-[var(--surface)] p-[3px_7px]">US READINESS</span>
+                  <span className="text-[12px] font-semibold text-[var(--ink)]">제품별 수출 준비 정보</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 max-[650px]:grid-cols-1">
+                  <label className="text-[11.5px] text-[var(--ink-2)]">
+                    제품명
+                    <input
+                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                      value={productName}
+                      onChange={(e) => setProductName(e.target.value)}
+                      disabled={status === "running"}
+                      placeholder="미국 수출 제품명"
+                    />
+                  </label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">
+                    의도 용도
+                    <select
+                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                      value={intendedUse}
+                      onChange={(e) => setIntendedUse(e.target.value)}
+                      disabled={status === "running"}
+                    >
+                      <option value="">선택하지 않음</option>
+                      <option value="sunscreen">자외선차단 제품</option>
+                      <option value="other">기타 제품</option>
+                    </select>
+                  </label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">
+                    표시 SPF
+                    <input
+                      type="number"
+                      min="0"
+                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                      value={spfValue}
+                      onChange={(e) => setSpfValue(e.target.value)}
+                      disabled={status === "running"}
+                      placeholder="예: 50"
+                    />
+                  </label>
+                  <label className="text-[11.5px] text-[var(--ink-2)]">
+                    SPF 표시 여부
+                    <select
+                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                      value={nullableBooleanValue(spfDisplayed)}
+                      onChange={(e) => setSpfDisplayed(parseNullableBoolean(e.target.value))}
+                      disabled={status === "running"}
+                    >
+                      <option value="">미입력</option><option value="true">예</option><option value="false">아니오</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 mt-2.5 max-[650px]:grid-cols-1">
+                  {[
+                    ["Broad Spectrum 표시", broadSpectrum, setBroadSpectrum],
+                    ["Water Resistant 표시", waterResistant, setWaterResistant],
+                    ["SPF 시험자료", spfTestReport, setSpfTestReport],
+                    ["Broad Spectrum 시험자료", broadSpectrumTestReport, setBroadSpectrumTestReport],
+                    ["Water Resistance 시험자료", waterResistanceTestReport, setWaterResistanceTestReport],
+                    ["Drug Facts / 미국 라벨", drugFactsReady, setDrugFactsReady],
+                    ["미국용 claim 검토", claimsReviewed, setClaimsReviewed],
+                    ["Drug Listing 준비", drugListingReady, setDrugListingReady],
+                  ].map(([label, value, setter]) => (
+                    <label key={label as string} className="text-[11.5px] text-[var(--ink-2)]">
+                      {label as string}
+                      <select
+                        className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                        value={nullableBooleanValue(value as NullableBoolean)}
+                        onChange={(e) => (setter as React.Dispatch<React.SetStateAction<NullableBoolean>>)(parseNullableBoolean(e.target.value))}
+                        disabled={status === "running"}
+                      >
+                        <option value="">미입력</option><option value="true">예</option><option value="false">아니오</option>
+                      </select>
+                    </label>
+                  ))}
+                  <label className="text-[11.5px] text-[var(--ink-2)]">
+                    Water Resistant 지속 시간
+                    <select
+                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                      value={waterResistanceMinutes}
+                      onChange={(e) => setWaterResistanceMinutes(e.target.value)}
+                      disabled={status === "running"}
+                    >
+                      <option value="">미입력</option><option value="40">40분</option><option value="80">80분</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-2.5 border-t border-dashed border-[var(--line-2)] pt-2.5 text-[11px] text-[var(--ink-3)]">
+                  저장된 미국 수출 프로필: <span className="text-[var(--ink-2)]">{String(exportProfile.manufacturer_name || exportProfile.legal_manufacturer || "미입력")}</span>{" "}
+                  <Link href="/mypage" className="ml-1 text-[var(--brand-ink)] underline">프로필 편집</Link>
+                </div>
+              </div>
+            )}
             <div>
               <span className="block text-[12px] text-[var(--ink-2)] font-semibold mb-1.5">전성분 붙여넣기 (함량 % 선택 기재)</span>
               <textarea
