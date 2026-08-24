@@ -728,11 +728,8 @@ def _accept_approved(req: GenerateRequest) -> tuple[list[Replacement], list[str]
     return approved, rejected
 
 
-# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type. hero_fullbleed로 고정하면
-# 손 장면 허용·사진성 있는 넓은 구도 등 create 모드의 안전규칙(_body_part_line·
-# _staged_look_forbidden_line, images.py)을 그대로 상속받는다 - 여기서 새로 정할
-# 필요가 없다.
-_REPLACEMENT_IMAGE_LAYOUT_TYPE = "hero_fullbleed"
+# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type (image_text_split: 한쪽에 이미지, 한쪽에 문구)
+_REPLACEMENT_IMAGE_LAYOUT_TYPE = "image_text_split"
 
 
 def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
@@ -870,17 +867,24 @@ def _generate_improve_content(
     # 모듈(ad_copy·LLM 서술)은 이미지가 필요 없어서 애초에 이미지 생성 쪽 plan에
     # 안 넣었다(과금 안 남). build_cards는 module_kind로 image_plan.module_images를
     # 찾으므로, 대응하는 이미지가 없는 모듈은 그냥 문구만 있는 카드로 나간다.
+    # 7. 카드 조립.
+    # 대체표현이 있으면 각 대체표현별 split 카드를 메인으로 구성하고,
+    # 대체표현이 없을 때만 ad_copy 단일 카드를 statement로 구성한다.
+    base_cards = (
+        replacement_modules
+        if replacement_modules
+        else [
+            LayoutModule(
+                kind="ad_copy",
+                purpose="개선된 전체 광고 문구",
+                has_claim_risk=False,
+                layout_type="section_statement",
+            )
+        ]
+    )
     cards_plan = LayoutPlan(
         modules=(
-            [
-                LayoutModule(
-                    kind="ad_copy",
-                    purpose="개선된 전체 광고 문구",
-                    has_claim_risk=False,
-                    layout_type="hero_fullbleed",
-                )
-            ]
-            + replacement_modules
+            base_cards
             + [
                 LayoutModule(
                     kind=s.kind,

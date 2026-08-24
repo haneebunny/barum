@@ -337,13 +337,8 @@ function ContentGeneratorContent() {
   }
   const mockData = DEFAULT_MOCKS[mockKey];
 
-  // 미리보기·내보내기에 쓰는 제품명. create 모드는 입력한 제품명, 아니면 기존 improve 모드 로직 그대로
-  const displayProductName =
-    mode === "create"
-      ? createProductName || "제품"
-      : report
-        ? (mockKey === "image" ? "글로우 세럼" : "수분 크림")
-        : "선크림";
+  // 미리보기·내보내기에 쓰는 제품명.
+  const displayProductName = createProductName || (report ? "제품" : "선크림");
 
   // 내보내기 파일명. 예전엔 "detail_draft.html"·"${mockKey}_detail_draft.png"로
   // 상품명과 무관하게 고정이었다(파일 여러 개 받으면 다 같은 이름이라 구분이 안 됨,
@@ -527,7 +522,7 @@ function ContentGeneratorContent() {
           mode: "improve",
           content: rawContent,
           result_id: id || undefined,
-          product_name: report ? (mockKey === "image" ? "글로우 세럼" : "수분 크림") : "선크림",
+          product_name: createProductName || undefined,
           certifications: [],
           approved_replacements: approvedReplacements,
         });
@@ -564,21 +559,23 @@ function ContentGeneratorContent() {
   };
 
   // HTML 내보내기 (Blob)
-  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다.
+  // 이미지를 data URI로 바꿔 내보낸 HTML이 네트워크 없이도 혼자 열리게 한다 (타임아웃 3초 시 원본 URL로 안전 폴백).
   const toDataUri = async (url: string): Promise<string | null> => {
     try {
-      const res = await fetch(resolveImageUrl(url));
-      if (!res.ok) return null;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(resolveImageUrl(url), { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) return resolveImageUrl(url);
       const blob = await res.blob();
-      return await new Promise((resolve, reject) => {
+      return await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
+        reader.onerror = () => resolve(resolveImageUrl(url));
         reader.readAsDataURL(blob);
       });
-    } catch (e) {
-      console.error("Failed to inline image for export", url, e);
-      return null;
+    } catch {
+      return resolveImageUrl(url);
     }
   };
 
@@ -826,7 +823,7 @@ function ContentGeneratorContent() {
           if ((card.order === 0 || card.layout_type === "hero_fullbleed") && dataUri) {
             return `${swapComment}
     <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
-      <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
+      <div class="dp-hero-card">${claimTag}<p class="dp-headline" style="color:#ffffff;">${escapeHtml(card.headline)}</p>${card.body ? `<p class="dp-subcopy" style="color:rgba(255,255,255,0.92);">${escapeHtml(card.body)}</p>` : ""}</div>
     </div>
     ${imageCaption}
     ${noteHtml}`;
@@ -988,8 +985,7 @@ function ContentGeneratorContent() {
   </style>`;
 
     const detailPageHtml = `<div class="detailpage">
-    ${useCards ? cardsHtml : sectionsHtml}
-    ${imagesHtml}
+    ${useCards ? cardsHtml : `${sectionsHtml}\n${imagesHtml}`}
     ${aiPageNotice}
     <div class="dp-close">${escapeHtml(result.disclaimer)}</div>
   </div>`;
