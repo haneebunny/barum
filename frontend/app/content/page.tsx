@@ -818,6 +818,8 @@ function ContentGeneratorContent() {
           // 2026-08-23). 백엔드는 헤드라인·본문을 둘 다 정상 생성하는데 화면엔
           // 본문이 아예 안 나가 상세페이지가 헤드라인만 나열된 것처럼 부실해
           // 보였다. 옛 sections 경로가 쓰던 .dp-subcopy를 그대로 재사용한다.
+          const bodyHtml = card.body ? `<p class="dp-subcopy">${escapeHtml(card.body)}</p>` : "";
+
           if (dataUri) {
             return `${swapComment}
     <div class="dp-card" data-swap="${escapeAttr(card.module_kind)}">
