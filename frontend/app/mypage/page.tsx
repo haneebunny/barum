@@ -6,8 +6,7 @@ import { PageContent } from "@/components/PageContent/PageContent";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { Modal } from "@/components/Modal/Modal";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
-import { TabSwitch } from "@/components/TabSwitch/TabSwitch";
-import { useTier, type Tier } from "@/lib/tier";
+import { useTier } from "@/lib/tier";
 import { recentHistory, rowProps } from "@/lib/mockHistory";
 
 interface FeatItem {
@@ -78,16 +77,10 @@ const TIERS: Record<"Free" | "Basic" | "Pro", TierInfo> = {
   },
 };
 
-const TIER_OPTIONS: { value: Tier; label: string }[] = [
-  { value: "Free", label: "Free" },
-  { value: "Basic", label: "Basic" },
-  { value: "Pro", label: "Pro" },
-];
-
 const RECENT_HISTORY = recentHistory(5);
 
 export default function MyPage() {
-  const { tier, setTier } = useTier();
+  const { tier } = useTier();
   const [is_compare_modal_open, set_is_compare_modal_open] = useState(false);
 
   const compare_btn_ref = useRef<HTMLButtonElement>(null);
@@ -100,7 +93,6 @@ export default function MyPage() {
       <PageContent>
       <PageHeader
         title="마이페이지"
-        right={<TabSwitch label="목업 전용 · 실제 화면엔 없음" options={TIER_OPTIONS} value={tier} onChange={setTier} />}
       />
 
       {/* 요금제 + 사용량 */}

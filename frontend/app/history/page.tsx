@@ -16,8 +16,7 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { HistoryRow, HistoryRowList, HistoryRowLocked } from "@/components/HistoryRow/HistoryRow";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
-import { TabSwitch } from "@/components/TabSwitch/TabSwitch";
-import { useTier, type Tier } from "@/lib/tier";
+import { useTier } from "@/lib/tier";
 import { MOCK_HISTORY, REGION_LABEL, STATUS_META, daysAgo, dateLabel, rowProps, type MockHistoryItem } from "@/lib/mockHistory";
 import { FilterDropdown } from "@/components/Dropdown/FilterDropdown";
 
@@ -35,12 +34,6 @@ function LockIcon() {
     </svg>
   );
 }
-
-const TIER_OPTIONS: { value: Tier; label: string }[] = [
-  { value: "Free", label: "Free" },
-  { value: "Basic", label: "Basic" },
-  { value: "Pro", label: "Pro" },
-];
 
 const REGION_OPTIONS = [
   { key: "전체", label: "전체" },
@@ -62,7 +55,7 @@ const PERIOD_FILTERS = [
 ] as const;
 
 export default function HistoryPage() {
-  const { tier, setTier } = useTier();
+  const { tier } = useTier();
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState<(typeof REGION_OPTIONS)[number]["key"]>("전체");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
@@ -88,7 +81,6 @@ export default function HistoryPage() {
       <PageHeader
         title="검사 이력"
         subtitle={`총 ${MOCK_HISTORY.length}건 · 최근 30일`}
-        right={<TabSwitch label="티어 미리보기" options={TIER_OPTIONS} value={tier} onChange={setTier} />}
       />
 
       {/* Pro 현황 스트립 */}

@@ -6,7 +6,23 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle/ThemeToggle";
 import { Dropdown } from "@/components/Dropdown/Dropdown";
-import { TierProvider } from "@/lib/tier";
+import { TabSwitch, type TabOption } from "@/components/TabSwitch/TabSwitch";
+import { TierProvider, useTier, type Tier } from "@/lib/tier";
+
+const TIER_OPTIONS: TabOption<Tier>[] = [
+  { value: "Free", label: "Free" },
+  { value: "Basic", label: "Basic" },
+  { value: "Pro", label: "Pro" },
+];
+
+// 티어 스위처를 여기 하나만 두고 전 페이지 공통으로 보이게 한다. history/mypage/
+// content/ReportClient 각자 따로 구현돼 있어서 한쪽에서 바꿔도 다른 페이지엔 안
+// 먹히던 문제(팀장 지적, 2026-08-24) - useTier()가 이미 localStorage 기반 공유
+// 컨텍스트라, 이 컴포넌트 하나만 있으면 페이지 이동해도 값이 유지된다.
+function TierSwitcher() {
+  const { tier, setTier } = useTier();
+  return <TabSwitch label="티어 미리보기" options={TIER_OPTIONS} value={tier} onChange={setTier} />;
+}
 
 const navListeners = new Set<() => void>();
 
@@ -83,6 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
             <div className="ml-auto flex items-center gap-2.5 relative">
+              <TierSwitcher />
               <ThemeToggle />
               <button
                 type="button"
@@ -186,6 +203,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
                     </svg>
                     <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>마이페이지</span>
+                  </Link>
+                  <Link href="/content?mode=create" className={`flex items-center text-[13px] no-underline transition-all duration-[120ms] ${collapsed ? "w-10 p-[10px_0] justify-center gap-0" : "gap-[11px] p-[9px_11px]"
+                    } max-[900px]:flex-col max-[900px]:items-center max-[900px]:flex-1 max-[900px]:justify-center max-[900px]:p-2 max-[900px]:gap-1 ${pathname === "/content"
+                      ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold"
+                      : "text-[var(--ink-2)] cursor-pointer hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+                    }`} title="새로 만들기">
+                    <svg className="w-[17px] h-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    <span className={`app-side-expanded-only whitespace-nowrap ${collapsed ? "hidden" : ""} max-[900px]:!inline max-[900px]:text-[10px]`}>새로 만들기</span>
                   </Link>
                 </nav>
               </div>
