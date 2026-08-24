@@ -219,7 +219,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </aside>
           )}
 
-          <main className={`min-w-0 flex flex-col ${isLandingPage ? "" : "max-[900px]:pb-[70px]"}`}>{children}</main>
+          <main className={`min-w-0 flex flex-col ${isLandingPage ? "" : "min-h-[85vh] max-[900px]:pb-[70px]"}`}>{children}</main>
         </div>
       </div>
     </TierProvider>
