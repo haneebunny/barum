@@ -8,6 +8,7 @@
 from barum.generate.content import build_cards
 from barum.generate.layout import CARD_LIMIT, select_top_modules
 from barum.models import (
+    ClinicalEvidence,
     GenerateRequest,
     ImageGenResult,
     ImagePlan,
@@ -703,3 +704,50 @@ def test_설문은_전용_자리를_받는다():
     assert any(m.kind == SURVEY_KIND for m in out.modules)
     # 설문이 없으면 안 만든다.
     assert ensure_survey_module(LayoutPlan(modules=[]), GenerateRequest(content="x")).modules == []
+
+
+# ── 실증자료 구조화 (2026-08-24) ────────────────────────────────────────────
+#
+# 프론트가 수치를 강조하려면 문장을 도로 파싱해야 했다. "4주 후 2.1배" 같은 표기에서
+# 그 파싱이 깨지고, 깨진 자리를 지어낸 값으로 메우면 바름이 잡으려는 바로 그 행위가
+# 된다. 그래서 입력 객체를 그대로 카드까지 흘린다.
+
+
+def test_실증자료_카드에_원본_입력값이_그대로_실린다():
+    ev = ClinicalEvidence(
+        claim="다크스팟 개선", value="87%", period="4주", institution="OO시험", note="20명"
+    )
+    sections = [
+        Section(
+            kind="실증자료",
+            text="다크스팟 개선 87% (4주), OO시험 시험. 20명",
+            source="clinical_evidence",
+            module_kind="clinical_result",
+            clinical_stat=ev,
+        )
+    ]
+    cards = build_cards(sections, _plan("clinical_result"), ImagePlan(generation=ImageGenResult()))
+    assert cards[0].clinical_stat == ev, "입력값을 그대로 넘겨야 지어낼 여지가 없다"
+    assert cards[0].text, "구버전 프론트용 문장도 그대로 남아야 한다"
+
+
+def test_실증자료가_아닌_카드엔_수치가_안_붙는다():
+    sections = [Section(kind="제품개요", text="하나", source="llm", module_kind="hero_intro")]
+    cards = build_cards(sections, _plan("hero_intro"), ImagePlan(generation=ImageGenResult()))
+    assert cards[0].clinical_stat is None
+
+
+def test_실증자료_두건이면_카드마다_다른_수치가_붙는다():
+    """자료 1건=카드 1장이므로 두 카드가 서로 다른 값을 들어야 한다."""
+    a = ClinicalEvidence(claim="다크스팟 개선", value="87%")
+    b = ClinicalEvidence(claim="피부결 개선", value="4주 후 2.1배")
+    sections = [
+        Section(kind="실증자료", text="a", source="clinical_evidence",
+                module_kind="clinical_intro", clinical_stat=a),
+        Section(kind="실증자료", text="b", source="clinical_evidence",
+                module_kind="clinical_result", clinical_stat=b),
+    ]
+    cards = build_cards(
+        sections, _plan("clinical_intro", "clinical_result"), ImagePlan(generation=ImageGenResult())
+    )
+    assert [c.clinical_stat.value for c in cards] == ["87%", "4주 후 2.1배"]

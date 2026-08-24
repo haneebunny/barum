@@ -516,23 +516,12 @@ def generate_module_images(
     # (실제로 이미지를 만든 것만 센다 — 스킵된 모듈은 화면에 안 나오므로 "앞선
     # 같은 유형 이미지"에 해당하지 않는다).
     seen_layout_types: dict[str, int] = {}
-    # 임상 계열은 모듈이 여러 개여도 실증자료 섹션이 하나만 나온다(같은 자료 반복
-    # 방지, content.py). 그래서 두 번째 임상 모듈부터는 얹힐 섹션이 없어 이미지를
-    # 만들어도 버려진다(2026-08-20 실측: clinical_result 1장이 그렇게 남았다).
-    # 첫 임상 모듈만 만든다.
-    clinical_image_done = False
+    # 예전엔 첫 임상 모듈만 이미지를 만들었다. "실증자료 섹션이 하나만 나온다"는
+    # 2026-08-20 당시 가정이었는데, 자료 1건=섹션 1장으로 뒤집히면서(content.py)
+    # 두 번째 임상 모듈도 얹힐 섹션이 생겼다. 게이트만 남아 있어서 그 카드가
+    # 글만 있고 이미지가 빈 채로 나왔다(2026-08-24 실측). 이제 다른 모듈과 똑같이
+    # max_images 상한만 적용받는다.
     for module in plan.modules:
-        if module.kind.startswith("clinical"):
-            if clinical_image_done:
-                results.append(
-                    ModuleImage(
-                        module_kind=module.kind,
-                        status="skipped",
-                        reason="실증자료 섹션은 하나만 나오므로 임상 모듈 이미지도 하나만 만듭니다",
-                    )
-                )
-                continue
-            clinical_image_done = True
         if module.layout_type in _NO_IMAGE_LAYOUT_TYPES:
             # 사진 배경이 필요없는 유형이라 애초에 시도하지 않는다(과금 호출 자체를
             # 안 함). 상한을 소모하지도 않는다. 원래 셀 자격이 없던 이미지다.

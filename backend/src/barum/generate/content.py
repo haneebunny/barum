@@ -9,6 +9,8 @@ judge·vlm을 주입받아 유닛테스트는 오프라인.
 
 import re
 
+from pydantic import BaseModel
+
 from barum.generate.images import generate_canvas_background, generate_module_images
 from barum.reference.presets import apply_preset, audience_hint
 from barum.generate.layout import (
@@ -355,17 +357,51 @@ def _store_module_images(module_images: list[ModuleImage], blobs: dict, image_si
             image.reason = "이미지 저장에 실패해 보관되지 않았습니다"
 
 
+def _mask_pii_deep(value, pii_kinds: set[str]):
+    """값 안의 모든 문자열을 마스킹한 사본을 낸다. 중첩 모델·목록까지 내려간다.
+
+    **필드명을 하드코딩하지 않는다.** `_strip_pii`가 `text`만 훑던 시절엔 섹션이
+    문장 한 덩어리라 그걸로 충분했다. 그런데 사업자 입력을 구조화해 싣는 필드가
+    늘면서(`table_rows` 2026-08-23, `clinical_stat` 2026-08-24) 마스킹을 안 거치는
+    샛길이 생겼다. `note`("피험자 수·조건 등 부연")나 전성분 표처럼 자유입력이라
+    "문의: 02-1234-5678"이 그대로 API 응답에 실릴 수 있었다(PM 발견).
+
+    필드를 나열해 막으면 다음에 필드가 늘 때 같은 구멍이 또 생긴다. 그래서 구조를
+    타고 내려가며 문자열이면 전부 훑는다. `kind`·`source` 같은 내부 고정값도 지나가지만
+    PII 패턴(이메일·주민번호·전화번호)에 걸릴 수 없는 값이라 바뀌지 않는다.
+    """
+    if isinstance(value, str):
+        masked, kinds = remove_pii(value)
+        pii_kinds.update(kinds)
+        return masked
+    if isinstance(value, BaseModel):
+        updates = {}
+        for name in type(value).model_fields:
+            current = getattr(value, name)
+            masked = _mask_pii_deep(current, pii_kinds)
+            if masked is not current:
+                updates[name] = masked
+        return value.model_copy(update=updates) if updates else value
+    if isinstance(value, list):
+        masked_items = [_mask_pii_deep(v, pii_kinds) for v in value]
+        if any(m is not o for m, o in zip(masked_items, value)):
+            return masked_items
+        return value
+    return value
+
+
 def _strip_pii(sections: list[Section]) -> tuple[list[Section], set[str]]:
-    """모든 섹션 텍스트에서 PII 제거. (정제된 섹션, 제거된 PII 종류) 반환."""
+    """모든 섹션에서 PII 제거. (정제된 섹션, 제거된 PII 종류) 반환.
+
+    문장뿐 아니라 구조화 필드(표 행·실증자료)까지 훑는다. 왜 그렇게 하는지는
+    `_mask_pii_deep` 참고.
+    """
     pii_kinds: set[str] = set()
     cleaned: list[Section] = []
     for s in sections:
-        text, kinds = remove_pii(s.text)
-        pii_kinds.update(kinds)
         # 필드를 하나씩 나열해 재조립하면 새 필드가 추가될 때마다 여기서 조용히
-        # 유실된다. 실제로 module_kind가 그렇게 떨어져 나갔다(2026-08-20). 텍스트만
-        # 갈아끼우는 방식으로 바꿔 앞으로 필드가 늘어도 자동으로 따라가게 한다.
-        cleaned.append(s.model_copy(update={"text": text}))
+        # 유실된다. 실제로 module_kind가 그렇게 떨어져 나갔다(2026-08-20).
+        cleaned.append(_mask_pii_deep(s, pii_kinds))
     return cleaned, pii_kinds
 
 
@@ -885,6 +921,7 @@ def build_cards(
                 image_url=img.image_url if img else None,
                 image_status=img.status if img else "skipped",
                 table_rows=sec.table_rows,
+                clinical_stat=sec.clinical_stat,
             )
         )
     return cards
@@ -934,8 +971,15 @@ def _generate_create_content(
         # 묶었는데, 그러면 임상 모듈이 여러 개여도 채울 섹션이 하나뿐이라 나머지가
         # "자료 부족"으로 드롭됐다. 사업자가 실증자료를 3건 넣어도 카드는 1장이었다.
         # 팀장 지시로 뒤집는다(2026-08-23): "실증자료까지 다 넣어."
+        # clinical_stat엔 입력 객체를 그대로 싣는다. text는 그대로 두므로 구버전
+        # 프론트는 지금처럼 문장으로 렌더하고, 새 프론트만 수치를 골라 쓴다.
         sections += [
-            Section(kind="실증자료", text=clinical_sections_text([e]), source="clinical_evidence")
+            Section(
+                kind="실증자료",
+                text=clinical_sections_text([e]),
+                source="clinical_evidence",
+                clinical_stat=e,
+            )
             for e in evidence
         ]
     if surveys:
