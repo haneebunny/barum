@@ -342,6 +342,10 @@ export const ContentCardSchema = z.object({
   // headline·body가 비어 있고 이 필드만 채워진다(PR #314, 베베). 문장 카드와
   // 같은 틀로 그리면 빈 카드처럼 보이니 렌더링에서 따로 분기해야 한다.
   table_rows: z.array(TableRowSchema).nullable().default(null),
+  // 실증자료 카드의 원본 입력값(Section.clinical_stat 그대로). 있으면 수치강조
+  // 카드로 그린다 - layout_type이 아니라 이 필드 유무로 분기해야 한다(베베 계약,
+  // models.py ContentCard.clinical_stat 참고).
+  clinical_stat: ClinicalEvidenceSchema.nullable().default(null),
 });
 export type ContentCard = z.infer<typeof ContentCardSchema>;
 

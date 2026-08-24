@@ -775,6 +775,23 @@ function ContentGeneratorContent() {
     ${noteHtml}`;
           }
 
+          // 실증자료 수치강조 카드: layout_type이 아니라 card.clinical_stat 유무로
+          // 분기한다(베베 계약, 2026-08-24) - 계획기가 clinical_bar_compare를
+          // 고르든 다른 유형을 고르든 백엔드가 줄 수 있는 건 claim/value 단일
+          // 수치뿐이라 layout_type별로 갈라봐야 그릴 게 같다. value는 자유표기라
+          // ("87%"도 "4주 후 2.1배"도 온다) 퍼센트로 가정해 막대 길이 등을
+          // 계산하지 않고 원문 그대로 큰 글자로 낸다(비교 대상 없는 단일 수치라
+          // dataviz 스킬 기준으로 "히어로 figure" - 팔레트 검증 대상 아님).
+          if (card.clinical_stat) {
+            const stat = card.clinical_stat;
+            const footParts = [stat.period, stat.institution, stat.note].filter((v): v is string => !!v);
+            const footHtml = footParts.length > 0
+              ? `<p class="dp-stat-foot">${footParts.map(escapeHtml).join(" · ")}</p>`
+              : "";
+            return `<div class="dp-stat">${claimTagOnLight}<p class="dp-stat-label">${escapeHtml(stat.claim)}</p><p class="dp-stat-value">${escapeHtml(stat.value)}</p>${footHtml}</div>
+    ${noteHtml}`;
+          }
+
           // card.body(본문)가 8개 템플릿 어디에서도 렌더되지 않고 있었다 -
           // headline만 <p>로 넣고 body는 그냥 버려졌다(팀장이 직접 코드로 확인,
           // 2026-08-23). 백엔드는 헤드라인·본문을 둘 다 정상 생성하는데 화면엔
@@ -936,6 +953,13 @@ function ContentGeneratorContent() {
     .dp-table td { padding: 10px 4px; }
     .dp-table td:first-child { color: var(--dp-ink-3); width: 30%; }
     .dp-table td:last-child { color: var(--dp-ink-2); font-weight: 600; }
+    /* 실증자료 수치강조 카드(히어로 figure). 비교 대상 없는 단일 값이라 큰
+       글자 하나로만 낸다 - 막대·게이지 등 비교용 시각화를 붙이지 않는다
+       (value가 자유표기라 그릴 수도 없다, 2026-08-24). */
+    .dp-stat { padding: 36px 24px; background: var(--dp-surface); text-align: center; }
+    .dp-stat-label { margin: 0 0 10px; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 13px; font-weight: 600; color: var(--dp-ink-3); }
+    .dp-stat-value { margin: 0; font-family: "SUIT Variable", "SUIT", "Pretendard Variable", sans-serif; font-size: 44px; font-weight: 700; color: var(--dp-accent); letter-spacing: -0.5px; line-height: 1.2; }
+    .dp-stat-foot { margin: 12px 0 0; font-family: "Pretendard Variable", Pretendard, sans-serif; font-size: 11px; color: var(--dp-ink-3); }
     .dp-close { padding: 20px 24px; border-top: 1px solid var(--dp-line); font-size: 11px; color: var(--dp-ink-3); line-height: 1.65; background: var(--dp-surface-sub); }
   </style>`;
 
