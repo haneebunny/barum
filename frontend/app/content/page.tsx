@@ -345,6 +345,12 @@ function ContentGeneratorContent() {
         ? (mockKey === "image" ? "글로우 세럼" : "수분 크림")
         : "선크림";
 
+  // 내보내기 파일명. 예전엔 "detail_draft.html"·"${mockKey}_detail_draft.png"로
+  // 상품명과 무관하게 고정이었다(파일 여러 개 받으면 다 같은 이름이라 구분이 안 됨,
+  // 2026-08-24 팀장 지적). 상품명을 파일명에 쓰되 경로 구분자·따옴표 등은 지운다.
+  const exportFileBase =
+    displayProductName.trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_").slice(0, 60) || "detail";
+
   // 수용된 지적 목록 추출
   const acceptedIndices = acceptedParam
     ? acceptedParam.split(",").map(Number)
@@ -759,9 +765,11 @@ function ContentGeneratorContent() {
     if (useCards) {
       const cardBlocks = await Promise.all(
         [...result.cards].sort((a, b) => a.order - b.order).map(async (card) => {
-          const dataUri = card.image_status === "generated" && card.image_url
+          const dataUri = card.image_url
             ? await resolveOrInline(card.image_url)
             : null;
+          const isAiGenerated = card.image_status === "generated";
+          const imageCaption = isAiGenerated && dataUri ? aiImageCaption : "";
           const finePrintCard = isFinePrintKind(card.module_kind) ? " dp-fine" : "";
           const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(card.module_kind)}" -->`;
           // 실증자료 필요 고지. 있으면 카드 유형과 무관하게 항상 같이 낸다(빠뜨리면
@@ -820,7 +828,7 @@ function ContentGeneratorContent() {
     <div class="dp-hero" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')">
       <div class="dp-hero-card"><span>${escapeHtml(productName)}</span>${claimTag}<p>${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
     </div>
-    ${aiImageCaption}
+    ${imageCaption}
     ${noteHtml}`;
           }
 
@@ -831,7 +839,7 @@ function ContentGeneratorContent() {
     <div class="dp-split dp-split-${side}">
       <div class="dp-split-media-wrap">
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${aiImageCaption}
+        ${imageCaption}
       </div>
       <div class="dp-split-copy">${claimTagOnLight}<p class="dp-headline">${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     </div>
@@ -845,7 +853,7 @@ function ContentGeneratorContent() {
     <div class="dp-split dp-split-${side}">
       <div class="dp-split-media-wrap">
         <div class="dp-split-media" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-        ${aiImageCaption}
+        ${imageCaption}
       </div>
       <div class="dp-split-copy">${claimTagOnLight}<p class="dp-step-text">${escapeHtml(card.headline)}${card.body ? ` ${escapeHtml(card.body)}` : ""}</p></div>
     </div>
@@ -862,7 +870,7 @@ function ContentGeneratorContent() {
           if (card.layout_type === "mood_macro" && dataUri) {
             return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${aiImageCaption}
+    ${imageCaption}
     ${card.headline ? `${claimTagOnLight}<p class="dp-caption">${escapeHtml(card.headline)}</p>` : ""}
     ${card.body ? `<p class="dp-caption">${escapeHtml(card.body)}</p>` : ""}
     ${noteHtml}`;
@@ -877,7 +885,7 @@ function ContentGeneratorContent() {
             // 무드컷(이미지)과 카피(텍스트)를 별도 블록으로 분리 (layout_type 없거나 미지원 유형일 때 폴백)
             return `${swapComment}
     <div class="dp-mood" data-swap="${escapeAttr(card.module_kind)}" style="background-image:url('${dataUri}')"></div>
-    ${aiImageCaption}
+    ${imageCaption}
     <div class="dp-block${finePrintCard}">${claimTagOnLight}<p>${escapeHtml(card.headline)}</p>${bodyHtml}</div>
     ${noteHtml}`;
           }
@@ -1020,7 +1028,7 @@ function ContentGeneratorContent() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `detail_draft.html`;
+    a.download = `${exportFileBase}_draft.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1072,7 +1080,7 @@ function ContentGeneratorContent() {
       const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${mockKey}_detail_draft.png`;
+      a.download = `${exportFileBase}_draft.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1114,7 +1122,7 @@ function ContentGeneratorContent() {
         heightLeft -= pageHeight;
       }
 
-      pdf.save(`${mockKey}_detail_draft.pdf`);
+      pdf.save(`${exportFileBase}_draft.pdf`);
     } catch (e) {
       console.error("Failed PDF generation", e);
       alert("PDF 변환 중 오류가 발생했습니다.");

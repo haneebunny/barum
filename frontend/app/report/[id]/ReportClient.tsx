@@ -14,7 +14,6 @@ import { useTier, type Tier } from "@/lib/tier";
 
 const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
   { value: "image", label: "원본 보기" },
-  { value: "tile", label: "타일 보기" },
 ];
 
 const TYPE_LABEL = {
