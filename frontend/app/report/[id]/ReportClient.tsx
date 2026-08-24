@@ -10,16 +10,11 @@ import { useError } from "@/lib/error/ErrorContext";
 import { TabSwitch, TabOption } from "@/components/TabSwitch/TabSwitch";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 import { Modal } from "@/components/Modal/Modal";
+import { useTier, type Tier } from "@/lib/tier";
 
 const VIEW_MODE_OPTIONS: TabOption<"image" | "tile">[] = [
   { value: "image", label: "원본 보기" },
   { value: "tile", label: "타일 보기" },
-];
-
-const TIER_OPTIONS: TabOption<"FREE" | "BASIC" | "PRO">[] = [
-  { value: "FREE", label: "Free" },
-  { value: "BASIC", label: "Basic" },
-  { value: "PRO", label: "Pro" },
 ];
 
 const TYPE_LABEL = {
@@ -71,7 +66,7 @@ interface FindingCardProps {
   open: boolean;
   onToggle: () => void;
   onScrollToPosition: (idx: number) => void;
-  tier: "FREE" | "BASIC" | "PRO";
+  tier: Tier;
   // 판정할 때 배치로 만들어져 리포트에 실려온 대체표현(PR #265). 있으면 그대로 쓰고
   // 새로 호출하지 않는다. hasReportReplacements가 false일 때만(옛 리포트·생성 실패)
   // /remediate 실시간 조회로 폴백한다.
@@ -113,7 +108,7 @@ function PricingModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSelectTier: (tier: "BASIC" | "PRO") => void;
+  onSelectTier: (tier: "Basic" | "Pro") => void;
 }) {
   return (
     <Modal isOpen={isOpen} title="요금제 업그레이드" onClose={onClose} size="sm">
@@ -124,7 +119,7 @@ function PricingModal({
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => onSelectTier("BASIC")}
+            onClick={() => onSelectTier("Basic")}
             className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
           >
             <span>
@@ -135,7 +130,7 @@ function PricingModal({
           </button>
           <button
             type="button"
-            onClick={() => onSelectTier("PRO")}
+            onClick={() => onSelectTier("Pro")}
             className="flex items-center justify-between gap-2 p-[10px_14px] border border-[var(--line-2)] rounded-sm cursor-pointer hover:border-[var(--brand)] transition-colors duration-[120ms] text-left"
           >
             <span>
@@ -203,7 +198,7 @@ function FindingCard({
   const accentColor = cls === "violation" ? "var(--crit)" : "var(--ink-3)";
   // FREE 티어도 첫 3건은 근거·조문·대체표현 전부 잠금 없이(팀장 지시,
   // 2026-08-23) - num===1 한정 "체험 1회" 클릭 방식은 폐기.
-  const isUnlocked = tier !== "FREE" || num <= 3;
+  const isUnlocked = tier !== "Free" || num <= 3;
 
   const handleHeaderClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) {
@@ -467,7 +462,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<"image" | "tile">("image");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [tier, setTier] = useState<"FREE" | "BASIC" | "PRO">("FREE");
+  const { tier, setTier } = useTier();
   // 대체표현 열람 "체험 1회" 클릭 카운트는 폐기(FREE도 첫 3건은 전부 잠금
   // 없이 보이는 구조로 바뀌어 더 이상 필요 없다, 2026-08-23).
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
@@ -703,26 +698,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
   return (
     <>
-      <div className="flex items-center gap-3 p-[9px_20px] border-b border-[var(--line)] bg-[var(--surface)] font-mono text-[11.5px] text-[var(--ink-3)] flex-wrap">
-        <div className="ml-auto flex items-center gap-1.5 max-[900px]:ml-0 max-[900px]:w-full flex-wrap">
-          <label htmlFor="tier-preview" className="text-[var(--ink-3)] text-[11px] font-sans mr-0.5 select-none">
-            티어 미리보기
-          </label>
-          <select
-            id="tier-preview"
-            value={tier}
-            onChange={(e) => setTier(e.target.value as "FREE" | "BASIC" | "PRO")}
-            className="text-[11px] font-sans p-[4px_8px] border border-[var(--line-2)] rounded-[2px] bg-[var(--surface)] text-[var(--ink)] cursor-pointer"
-          >
-            {TIER_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -803,7 +778,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
               관례와 결이 다르다고 판단). */}
           {/* FREE 티어는 카드에 수용/제외 버튼 자체가 없다("유료 요금제 전용"만
               보임) - 일괄 버튼만 따로 있으면 앞뒤가 안 맞는다. */}
-          {tier !== "FREE" && (
+          {tier !== "Free" && (
             <div className="flex items-center gap-2.5 mb-2.5">
               <button
                 type="button"
@@ -1018,7 +993,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
         <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        {tier === "PRO" ? (
+        {tier === "Pro" ? (
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`}

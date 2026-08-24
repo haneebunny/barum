@@ -10,7 +10,7 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { GenerationLoading } from "@/components/GenerationLoading/GenerationLoading";
-import { useTier, useImproveQuota, type Tier } from "@/lib/tier";
+import { useTier, useImproveQuota } from "@/lib/tier";
 import { useError } from "@/lib/error/ErrorContext";
 
 interface ProductPhotoItem {
@@ -140,7 +140,7 @@ function ContentGeneratorContent() {
   const acceptedParam = searchParams.get("accepted") || "";
   const mode = searchParams.get("mode") === "create" ? "create" : "improve";
 
-  const { tier, setTier } = useTier();
+  const { tier } = useTier();
   const { remaining, consume, resetWithAd } = useImproveQuota();
 
   const [report, setReport] = useState<CheckReport | null>(null);
@@ -1136,23 +1136,6 @@ function ContentGeneratorContent() {
         </span>
         <span className="text-[var(--ink-3)] text-[10px]">
           {mode === "create" ? "새로 만들기 모드" : id ? `리포트 연동: ${id}` : "더미 데이터 모드"} · 백엔드 FR-11/13 완료
-        </span>
-        <span className="ml-auto inline-flex items-center gap-[6px] font-mono text-[10.5px] text-[var(--ink-3)]">
-          티어 미리보기
-          {(["Free", "Basic", "Pro"] as Tier[]).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTier(t)}
-              className={`font-mono text-[11px] p-[4px_9px] border cursor-pointer transition-all duration-[120ms] ${
-                tier === t
-                  ? "border-[var(--ink-3)] text-[var(--ink)] bg-[var(--nav-active-bg)] font-bold"
-                  : "border-[var(--line-2)] text-[var(--ink-3)] bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
         </span>
       </div>
 
