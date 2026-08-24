@@ -62,3 +62,27 @@ def test_finding_location_preserves_sentence_order():
     judge = USSunscreenJudge()
     findings = judge.judge([_sentence(3, "SPF50 자외선차단")], ingredients=["Zinc oxide"])
     assert findings[0].location.order == 3
+
+
+def test_ocr_sourced_unapproved_ingredient_gets_disclaimer_note():
+    """OCR로 자동 추출한 전성분에서 미승인 성분이 나오면 설명에 '자동 추출' 안내가 붙는다."""
+    judge = USSunscreenJudge()
+    findings = judge.judge(
+        [_sentence(0, "SPF50+ 자외선차단")],
+        ingredients=["정제수", "드로메트리졸"],
+        ingredients_from_ocr=True,
+    )
+    unapproved = [f for f in findings if f.category == USPreflightCategory.unapproved_ingredient]
+    assert len(unapproved) == 1
+    assert "자동으로 읽어낸" in unapproved[0].explanation
+
+
+def test_manually_entered_unapproved_ingredient_has_no_ocr_note():
+    """수동 입력이면(ingredients_from_ocr 기본값 False) 자동추출 안내가 안 붙는다."""
+    judge = USSunscreenJudge()
+    findings = judge.judge(
+        [_sentence(0, "SPF50+ 자외선차단")], ingredients=["정제수", "드로메트리졸"]
+    )
+    unapproved = [f for f in findings if f.category == USPreflightCategory.unapproved_ingredient]
+    assert len(unapproved) == 1
+    assert "자동으로 읽어낸" not in unapproved[0].explanation

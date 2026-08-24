@@ -65,6 +65,7 @@ class USSunscreenJudge:
         self,
         sentences: list[dict],
         ingredients: list[str] | None = None,
+        ingredients_from_ocr: bool = False,
     ) -> list[USPreflightFinding]:
         """문장 리스트 + 선택적 전성분 목록을 받아 미국 프리플라이트 지적을 낸다.
 
@@ -72,6 +73,10 @@ class USSunscreenJudge:
         국내 judge와 동일 계약). SPF 표현이 한 건도 없으면 성분 대조 자체를 안 한다 —
         표현 트리거 없이 성분만 있는 경우는 대상이 아니다(§3 세 번째 예시, "촉촉한
         수분크림"+Zinc oxide는 경고 없음).
+
+        ingredients_from_ocr: 이 전성분이 사용자 직접 입력이 아니라 이미지 OCR로 자동
+        추출됐다는 표시. 사람이 확인 안 한 값이라 unapproved_ingredient 설명에 그
+        사실을 덧붙인다 — 조용히 같은 신뢰도로 섞으면 안 된다(2026-08-24 팀 결정).
         """
         findings: list[USPreflightFinding] = []
 
@@ -107,13 +112,22 @@ class USSunscreenJudge:
             return findings
 
         result = check_sunscreen_ingredients(ingredients)
+        ocr_note = (
+            " (이 전성분은 이미지에서 자동으로 읽어낸 것으로, 사람이 직접 확인하지 않았습니다. "
+            "실제 전성분표와 대조해 주세요.)"
+            if ingredients_from_ocr
+            else ""
+        )
         for name in result["unapproved"]:
             findings.append(
                 USPreflightFinding(
                     span=name,
                     sentence=", ".join(ingredients),
                     category=USPreflightCategory.unapproved_ingredient,
-                    explanation=f"'{name}'은(는) 미국 FDA 승인 자외선차단 성분 목록에 없습니다.",
+                    explanation=(
+                        f"'{name}'은(는) 미국 FDA 승인 자외선차단 성분 목록에 없습니다."
+                        f"{ocr_note}"
+                    ),
                     location=Location(tile=None, order=ingredient_order, source="ingredients"),
                 )
             )

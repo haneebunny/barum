@@ -27,6 +27,7 @@ from barum.models import (
     ViolationType,
 )
 from barum.preprocess.ocr import extract_product_sentences
+from barum.preprocess.us_ocr import extract_us_sentences
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.evidence_claim import claims_documentary_evidence
 from barum.reference.scope import check_product_scope
@@ -167,6 +168,36 @@ def _ocr_image(
     return (
         _attach_bands(record["sentences"], band_by_tile, source_w, source_h),
         len(record.get("tiles_failed") or []),
+    )
+
+
+def _ocr_image_us(
+    image_bytes: bytes, filename: str | None, vlm: VLM, verbose: bool = False
+) -> tuple[list[dict], int, str]:
+    """미국 프리플라이트 전용 OCR. `_ocr_image`와 흐름은 같지만 US 프롬프트를 쓰고
+    전성분(ingredients_raw)도 같이 뽑는다(`preprocess/us_ocr.py`, 국내와 분리).
+
+    반환: (문장 리스트, 실패 타일 수, OCR로 뽑은 전성분 원문). 성분 없으면 빈 문자열.
+    """
+    from tile_split import split_image  # top-level 모듈(backend 루트)
+
+    suffix = Path(filename).suffix if filename else ".png"
+    with tempfile.TemporaryDirectory() as tmp:
+        product_dir = Path(tmp)
+        source = product_dir / f"source{suffix}"
+        source.write_bytes(image_bytes)
+
+        tiles = split_image(source, product_dir / "tiles")
+        band_by_tile = {path.name: (top, bot) for path, top, bot in tiles}
+        with Image.open(source) as im:
+            source_w, source_h = im.size
+
+        record = extract_us_sentences(product_dir, vlm, verbose=verbose)
+
+    return (
+        _attach_bands(record["sentences"], band_by_tile, source_w, source_h),
+        len(record.get("tiles_failed") or []),
+        record.get("ingredients_raw") or "",
     )
 
 
@@ -384,10 +415,15 @@ def run_us_sunscreen_check(
 ) -> USPreflightReport:
     """미국 프리플라이트(자외선차단 최소보장) 검사 한 건을 처리해 USPreflightReport를 만든다.
 
-    국내 run_check()와 입력·OCR 흐름은 같지만(이미지 타일분할·OCR은 국가 무관 공용 로직),
+    국내 run_check()와 입력 흐름(문구·이미지 수용)은 같지만, OCR은 국내와 완전히
+    분리된 US 전용 경로를 쓴다(`_ocr_image_us`, `preprocess/us_ocr.py`, 2026-08-24).
     ingredient_amounts는 안 받는다 — 성분 대조가 함량이 아니라 "미국 승인 목록에 있나
     없나"만 보므로(`sunscreen_otc_classification.md` §1②). 판정기(judge)는 VLM을
     안 쓰지만, 이미지 OCR 자체는 여전히 VLM이 필요해 vlm 인자는 그대로 받는다.
+
+    전성분: 사용자가 `ingredients`를 직접 입력하면 그게 항상 우선한다. 입력이 없고
+    이미지가 있으면 OCR이 이미지에서 읽은 전성분을 폴백으로 쓴다(자동 추출이라
+    판정기 설명에 그 사실을 명시한다, `USSunscreenJudge.judge(ingredients_from_ocr=)`).
     """
     sentences: list[dict] = []
 
@@ -399,9 +435,10 @@ def run_us_sunscreen_check(
             "source": "product_name",
         })
 
+    ocr_ingredients_raw = ""
     if image_bytes:
         base = len(sentences)
-        _ocr_sentences, n_ocr_failed = _ocr_image(
+        _ocr_sentences, n_ocr_failed, ocr_ingredients_raw = _ocr_image_us(
             image_bytes, image_filename, vlm, verbose=verbose
         )
         for s in _ocr_sentences:
@@ -412,8 +449,18 @@ def run_us_sunscreen_check(
         for s in _split_text_to_sentences(ad_text, source="ad_text"):
             sentences.append({**s, "order": base + s["order"]})
 
-    ingredient_list = _split_ingredients(ingredients) if ingredients else None
-    findings = judge.judge(sentences, ingredients=ingredient_list)
+    ingredients_from_ocr = False
+    if ingredients:
+        ingredient_list = _split_ingredients(ingredients)
+    elif ocr_ingredients_raw:
+        ingredient_list = _split_ingredients(ocr_ingredients_raw)
+        ingredients_from_ocr = True
+    else:
+        ingredient_list = None
+
+    findings = judge.judge(
+        sentences, ingredients=ingredient_list, ingredients_from_ocr=ingredients_from_ocr
+    )
 
     counts: dict[str, int] = {}
     for f in findings:
