@@ -1,24 +1,48 @@
 """모듈별 이미지 생성 오케스트레이션 유닛테스트. 실제 생성기는 안 부른다(가짜 주입)."""
 
+import threading
+
 from barum.generate.images import _user_controlled_text, build_image_prompt, generate_module_images
 from barum.models import GenerateRequest, LayoutModule, LayoutPlan
 
 
 class FakeGenerator:
-    """호출 순서대로 바이트를 내거나 예외를 던지는 가짜 이미지 생성기."""
+    """호출 순서대로 바이트를 내거나 예외를 던지는 가짜 이미지 생성기.
+
+    **`generate_module_images`가 파도 단위로 병렬 호출한다(2026-08-24).** 한
+    파도에 여러 모듈이 있으면 어느 스레드가 먼저 `generate_image`를 부르는지는
+    실행마다 갈린다 - `prompts`/`images_received`에 쌓이는 순서, 그리고 여러 값을
+    섞어 넣었을 때(`FakeGenerator(RuntimeError(...), b"B")`) 어느 모듈이 어느 값을
+    받는지는 더 이상 "부른 순서"로 예측할 수 없다. 락은 리스트 추가·pop 자체의
+    경합만 막고(안전), 어떤 모듈이 어떤 값을 받는지는 여전히 안 정해진다 - 그
+    지점을 확인하는 테스트는 값이 아니라 개수/집합으로 검증한다.
+    """
 
     def __init__(self, *results):
         self._results = list(results)
         self.prompts: list[str] = []
         self.images_received: list[list] = []
+        self._lock = threading.Lock()
 
     def generate_image(self, prompt, images):
-        self.prompts.append(prompt)
-        self.images_received.append(images)
-        result = self._results.pop(0) if self._results else b"PNG"
+        with self._lock:
+            self.prompts.append(prompt)
+            self.images_received.append(images)
+            result = self._results.pop(0) if self._results else b"PNG"
         if isinstance(result, Exception):
             raise result
         return result
+
+
+def _prompt_containing(gen: FakeGenerator, needle: str) -> str:
+    """`gen.prompts`에서 `needle`을 담은 프롬프트 하나를 찾는다.
+
+    병렬 호출이라 `gen.prompts[i]`가 "i번째로 만든 모듈"이라는 보장이 없다
+    (위 FakeGenerator docstring). 프롬프트 자체가 담은 내용(purpose 등)으로 찾는다.
+    """
+    matches = [p for p in gen.prompts if needle in p]
+    assert len(matches) == 1, f"{needle!r}을 담은 프롬프트가 {len(matches)}개(1개여야 함)"
+    return matches[0]
 
 
 def _plan(*kinds):
@@ -55,17 +79,23 @@ def test_모듈마다_이미지를_만든다():
     gen = FakeGenerator(b"A", b"B")
     results, blobs = generate_module_images(_plan("hero_intro", "texture"), _REQ, gen)
     assert [r.status for r in results] == ["generated", "generated"]
-    assert blobs == {"hero_intro": b"A", "texture": b"B"}
+    # 같은 파도에서 병렬 호출이라 어느 모듈이 A를 받고 B를 받는지는 안 정해진다
+    # (FakeGenerator docstring 참고) - 각자 자기 몫의 실제 값을 받았는지만 본다.
+    assert set(blobs) == {"hero_intro", "texture"}
+    assert set(blobs.values()) == {b"A", b"B"}
 
 
 def test_한_모듈이_실패해도_나머지는_계속_만든다():
-    # 과금 호출이라 재시도 없이 그 모듈만 스킵한다.
+    # 과금 호출이라 재시도 없이 그 모듈만 스킵한다. 병렬 호출이라 hero_intro·texture
+    # 중 누가 실패를 받을지는 안 정해진다(같은 파도) - "격리가 되는지"만 본다.
     gen = FakeGenerator(RuntimeError("safety block"), b"B")
     results, blobs = generate_module_images(_plan("hero_intro", "texture"), _REQ, gen)
-    assert results[0].status == "skipped"
-    assert "RuntimeError" in results[0].reason
-    assert results[1].status == "generated"
-    assert blobs == {"texture": b"B"}
+    statuses = [r.status for r in results]
+    assert statuses.count("skipped") == 1
+    assert statuses.count("generated") == 1
+    failed = next(r for r in results if r.status == "skipped")
+    assert "RuntimeError" in failed.reason
+    assert len(blobs) == 1
 
 
 def test_생성기가_없으면_사유를_남기고_안_만든다():
@@ -92,10 +122,14 @@ def test_상한을_넘으면_사유를_남기고_건너뛴다():
 
 
 def test_실패한_모듈은_상한을_소모하지_않는다():
-    # 실패분까지 상한에 세면 만들 수 있는 이미지가 부당하게 줄어든다.
+    # 실패분까지 상한에 세면 만들 수 있는 이미지가 부당하게 줄어든다. a·b가 같은
+    # 파도라 누가 실패를 받을지는 안 정해지지만, 실패해도 상한(2)만큼은 다음 파도의
+    # c가 이어받아 채워야 한다.
     gen = FakeGenerator(RuntimeError("boom"), b"B", b"C")
     results, blobs = generate_module_images(_plan("a", "b", "c"), _REQ, gen, max_images=2)
-    assert [r.status for r in results] == ["skipped", "generated", "generated"]
+    statuses = [r.status for r in results]
+    assert statuses.count("generated") == 2
+    assert statuses.count("skipped") == 1
     assert len(blobs) == 2
 
 
@@ -533,7 +567,11 @@ def _plan_with_types(*pairs):
 
 
 def test_같은_유형_모듈들은_서로_다른_프롬프트를_받는다():
-    """실제 버그 재현: section_statement 2개 + mood_macro 1개가 거의 같은 사진으로 나왔다."""
+    """실제 버그 재현: section_statement 2개 + mood_macro 1개가 거의 같은 사진으로 나왔다.
+
+    병렬 호출이라 gen.prompts의 도착 순서가 실행마다 갈린다(FakeGenerator docstring) -
+    "몇 번째로 도착했나"가 아니라 "그 모듈의 프롬프트에 뭐가 담겼나"로 찾는다.
+    """
     gen = FakeGenerator()
     plan = _plan_with_types(
         ("value_prop", "section_statement"),
@@ -543,21 +581,29 @@ def test_같은_유형_모듈들은_서로_다른_프롬프트를_받는다():
     generate_module_images(plan, _REQ, gen)
     assert len(gen.prompts) == 3
     assert len(set(gen.prompts)) == 3, "같은 layout_type 모듈이 동일한 프롬프트를 받았다"
-    # 두 번째 section_statement에만 변주 지시가 붙는다.
-    assert "반드시 다르게 그려라" not in gen.prompts[0]
-    assert "반드시 다르게 그려라" in gen.prompts[1]
-    assert "반드시 다르게 그려라" not in gen.prompts[2]  # mood_macro는 첫 등장
+    # 우선순위 순서(=plan 순서, 전부 tier가 같음)상 먼저 오는 value_prop이 첫
+    # section_statement, cause_explain이 두 번째라 변주 지시를 받는다. 이 배정은
+    # 순차로 이뤄지므로(파도 진입 전 for문) 실행마다 안 흔들린다 - 병렬인 건 실제
+    # generate_image 호출과 그 도착 순서뿐이다.
+    assert "반드시 다르게 그려라" not in _prompt_containing(gen, "value_prop 목적")
+    assert "반드시 다르게 그려라" in _prompt_containing(gen, "cause_explain 목적")
+    assert "반드시 다르게 그려라" not in _prompt_containing(gen, "texture_visual 목적")  # mood_macro는 첫 등장
 
 
-def test_스킵된_모듈은_변주_순번을_소모하지_않는다():
-    """화면에 안 나온 이미지는 '앞선 같은 유형 이미지'가 아니다."""
+def test_변주_순번은_시도_순서_기준이다():
+    """**병렬화로 의도적으로 바뀐 동작(2026-08-24).** 예전엔 "성공한 것만" 셌지만,
+    병렬 호출은 같은 파도 안에서 어느 게 먼저 "성공"하는지가 실행마다 흔들려서 그
+    성질을 그대로 재현할 수 없다 - 이제 "시도한"(=합성해 파도에 넣은) 순서로 미리
+    배정한다. 실패해도 그 순번은 그대로 소모된다. 영향은 변주 문구 한 줄뿐이고
+    사진 성패·모듈 짝짓기는 무관하다(images.py `generate_module_images` docstring).
+    """
     gen = FakeGenerator(RuntimeError("생성 실패"), b"PNG")
     plan = _plan_with_types(
-        ("a", "mood_macro"),  # 실패로 스킵
-        ("b", "mood_macro"),  # 실제로는 첫 이미지라 변주 지시가 붙으면 안 된다
+        ("a", "mood_macro"),  # 실패하지만 변주 순번은 소모한다
+        ("b", "mood_macro"),  # 그래서 두 번째 취급 - 변주 지시를 받는다
     )
     generate_module_images(plan, _REQ, gen)
-    assert "반드시 다르게 그려라" not in gen.prompts[1]
+    assert "반드시 다르게 그려라" in _prompt_containing(gen, "b 목적")
 
 
 def test_임상_모듈이_여러개면_이미지도_여러장_만든다():
