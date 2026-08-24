@@ -477,10 +477,15 @@ def generate_module_images(
     반환: (모듈별 결과 메타, {모듈kind: PNG바이트}). 바이트 저장은 호출자가 정한다.
     generator가 None이면 아무것도 만들지 않는다(생성기 미도입 상태에서도 응답은 나가게).
 
-    photo_resolver: `(photo_id 목록) -> PNG/JPEG 바이트 목록`. 판매자가 올린 제품사진이
-    있으면(req.product_photo_ids) 모든 모듈에 같은 참조 이미지로 넘긴다(합성, 팀장
-    승인 방식 A). 배경마다 다른 사진을 쓰는 기능은 아직 없다. 조회는 한 번만 한다
-    (모듈마다 다시 부르면 저장소를 반복 왕복한다).
+    photo_resolver: `(req) -> PNG/JPEG 바이트 목록`. 있으면 모든 모듈에 같은 참조
+    이미지로 넘긴다(합성, 팀장 승인 방식 A). 배경마다 다른 사진을 쓰는 기능은 아직
+    없다. 조회는 한 번만 한다(모듈마다 다시 부르면 저장소를 반복 왕복한다).
+
+    **`req.product_photo_ids`만 보지 않는다.** create 모드는 그 필드로 참조를
+    찾지만, improve 모드는 원본 검사에 첨부된 리포트 이미지(`req.result_id`)가
+    참조다 - 저장 위치가 서로 달라 photo_resolver가 req를 통째로 받아 내부에서
+    가른다(`api/app.py` `_resolve_reference_photos`, 2026-08-24). 이 함수는
+    photo_resolver가 있기만 하면 그냥 부르고, 참조가 없다는 판단은 콜백에 맡긴다.
     """
     results: list[ModuleImage] = []
     blobs: dict[str, bytes] = {}
@@ -499,9 +504,9 @@ def generate_module_images(
         return results, blobs
 
     reference_images: list[bytes] = []
-    if photo_resolver is not None and req.product_photo_ids:
+    if photo_resolver is not None:
         try:
-            reference_images = photo_resolver(req.product_photo_ids)
+            reference_images = photo_resolver(req)
         except Exception as e:
             # 예상된 실패(사진 조회 실패)라 참조 없이 계속 진행한다(배경만 생성).
             print(f"    [skip] 제품사진 조회 실패(참조 없이 진행): {type(e).__name__}: {e}")

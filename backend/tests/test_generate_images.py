@@ -290,12 +290,16 @@ def test_참조사진_있으면_합성_지시로_바뀐다():
     assert "그대로 유지" in prompt
 
 
-def test_photo_resolver가_있고_product_photo_ids가_있으면_참조이미지를_생성기에_넘긴다():
+def test_photo_resolver가_있으면_req를_통째로_받고_참조이미지를_생성기에_넘긴다():
+    """photo_resolver는 (product_photo_ids)가 아니라 (req)를 받는다(2026-08-24) -
+    create·improve가 서로 다른 필드(product_photo_ids/result_id)로 참조를 찾아서,
+    어느 쪽인지는 콜백 내부가 정한다. 여기선 create처럼 product_photo_ids를 쓰는
+    콜백을 흉내낸다."""
     req = GenerateRequest(mode="create", product_name="테스트 세럼", product_photo_ids=["abc123"])
     resolver_calls = []
 
-    def resolver(photo_ids):
-        resolver_calls.append(photo_ids)
+    def resolver(r):
+        resolver_calls.append(r.product_photo_ids)
         return [b"PHOTO"]
 
     gen = FakeGenerator(b"A")
@@ -305,16 +309,20 @@ def test_photo_resolver가_있고_product_photo_ids가_있으면_참조이미지
     assert "참조로 첨부된" in gen.prompts[0]
 
 
-def test_product_photo_ids가_없으면_resolver를_안_부른다():
+def test_resolver가_빈_목록을_주면_참조없이_생성한다():
+    """product_photo_ids도 result_id도 없는 요청이면 콜백이 빈 목록을 준다(실제
+    콜백은 api/app.py `_resolve_reference_photos`). generate_module_images는 부를지
+    말지를 안 정한다 - photo_resolver가 있으면 항상 부르고, 참조가 없다는 판단은
+    콜백에 맡긴다(2026-08-24, 예전엔 product_photo_ids 없으면 아예 안 불렀다)."""
     resolver_calls = []
 
-    def resolver(photo_ids):
-        resolver_calls.append(photo_ids)
-        return [b"PHOTO"]
+    def resolver(r):
+        resolver_calls.append(r)
+        return []
 
     gen = FakeGenerator(b"A")
     generate_module_images(_plan("hero_intro"), _REQ, gen, photo_resolver=resolver)
-    assert resolver_calls == []
+    assert resolver_calls == [_REQ]
     assert gen.images_received == [[]]
 
 
@@ -322,7 +330,7 @@ def test_resolver_실패해도_참조없이_생성을_계속한다():
     """사진 조회는 예상된 실패다. 배경 생성 자체를 막으면 안 된다."""
     req = GenerateRequest(mode="create", product_name="테스트", product_photo_ids=["abc123"])
 
-    def resolver(photo_ids):
+    def resolver(r):
         raise RuntimeError("storage down")
 
     gen = FakeGenerator(b"A")

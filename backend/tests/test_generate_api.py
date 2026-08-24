@@ -12,6 +12,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from barum.api import app as app_module  # noqa: E402
+from barum.models import GenerateRequest  # noqa: E402
 
 client = TestClient(app_module.app)
 
@@ -203,13 +204,69 @@ def test_빈_파일은_422(monkeypatch):
     assert r.status_code == 422
 
 
-def test_resolve_product_photos가_유효한_id만_내려받는다():
+def test_resolve_reference_photos는_product_photo_ids면_유효한_id만_내려받는다():
     client_fake = FakeBucketClient()
     client_fake.files["uploads/" + "a" * 32 + ".png"] = b"PHOTO"
-    resolve = app_module._resolve_product_photos(client_fake)
+    resolve = app_module._resolve_reference_photos(client_fake)
 
-    result = resolve(["a" * 32 + ".png", "not-a-valid-id", "b" * 32 + ".png"])
+    req = GenerateRequest(
+        mode="create",
+        product_photo_ids=["a" * 32 + ".png", "not-a-valid-id", "b" * 32 + ".png"],
+    )
+    result = resolve(req)
     assert result == [b"PHOTO"]  # 형식 안 맞는 id·조회 실패한 id는 건너뛴다
+
+
+class FakeChecksClient(FakeBucketClient):
+    """FakeBucketClient(Storage) + get_check가 기대하는 최소 테이블 조회 인터페이스.
+
+    test_image_cache.py의 FakeQuery/FakeClient와 같은 idiom(체이닝 no-op +
+    execute()가 SimpleNamespace(data=...))을 따른다.
+    """
+
+    def __init__(self, rows_by_id: dict[str, dict] | None = None):
+        super().__init__()
+        self._rows_by_id = rows_by_id or {}
+        self._eq_value = None
+
+    def table(self, name):
+        return self
+
+    def select(self, *a, **k):
+        return self
+
+    def eq(self, field, value):
+        self._eq_value = value
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def execute(self):
+        from types import SimpleNamespace
+
+        row = self._rows_by_id.get(self._eq_value)
+        return SimpleNamespace(data=[row] if row else [])
+
+
+def test_resolve_reference_photos는_result_id면_리포트_이미지를_참조로_쓴다():
+    """improve 모드는 product_photo_ids가 아니라 result_id로 원본 검사 이미지를
+    찾는다(2026-08-24, PM 요청 - 원본 상품사진이 리포트에 이미 있으니 그걸 참조로
+    쓰면 라벨보존 합성 효과를 improve도 그대로 받는다)."""
+    client_fake = FakeChecksClient({"rid1": {"image_path": "checks/rid1/original.png"}})
+    client_fake.files["checks/rid1/original.png"] = b"REPORT_PHOTO"
+    resolve = app_module._resolve_reference_photos(client_fake)
+
+    req = GenerateRequest(mode="improve", content="x", result_id="rid1")
+    assert resolve(req) == [b"REPORT_PHOTO"]
+
+
+def test_resolve_reference_photos는_리포트에_이미지가_없으면_빈_목록():
+    client_fake = FakeChecksClient({"rid1": {"image_path": None}})
+    resolve = app_module._resolve_reference_photos(client_fake)
+
+    req = GenerateRequest(mode="improve", content="x", result_id="rid1")
+    assert resolve(req) == []
 
 
 def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘긴다(monkeypatch):
@@ -235,6 +292,37 @@ def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘�
     body = r.json()
     assert body["image_plan"]["module_images"][0]["status"] == "generated"
     assert fake_gen.images_received == [[b"PHOTOBYTES"]]
+
+
+def test_generate가_improve_모드에서도_리포트_이미지를_참조로_생성기에_넘긴다(monkeypatch):
+    """improve 모드 /generate end-to-end 배선 확인(2026-08-24). product_photo_ids가
+    아니라 result_id로 원본 검사 이미지를 찾아 참조로 넘긴다."""
+    client_fake = FakeChecksClient({"rid1": {"image_path": "checks/rid1/original.png"}})
+    client_fake.files["checks/rid1/original.png"] = b"REPORT_PHOTO"
+
+    fake_gen = FakeImageGenerator(b"PNGBYTES")
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: fake_gen)
+    monkeypatch.setattr(app_module, "_checks_client", lambda: client_fake)
+    monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
+        "barum.judge.cosmetic", fromlist=["StubJudge"]
+    ).StubJudge())
+
+    r = client.post(
+        "/generate",
+        json={
+            "mode": "improve",
+            "content": "완치됩니다",
+            "product_name": "테스트크림",
+            "result_id": "rid1",
+            "approved_replacements": [{"original": "완치됩니다", "replaced": "사용감이 편안합니다"}],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    images = body["image_plan"]["module_images"]
+    assert images and images[0]["status"] == "generated"
+    assert fake_gen.images_received == [[b"REPORT_PHOTO"]]
 
 
 # ── 승인 대체표현이 HTTP 경로로 실제로 들어오는지 (2026-08-23) ────────────────

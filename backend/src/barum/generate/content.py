@@ -277,9 +277,10 @@ def build_image_plan(
     주입받는다(`content.py`는 저장소를 몰라야 오프라인 테스트가 된다. 실제 저장은
     `api/app.py`가 `storage/checks_store.py`로 한다).
 
-    photo_resolver: `(product_photo_ids) -> 참조 이미지 바이트 목록`. image_sink와 같은
-    이유로 저장소 접근은 여기서 안 하고 주입만 받는다. `generate_module_images`로
-    그대로 넘긴다.
+    photo_resolver: `(req) -> 참조 이미지 바이트 목록`. image_sink와 같은 이유로
+    저장소 접근은 여기서 안 하고 주입만 받는다. `generate_module_images`로 그대로
+    넘긴다(req를 통째로 받는 이유는 그 함수 docstring 참고 - create·improve가
+    서로 다른 필드로 참조를 찾는다).
 
     sections: 이미 만들어진 카피. **주면 그 모듈에 실제로 실릴 문장을 이미지
     프롬프트가 알게 된다.** 안 주면 플래너가 정한 한 줄 목적만 보고 그려서 배경이
@@ -704,30 +705,39 @@ def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
     주면 기존 동작 그대로다, improve 모드 회귀 없음") 그 확장 지점에 맞춰 합성한다 -
     가짜 계획을 억지로 끼우는 게 아니라 원래 예정된 사용법이다.
 
-    purpose에 원문→대체문구를 그대로 담아 이미지가 실제 대체표현 텍스트를 반영하게
-    한다(팀장 지적: "이미지가 카피를 모른다" 문제. create 모드도 같은 문제를 별도로
-    고치는 중이다, 베베). **그 문구를 그대로 읽어서 이미지에 글자로 쓰면 안 된다** -
-    `_PROMPT`의 최우선 규칙(글자 금지)이 있긴 하지만, purpose 자체에도 "이건 읽으라는
-    정보지 그리라는 글자가 아니다"를 명시해 이중으로 막는다(#312와 같은 계열 실패를
-    여기서 처음부터 안 만든다, 베베 지적).
+    purpose는 일반적인 목적 문구만 담는다(플래너 의도용 필드라 카피를 섞으면 나중에
+    헷갈린다, 베베 지적). 실제 원문→대체문구는 `_replacement_copy_sections`로 따로
+    만들어 `build_image_plan(sections=...)`에 넘긴다 - #341에서 생긴 copy_by_kind
+    경로를 그대로 타면 "글자로 쓰지 마라" 방어(`images.py` `_copy_line`)까지 이미
+    붙어 있어서 여기서 또 안 넣어도 된다.
     """
-    modules: list[LayoutModule] = []
-    for i, r in enumerate(reps):
-        purpose = (
-            f'광고문구를 "{r.original}"에서 "{r.replaced}"로 순화했다. '
-            "이 순화된 표현이 실제로 말하는 내용과 분위기에 어울리는 장면을 그려라. "
-            "**이 문장들은 무엇을 그릴지 알려주는 정보일 뿐이다 - 절대 이미지 안에 "
-            "글자로 옮겨 쓰지 마라.**"
+    return [
+        LayoutModule(
+            kind=f"replacement_{i}",
+            purpose="완화된 광고 문구 옆에 놓일 배경 이미지",
+            has_claim_risk=False,
+            layout_type=_REPLACEMENT_IMAGE_LAYOUT_TYPE,
         )
-        modules.append(
-            LayoutModule(
-                kind=f"replacement_{i}",
-                purpose=purpose,
-                has_claim_risk=False,
-                layout_type=_REPLACEMENT_IMAGE_LAYOUT_TYPE,
-            )
+        for i in range(len(reps))
+    ]
+
+
+def _replacement_copy_sections(reps: list[Replacement]) -> list[Section]:
+    """`_replacement_image_modules`가 합성한 모듈에 짝지어질 카피(원문→대체문구).
+
+    화면에 나가는 진짜 섹션이 아니라 `build_image_plan(sections=...)` → copy_by_kind
+    → 이미지 프롬프트로만 흘러가는 힌트다. `GenerateResponse.sections`엔 안 섞는다
+    (kind가 `replacement_i`라 실제 렌더 쪽 module_kind 짝짓기와 겹치지 않게 완전히
+    분리된 용도로만 쓴다).
+    """
+    return [
+        Section(
+            kind=f"replacement_{i}",
+            text=f'"{r.original}" → "{r.replaced}"',
+            source="image_prompt_hint",
         )
-    return modules
+        for i, r in enumerate(reps)
+    ]
 
 
 def _generate_improve_content(
@@ -773,6 +783,7 @@ def _generate_improve_content(
         image_generator=image_generator,
         image_sink=image_sink,
         photo_resolver=photo_resolver,
+        sections=_replacement_copy_sections(reps),
     )
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)
@@ -1025,11 +1036,11 @@ def generate_content(
     image_generator를 안 주면 이미지 생성을 건너뛴다(모델 확정 전까지 기본 비활성).
     두 모드 다 이미지를 만든다 - create는 계획된 모듈마다, improve는 승인된
     대체표현마다(`_replacement_image_modules`) 만든다.
-    photo_resolver는 판매자가 올린 제품사진(req.product_photo_ids)을 참조 이미지로
-    바꿔주는 콜백이다(AI 배경·연출 합성). **지금은 create 모드에서만 실제로 참조를
-    낸다** - improve 모드의 원본 제품사진은 `product_photo_ids`가 아니라 `result_id`로
-    찾는 별도 저장 위치라 이 콜백을 안 탄다(후속 작업, PM 공유함). 안 주면(또는
-    improve처럼 안 걸리면) 참조 없이 배경만 생성한다.
+    photo_resolver는 참조 이미지를 바꿔주는 콜백이다(AI 배경·연출 합성, `(req) ->
+    바이트 목록`). create는 판매자가 올린 제품사진(req.product_photo_ids), improve는
+    원본 검사에 첨부된 리포트 이미지(req.result_id)를 각자 다른 저장 위치에서
+    찾는다 - 어느 쪽을 쓸지는 콜백 안에서 정해진다(`api/app.py`
+    `_resolve_reference_photos`). 안 주거나 둘 다 없으면 참조 없이 배경만 생성한다.
     """
     if req.mode == "create":
         return _generate_create_content(
