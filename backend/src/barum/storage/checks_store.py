@@ -30,8 +30,18 @@ def build_check_row(
     image_sha256: str | None = None,
     image_path: str | None = None,
     product_name: str | None = None,
+    cache_key: str | None = None,
 ) -> dict:
-    """checks 테이블 insert 로우를 만든다. report는 CheckReport를 dict로 덤프한 것."""
+    """checks 테이블 insert 로우를 만든다. report는 CheckReport를 dict로 덤프한 것.
+
+    cache_key: 이 검사를 만든 캐시 키(입력값+로직버전 조합). report JSONB 안에
+    `_cache_key`로 심는다. 스키마에 컬럼을 새로 파지 않고 2차 캐시 복원 때 정확 대조를
+    하기 위해서다. `_cache_key`는 예약 키라 CheckReport/USPreflightReport 모델이
+    무시한다(extra="ignore" 기본값), API 응답에는 안 샌다.
+    """
+    if cache_key is not None:
+        # report는 model_dump 결과 dict라 여기서 예약 키를 얹어도 모델 검증엔 영향 없다.
+        report = {**report, "_cache_key": cache_key}
     row = {
         "id": result_id,
         "region": region,
@@ -97,6 +107,13 @@ def clear_image_cache() -> None:
     _IMAGE_CACHE.clear()
 
 
+# 캐시 로직 버전. **판정·OCR·전성분추출 등 결과에 영향을 주는 로직이 바뀌면 올린다.**
+# 올리면 캐시 키가 통째로 바뀌어 옛 캐시(메모리·Supabase 둘 다)가 자동 무효화된다.
+# 안 올리면 코드를 고쳐도 옛 결과가 계속 나온다(2026-08-24 실제 사고: 미국 프리플라이트
+# 전성분 OCR을 고쳤는데 고치기 전 캐시가 계속 "전성분 미입력"을 돌려줬다).
+_CACHE_LOGIC_VERSION = "2"
+
+
 def build_cache_key(
     image_sha256: str,
     region_or_country: str,
@@ -105,8 +122,8 @@ def build_cache_key(
     ingredient_amounts: str | None = None,
     product_name: str | None = None,
 ) -> str:
-    """이미지 검사 입력값 조합으로 고유 캐시 키를 만든다."""
-    raw = f"{image_sha256}:{region_or_country}:{ad_text or ''}:{ingredients or ''}:{ingredient_amounts or ''}:{product_name or ''}"
+    """이미지 검사 입력값 조합 + 로직 버전으로 고유 캐시 키를 만든다."""
+    raw = f"{_CACHE_LOGIC_VERSION}:{image_sha256}:{region_or_country}:{ad_text or ''}:{ingredients or ''}:{ingredient_amounts or ''}:{product_name or ''}"
     return sha256_hex(raw.encode("utf-8"))
 
 
@@ -150,6 +167,16 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
 
                 report_dict = row["report"]
                 result_id = row.get("id")
+
+                # 저장된 cache_key가 지금 요청 키와 정확히 같을 때만 복원한다.
+                # get_check_by_sha256은 image_sha256만 보고 최신 한 건을 주므로, 같은
+                # 이미지라도 광고문구·전성분이 다르거나(입력 불일치) 판정 로직이 바뀐 뒤면
+                # (버전 불일치) 엉뚱한 옛 결과가 나온다. cache_key엔 입력값과 로직버전이
+                # 다 들어 있어 이 한 번의 대조로 두 경우를 모두 막는다.
+                # 옛 레코드는 `_cache_key`가 없어(None) 항상 불일치 -> 재검사한다.
+                if report_dict.get("_cache_key") != cache_key:
+                    print("    [info] 2차 캐시 키 불일치(입력 변경 또는 로직 버전 상향) -> 신규 검사")
+                    return None
 
                 if (
                     "disclaimer" in report_dict
