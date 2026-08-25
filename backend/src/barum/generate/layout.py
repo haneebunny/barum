@@ -240,7 +240,9 @@ def filter_risky_modules(
             else:
                 skipped.append(
                     SkippedClaim(
-                        category=module.kind,
+                        # category는 사용자에게 그대로 보이는 라벨이라 영어 kind(hero_intro 등)를
+                        # 쓰면 안 된다. 한글 purpose를 쓰고, 비면 kind로만 폴백한다(2026-08-25).
+                        category=module.purpose or module.kind,
                         reason="실증자료(인체적용시험 결과)가 입력되지 않아 임상 수치 모듈을 뺐습니다",
                     )
                 )
@@ -250,7 +252,7 @@ def filter_risky_modules(
             continue
         skipped.append(
             SkippedClaim(
-                category=module.kind,
+                category=module.purpose or module.kind,
                 reason="기능성 인증서로 뒷받침되는 인정문구가 없어 효능 주장 모듈을 뺐습니다",
             )
         )

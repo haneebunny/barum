@@ -306,7 +306,8 @@ def test_근거_없으면_히어로가_안전한_버전으로_대체된다():
     assert "효능 주장 없이" in hero.purpose
     # 대체했다고 해서 스킵 사실을 감추면 안 된다. 주장은 여전히 빠진 것이다.
     assert len(skipped) == 1
-    assert skipped[0].category == "hero_intro"
+    # category는 사용자 노출 라벨이라 영어 kind가 아니라 한글 purpose를 쓴다(2026-08-25).
+    assert skipped[0].category == "hero_intro 목적"
 
 
 def test_대체는_히어로만_한다():

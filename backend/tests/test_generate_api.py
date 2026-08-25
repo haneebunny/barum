@@ -162,13 +162,43 @@ def test_create_모드_실제로_켜면_module_images에_URL이_채워진다(mon
     ).StubJudge())
     monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
 
-    r = client.post("/generate", json={"mode": "create", "product_name": "테스트 세럼"})
+    # create 모드는 "모듈별 배경 이미지도 생성하기" 체크박스를 켰을 때만 생성한다.
+    r = client.post(
+        "/generate",
+        json={"mode": "create", "product_name": "테스트 세럼", "image_generation": {"requested": True}},
+    )
     assert r.status_code == 200
     body = r.json()
     images = body["image_plan"]["module_images"]
     assert images, "module_images가 비어있으면 배선이 여전히 끊긴 것"
     assert images[0]["status"] == "generated"
     assert images[0]["image_url"].startswith("/generated/")
+
+
+def test_create_체크박스_꺼져있으면_이미지를_생성하지_않는다(monkeypatch):
+    """비용 사고 회귀 테스트(2026-08-25 냐냐 발견): 서버 env가 켜져 있어도 요청에
+    image_generation.requested가 없으면 실제 생성(generate_image, 나노바나나 과금)을
+    부르면 안 된다. 예전엔 체크박스를 꺼도 create 요청마다 이미지가 생성됐다."""
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+
+    calls = {"n": 0}
+
+    class SpyGenerator:
+        def generate_image(self, prompt, images):
+            calls["n"] += 1  # 여기 들어오면 과금이다
+            return b"PNG"
+
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: SpyGenerator())
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
+        "barum.judge.cosmetic", fromlist=["StubJudge"]
+    ).StubJudge())
+    monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    r = client.post("/generate", json={"mode": "create", "product_name": "테스트 세럼"})
+    assert r.status_code == 200
+    assert calls["n"] == 0, "체크박스가 꺼졌는데 generate_image가 불렸다(과금 발생)"
+    assert r.json()["image_plan"]["module_images"] == []
 
 
 # ── 제품사진 업로드 → AI 합성 (2026-08-19, 팀장 승인 방식 A) ──────────────────
