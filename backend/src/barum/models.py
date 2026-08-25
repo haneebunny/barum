@@ -1035,7 +1035,12 @@ class ContentCard(BaseModel):
     text: str
     text_source: str  # remediation | llm | template | approved_claim 등 Section.source 그대로
     image_url: str | None = None
-    image_status: str = "skipped"  # generated | skipped
+    image_status: str = "skipped"  # generated | skipped | placed
+    # 판매자가 올린 제품사진 원본을 그대로 쓴 카드(나노바나나 재합성이 아님).
+    # True면 프론트가 "AI 생성" 캡션을 안 붙이고 원본으로 표시한다. 재합성은
+    # 라벨을 뭉개고 비용도 드는데, 원본을 그대로 쓰면 라벨이 완벽하고 과금이 0이다
+    # (2026-08-24 팀장 지시: "기존 입력 이미지는 그대로 사용").
+    is_original: bool = False
     # 대체표현이 실증대상일 때 붙는 고지. 카드에 같이 안 실으면 사용자가 위반에서
     # 벗어난 줄 알고 그대로 쓴다(2026-08-20 팀장 지시와 같은 이유).
     note: str | None = None
