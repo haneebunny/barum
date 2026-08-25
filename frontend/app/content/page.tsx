@@ -1238,8 +1238,16 @@ function ContentGeneratorContent() {
         )}
       </div>
 
-      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. */}
-      {!canGenerateContent ? (
+      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. **이미 생성한
+          결과(isGenerated && genResult)는 이용권 소진과 무관하게 항상 보여야
+          한다** - 생성 성공 직후 consumeContent()가 contentRemaining을
+          0으로 만들어 canGenerateContent가 false가 되는데, 게이팅을 여기
+          하나로만 걸면 방금 만든 결과가 화면에서 그대로 사라지고
+          ContentLockCard가 덮어버렸다(발표 직전 팀장 로직검증으로 발견,
+          리포트당 이용권 1장이라 매번 재현). 게이팅은 "생성 시작 전"에만
+          적용한다 - !isGenerated를 같이 걸어서 이미 생성된 뒤엔 이 락이
+          아예 안 뜨게 한다. */}
+      {!canGenerateContent && !isGenerated ? (
         <ContentLockCard
           title="상세페이지 초안을 만들려면 이용권이 필요합니다"
           desc="제품 정보나 수정 권고안을 바탕으로 화장품법을 지키는 상세페이지 초안 1건을 만들어 드립니다. 콘텐츠 생성 이용권 1장이 상세페이지 1건이고, 결합형을 쓰면 리포트 열람까지 함께 처리됩니다."
@@ -1255,8 +1263,9 @@ function ContentGeneratorContent() {
       ) : (
         <>
 
-          {/* 입력 요약 / create 모드 입력 폼 */}
-          {mode === "create" ? (
+          {/* 입력 요약 / create 모드 입력 폼. 생성 완료 후엔 원샷이라 편집 불가라
+              더 볼 이유가 없다 - 결과가 화면을 다 채우게 숨긴다. */}
+          {!isGenerated && (mode === "create" ? (
             <div className="p-[18px_20px] border-b border-[var(--line)]">
               <div className="flex items-center gap-[11px] m-[0_0_13px]">
                 <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
@@ -1667,7 +1676,7 @@ function ContentGeneratorContent() {
                 </div>
               </div>
             </div>
-          )}
+          ))}
 
           {/* 생성 결과 */}
           <div className="p-[18px_20px] border-b-0">
@@ -1705,6 +1714,11 @@ function ContentGeneratorContent() {
                 {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
                   <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
                 )}
+                {/* AI 사용 시점 상시 고지(AI기본법 제31조③). 결과물 하단 aiPageNotice는
+                    "결과"에 AI가 쓰였다는 사후 고지고, 이건 "생성 시작 전" 고지라
+                    자리가 다르다 - 둘 다 있어야 한다(팀장 지시, 2026-08-25). 경보가
+                    아니라 상시 안내라 경고색 대신 --ink-3 톤만 쓴다. */}
+                <p className="m-0 text-[11px] text-[var(--ink-3)]">생성 결과에는 AI가 만든 문구와 이미지가 포함될 수 있습니다.</p>
                 <button
                   className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
                   id="startGen"
