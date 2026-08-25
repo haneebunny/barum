@@ -838,6 +838,13 @@ function InspectContent() {
         </div>
       </div>
 
+      {/* AI 사용 시점 상시 고지. 경보가 아니라 안내라 회색 톤으로만 알린다(§F). */}
+      <div className="p-[11px_20px] border-b border-[var(--line)] bg-[var(--surface-sub)]">
+        <p className="m-0 text-[12px] text-[var(--ink-3)] leading-[1.6] break-keep">
+          바름은 AI를 활용해 이미지와 광고 문구를 분석합니다.
+        </p>
+      </div>
+
       {/* 하단 컨트롤 영역 */}
       <div className="p-[16px_20px] bg-[var(--surface-sub)] flex items-center justify-between border-b border-[var(--line)] flex-wrap gap-3">
         <div className="flex gap-2.5">
