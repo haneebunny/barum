@@ -1071,10 +1071,24 @@ def build_cards(
         img = images.get(module.kind)
         image_url = img.image_url if img else None
         image_status = img.status if img else "skipped"
-        if not image_url and len(cards) == 0 and image_plan.placed:
-            # 생성된 모듈 이미지가 없을 때, 첫 카드(히어로)는 배치된 원본/업로드 사진을 사용
-            image_url = image_plan.placed[0].image_url
-            image_status = "placed"
+        is_original = False
+        # 제품 원본이 올라왔으면 히어로(첫 카드)는 **생성 이미지가 있어도** 원본을
+        # 우선한다(팀장 지시 2026-08-24: "기존 입력 이미지는 그대로 사용"). 나노바나나
+        # 재합성은 라벨을 뭉개고(YOURBERRY→YOUARFRAY) 비용도 드는데, 원본은 라벨이
+        # 완벽하고 과금이 0이다. 그래서 히어로 모듈은 애초에 이미지 생성도 스킵한다
+        # (_generate_create_content). placed의 product_photo 슬롯을 그대로 쓴다.
+        if len(cards) == 0 and image_plan.placed:
+            product_photo = next(
+                (p for p in image_plan.placed if p.slot == "product_photo"), None
+            )
+            if product_photo is not None:
+                image_url = product_photo.image_url
+                image_status = "placed"
+                is_original = True
+            elif not image_url:
+                # 제품사진은 없지만 다른 배치 이미지가 있으면 그걸 히어로에 쓴다(기존 동작).
+                image_url = image_plan.placed[0].image_url
+                image_status = "placed"
 
         # 인정문구는 법으로 정해진 문구라 길어도 헤드라인 자리를 지킨다.
         head, body = split_headline(
@@ -1091,6 +1105,7 @@ def build_cards(
                 text_source=sec.source,
                 image_url=image_url,
                 image_status=image_status,
+                is_original=is_original,
                 table_rows=sec.table_rows,
                 clinical_stat=sec.clinical_stat,
             )
@@ -1200,9 +1215,16 @@ def _generate_create_content(
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
-    # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
+    # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성.
+    # **제품 원본이 올라왔으면 히어로(첫 모듈) 배경은 만들지 않는다**(팀장 지시
+    # 2026-08-24). 히어로 카드는 build_cards가 placed의 제품 원본을 그대로 쓰므로
+    # (is_original), 여기서 배경을 만들어봐야 안 쓰이고 나노바나나 비용만 나간다.
+    # placed 목록은 req 기반이라(build_image_plan 내부) 모듈을 빼도 원본은 남는다.
+    image_plan_source = plan
+    if req.product_photo_ids and plan.modules:
+        image_plan_source = plan.model_copy(update={"modules": plan.modules[1:]})
     image_plan = build_image_plan(
-        req, plan, image_generator, image_sink, photo_resolver, sections=cleaned
+        req, image_plan_source, image_generator, image_sink, photo_resolver, sections=cleaned
     )
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)

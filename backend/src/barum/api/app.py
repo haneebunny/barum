@@ -38,6 +38,7 @@ from barum.models import (
     USExportReadinessReport,
 )
 from barum.generate.content import generate_content
+from barum.generate.images import dominant_tone
 from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
@@ -859,13 +860,34 @@ def generate(req: GenerateRequest) -> GenerateResponse:
 
     image_gen = _image_generator()
     client = _checks_client() if image_gen else None
+
+    # 제품사진이 올라왔으면 지배색을 뽑아 배경 톤에 반영한다(PIL 픽셀 분석, 과금 0).
+    # 이게 없어서 제품이 핑크여도 배경이 늘 "세럼=민트"로 고정됐다(2026-08-24 로직
+    # 검증: 색 추출 코드가 아예 없었다). 사용자가 color_tone을 직접 넣었으면 그걸
+    # 존중하고 안 덮는다.
+    if req.mode == "create" and req.product_photo_ids and not req.color_tone and client:
+        first = req.product_photo_ids[0]
+        if _PHOTO_ID_RE.match(first):
+            try:
+                photo_bytes = download_image(client, f"uploads/{first}")
+                tone = dominant_tone(photo_bytes)
+                if tone:
+                    req = req.model_copy(update={"color_tone": tone})
+                    print(f"    [info] 제품 색 추출 -> 배경 톤: {tone}")
+            except Exception as e:
+                print(f"    [skip] 제품 색 추출 실패: {type(e).__name__}: {e}")
+
     resp = generate_content(
         req,
         judge=_build_judge(),
         vlm=_section_vlm(),
         image_generator=image_gen,
         image_sink=_image_sink(client) if client else None,
-        photo_resolver=_resolve_reference_photos(client) if client else None,
+        # **제품사진을 나노바나나 참조로 넘기지 않는다**(팀장 지시 2026-08-24).
+        # 재합성하면 라벨이 뭉개지고(YOURBERRY→YOUARFRAY) 비용도 든다. 제품 원본은
+        # build_cards가 히어로 카드에 그대로 쓰고(is_original), 나머지 배경은 제품
+        # 없이 순수 생성한다. improve도 원래 참조를 안 쓴다.
+        photo_resolver=None,
     )
     put_cached_generate(cache_key, resp)
     return resp

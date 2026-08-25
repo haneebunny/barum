@@ -41,6 +41,32 @@ def _texture_hint(product_type: str | None) -> str:
     return _TEXTURE_HINTS.get(product_type, _TEXTURE_HINTS[None])
 
 
+# layout_type별로 "무슨 소재를 담을지". **예전엔 소재가 product_type 하나로만
+# 결정돼서**(_texture_hint), 골격이 다른 layout_type(hero/split/mood)이 전부 같은
+# 제형 힌트("점도 있는 액상 방울…")를 받아 물방울·젤 클로즈업으로 수렴했다
+# (2026-08-24 팀장 로직검증: "텍스처만 반복"). layout_type이 소재 종류를 정하고
+# product_type은 제형 계열 유형(mood_macro)에서만 쓰이게 갈라, 한 페이지에 제형·
+# 원료·연출이 골고루 섞이게 한다.
+_MATERIAL_BY_LAYOUT_TYPE: dict[str, str] = {
+    # 원료 소재: 제형 덩어리가 아니라 원료를 연상시키는 자연 소재
+    "image_text_split": (
+        "원료를 연상시키는 자연 소재 클로즈업(잎·꽃잎·씨앗·오일 방울·물기 맺힌 표면 등). "
+        "제품 용기나 제형 덩어리는 넣지 마라"
+    ),
+    # 연출 공간: 제품이 놓인 장면. 다른 화장품·소품과 함께 스타일링된 플랫레이 허용
+    # (팀장 요청 2026-08-24: "다른 화장품이랑 있는 컷이라든지, 너무 텍스처만 넣지 마").
+    "hero_fullbleed": (
+        "제품이 자연스럽게 놓인 밝은 연출 공간(화장대·선반·창가 등). 다른 화장품·꽃·"
+        "천 같은 소품과 함께 스타일링된 플랫레이도 좋다. 제형 방울 클로즈업으로만 채우지 마라"
+    ),
+}
+
+
+def _material_hint(layout_type: str, product_type: str | None) -> str:
+    """이 layout_type이 담을 소재 힌트. 지정이 없으면 제형 질감(_texture_hint)으로."""
+    return _MATERIAL_BY_LAYOUT_TYPE.get(layout_type) or _texture_hint(product_type)
+
+
 # product_type별 기본 컬러톤·분위기. 인터뷰에서 값을 안 받았을 때 쓴다.
 # 디디가 `layout_references/_vocabulary.json`의 `category_base_tone`으로 확정한 값
 # (2026-08-19, PR #181). 이 파일의 hue_direction은 템플릿 색이 아니라 이 기본값
@@ -53,6 +79,60 @@ _TONE_DEFAULTS: dict[str | None, str] = {
     "앰플": "집중・고농축 느낌, 딥그린 또는 딥네이비 + 화이트 대비",
     None: "투명하고 깨끗한 톤, 미니멀하고 차분한 분위기",
 }
+
+
+# 지배색 hue(0~360도) → 아트디렉션 톤 문구. 제품 색과 배경 톤을 맞추는 데 쓴다.
+_HUE_TONE_BANDS: tuple[tuple[float, str], ...] = (
+    (20, "부드러운 핑크·로즈 계열, 화사하고 산뜻한 분위기"),
+    (45, "따뜻한 코랄·피치 계열, 화사하고 생기 있는 분위기"),
+    (70, "화사한 옐로·크림 계열, 밝고 따뜻한 분위기"),
+    (160, "산뜻한 그린·세이지 계열, 맑고 청량한 분위기"),
+    (200, "맑은 아쿠아·민트 계열, 깨끗하고 시원한 분위기"),
+    (260, "시원한 블루 계열, 청량하고 투명한 분위기"),
+    (340, "은은한 라벤더·퍼플 계열, 우아하고 차분한 분위기"),
+    (360, "부드러운 핑크·로즈 계열, 화사하고 산뜻한 분위기"),
+)
+
+
+def dominant_tone(image_bytes: bytes) -> str | None:
+    """제품사진의 지배 색조를 아트디렉션 톤 문구로 낸다. 실패하면 None.
+
+    **나노바나나가 아니라 PIL 픽셀 분석이라 과금이 0이다.** 흰·회색 배경은 빼고
+    채도 있는 대표색을 골라 색계열(핑크·민트 등)로 매핑한다. 제품이 핑크인데
+    배경 톤이 늘 "세럼=민트"로 고정되던 문제(2026-08-24 로직검증으로 확인,
+    색 추출 코드가 아예 없었다)를 없앤다.
+    """
+    import colorsys
+    import io
+
+    from PIL import Image
+
+    try:
+        im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as e:
+        print(f"    [skip] 지배색 추출 실패: {type(e).__name__}: {e}")
+        return None
+    im.thumbnail((80, 80))
+    quantized = im.quantize(colors=8)
+    palette = quantized.getpalette() or []
+    best = None  # (점수, hue_deg)
+    for count, idx in quantized.getcolors() or []:
+        r, g, b = palette[idx * 3 : idx * 3 + 3]
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        # 무채색(흰·검·회)·너무 어두운 색은 제품 색이 아니라 배경·그림자다.
+        if s < 0.15 or v < 0.2:
+            continue
+        score = count * s  # 흔하면서 채도 높은 색을 대표로
+        if best is None or score > best[0]:
+            best = (score, h * 360)
+    if best is None:
+        # 유채색이 거의 없는 제품(흰 배경 + 투명 용기). 중립 톤으로.
+        return "맑고 깨끗한 톤, 미니멀하고 차분한 분위기"
+    hue = best[1]
+    for upper, tone in _HUE_TONE_BANDS:
+        if hue < upper:
+            return tone
+    return _HUE_TONE_BANDS[-1][1]
 
 
 def _resolve_tone(req: GenerateRequest, product_type: str | None) -> str:
@@ -144,8 +224,10 @@ _COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES: dict[str, str] = {
         "  시선이 쏠리는 강한 피사체는 넣지 마라"
     ),
     "step_list": (
-        "- 사용 순서를 설명하는 자리다. 제품을 쓰는 상황이 연상되는 **정돈된 공간**을\n"
-        "  그려라(세면대 옆 선반, 정리된 테이블 등). 제형 질감 클로즈업은 쓰지 마라"
+        "- 사용 순서를 설명하는 자리다. **손으로 제품을 바르거나 덜어내는 장면**을\n"
+        "  중심에 그려라(손등·손바닥·손가락, 얼굴은 절대 안 보이게). 세면대 옆 선반·\n"
+        "  정리된 테이블 같은 정돈된 공간을 배경으로 둬도 좋다. 제형 질감 클로즈업은\n"
+        "  쓰지 마라"
     ),
     "lineup_strip": (
         "- 제품 여러 개가 가로로 늘어서 얹힐 자리다. **가로로 긴 구도의 평평한 받침면**\n"
@@ -197,7 +279,7 @@ def _composition_lines(layout_type: str, product_type: str | None, variation_ind
     variation_index는 같은 layout_type이 이 페이지에서 몇 번째로 등장하는지다.
     0이면 지시가 안 붙어 기존 동작 그대로다.
     """
-    hint = _texture_hint(product_type)
+    hint = _material_hint(layout_type, product_type)
     template = _COMPOSITION_BY_LAYOUT_TYPE_TEMPLATES.get(layout_type, _DEFAULT_COMPOSITION)
     lines = template.format(hint=hint)
     variation = _variation_line(variation_index)
