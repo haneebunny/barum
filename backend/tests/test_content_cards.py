@@ -751,3 +751,35 @@ def test_실증자료_두건이면_카드마다_다른_수치가_붙는다():
         sections, _plan("clinical_intro", "clinical_result"), ImagePlan(generation=ImageGenResult())
     )
     assert [c.clinical_stat.value for c in cards] == ["87%", "4주 후 2.1배"]
+
+
+def test_대체표현_카드는_소재가_다양하게_layout_type을_순환한다():
+    """improve 배경 이미지가 전부 image_text_split(원료=잎)이라 "나뭇잎만" 나왔다
+    (2026-08-25 팀장 실측). 카드마다 layout_type을 순환해 원료·연출·질감이 섞이게 한다.
+    카드 렌더는 이미지 있으면 layout_type과 무관하게 균일하므로 카드 모양은 안 바뀐다.
+    """
+    from barum.generate.content import (
+        _replacement_image_modules,
+        _REPLACEMENT_IMAGE_LAYOUT_TYPES,
+    )
+    from barum.models import Replacement, ViolationType
+
+    reps = [
+        Replacement(
+            original=f"위반{i}",
+            replaced=f"안전{i}",
+            violation_type=ViolationType.type_5_deception,
+            basis="조건표",
+        )
+        for i in range(4)
+    ]
+    modules = _replacement_image_modules(reps)
+    types = [m.layout_type for m in modules]
+
+    assert len(modules) == 4
+    assert len(set(types)) > 1, "전부 같은 소재(잎)면 안 된다"
+    # index 순으로 결정적으로 순환한다(같은 입력 -> 같은 결과).
+    assert types == [
+        _REPLACEMENT_IMAGE_LAYOUT_TYPES[i % len(_REPLACEMENT_IMAGE_LAYOUT_TYPES)]
+        for i in range(4)
+    ]
