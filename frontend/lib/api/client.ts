@@ -9,6 +9,8 @@ import {
   ExportReadinessReportSchema,
   GenerateResponseSchema,
   IngredientUploadResponseSchema,
+  ClinicalUploadResponseSchema,
+  SurveyUploadResponseSchema,
 } from "./schema";
 import type {
   Region,
@@ -29,6 +31,8 @@ import type {
   GenericProductEvidence,
   ReadinessInputState,
   IngredientUploadResponse,
+  ClinicalUploadResponse,
+  SurveyUploadResponse,
 } from "./schema";
 
 export interface CheckAdInput {
@@ -644,14 +648,17 @@ export async function uploadProductPhoto(file: File): Promise<{ photo_id: string
   );
 }
 
-// 전성분+함량 손입력이 20~30개면 지옥이라, 엑셀·CSV·txt로 한 번에 올리면
-// 백엔드(openpyxl)가 파싱해서 rows로 돌려준다(팀장 지시, 2026-08-24).
-export async function uploadIngredients(file: File): Promise<IngredientUploadResponse> {
-  const url = `${getApiUrl()}/uploads/ingredients`;
+// 표(전성분·실증자료·설문) 업로드 세 곳이 공유한다. 세 엔드포인트가 상태코드·
+// 응답 모양·에러 계약이 전부 같아서 흐름을 한 곳에 둔다.
+async function postTabularUpload<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  file: File
+): Promise<T> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(url, {
+  const response = await fetch(`${getApiUrl()}${path}`, {
     method: "POST",
     body: formData,
   });
@@ -670,11 +677,26 @@ export async function uploadIngredients(file: File): Promise<IngredientUploadRes
     throw new Error(detail);
   }
 
-  return validateResponse(
-    IngredientUploadResponseSchema,
-    await response.json(),
-    "POST /uploads/ingredients"
-  );
+  return validateResponse(schema, await response.json(), `POST ${path}`);
+}
+
+// 전성분+함량 손입력이 20~30개면 지옥이라, 엑셀·CSV·txt로 한 번에 올리면
+// 백엔드(openpyxl)가 파싱해서 rows로 돌려준다(팀장 지시, 2026-08-24).
+export async function uploadIngredients(file: File): Promise<IngredientUploadResponse> {
+  return postTabularUpload("/uploads/ingredients", IngredientUploadResponseSchema, file);
+}
+
+// 실증자료(임상)·설문도 같은 방식으로 받는다(2026-08-25 요청). 임상 5칸 +
+// 설문 6칸을 자료마다 손으로 치는 게 번거로워서다.
+//
+// **warnings를 반드시 화면에 띄울 것.** 헤더 없는 파일은 백엔드가 값의 형태로
+// 열을 추측해서 읽고, 무엇을 어떻게 읽었는지가 거기 담겨 온다.
+export async function uploadClinical(file: File): Promise<ClinicalUploadResponse> {
+  return postTabularUpload("/uploads/clinical", ClinicalUploadResponseSchema, file);
+}
+
+export async function uploadSurvey(file: File): Promise<SurveyUploadResponse> {
+  return postTabularUpload("/uploads/survey", SurveyUploadResponseSchema, file);
 }
 
 export async function generateContent(req: GenerateRequest): Promise<GenerateResponse> {

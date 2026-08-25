@@ -22,6 +22,7 @@ from barum.judge.export_readiness import build_export_readiness_report
 from barum.judge.us_sunscreen import USSunscreenJudge
 from barum.models import (
     CheckReport,
+    ClinicalUploadResponse,
     ExportReadinessReport,
     ExportReadinessRequest,
     GenerateRequest,
@@ -32,6 +33,7 @@ from barum.models import (
     RemediationRequest,
     RemediationResponse,
     StoredCheck,
+    SurveyUploadResponse,
     USPreflightReport,
     ExportProduct,
     ExportProfile,
@@ -42,6 +44,11 @@ from barum.generate.images import dominant_tone
 from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
+from barum.preprocess.evidence_upload import (
+    EvidenceParseError,
+    parse_clinical_upload,
+    parse_survey_upload,
+)
 from barum.preprocess.ingredient_upload import IngredientParseError, parse_ingredient_upload
 from barum.pipeline import run_check, run_us_sunscreen_check, run_us_export_readiness
 from barum.storage.checks_store import (
@@ -692,11 +699,12 @@ def get_generated_image(image_id: str) -> Response:
 _PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
 
 
-# 전성분 업로드 확장자 화이트리스트. content-type은 브라우저·OS마다 제각각이라
-# (csv를 application/vnd.ms-excel로 보내는 경우도 흔하다) 확장자를 판단 기준으로
-# 삼고, content-type은 명백히 엉뚱한 값만 걸러내는 보조 신호로만 쓴다.
-_INGREDIENT_EXTS = {".xlsx", ".csv", ".txt"}
-_INGREDIENT_CT_ALLOW = {
+# 표 형식 업로드(전성분·실증자료·설문) 공용 확장자 화이트리스트. content-type은
+# 브라우저·OS마다 제각각이라 (csv를 application/vnd.ms-excel로 보내는 경우도
+# 흔하다) 확장자를 판단 기준으로 삼고, content-type은 명백히 엉뚱한 값만
+# 걸러내는 보조 신호로만 쓴다.
+_TABULAR_EXTS = {".xlsx", ".csv", ".txt"}
+_TABULAR_CT_ALLOW = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
     "text/csv",
@@ -706,6 +714,34 @@ _INGREDIENT_CT_ALLOW = {
     "",
 }
 _MAX_INGREDIENT_FILE_BYTES = 5 * 1024 * 1024
+
+
+async def _read_tabular_upload(file: UploadFile) -> tuple[str, bytes]:
+    """표 업로드 세 곳이 공유하는 파일 검사. (확장자, 바이트)를 낸다.
+
+    상한은 모듈 전역을 그때그때 읽는다. 테스트가 `_MAX_INGREDIENT_FILE_BYTES`를
+    monkeypatch해서 413을 확인하기 때문에, 인자로 굳혀 받으면 그 검증이 죽는다.
+    """
+    filename = file.filename or ""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _TABULAR_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
+        )
+    if file.content_type not in _TABULAR_CT_ALLOW:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
+        )
+    return ext, data
 
 
 @app.post("/uploads/ingredients")
@@ -719,30 +755,47 @@ async def upload_ingredients(file: UploadFile = File(...)) -> IngredientUploadRe
     파일 자체를 못 읽으면(헤더 없음·시트 없음·손상) 422. 행 단위 문제는 조용히
     건너뛰지 않고 `warnings`로 같이 낸다.
     """
-    filename = file.filename or ""
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in _INGREDIENT_EXTS:
-        raise HTTPException(
-            status_code=415,
-            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
-        )
-    if file.content_type not in _INGREDIENT_CT_ALLOW:
-        raise HTTPException(
-            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
-        )
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=422, detail="빈 파일입니다.")
-    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
-        )
+    ext, data = await _read_tabular_upload(file)
     try:
         rows, warnings = parse_ingredient_upload(ext, data)
     except IngredientParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return IngredientUploadResponse(rows=rows, warnings=warnings)
+
+
+@app.post("/uploads/clinical")
+async def upload_clinical(file: UploadFile = File(...)) -> ClinicalUploadResponse:
+    """엑셀/CSV/TXT로 올린 실증자료(임상)를 파싱한다(create 모드, 2026-08-25 요청).
+
+    전성분과 같은 흐름이다. 저장하지 않고 파싱 결과만 즉시 돌려주면 프론트가
+    `clinical_evidence` 행에 채운다.
+
+    **`warnings`를 화면에 반드시 띄워야 한다.** 헤더 없는 파일은 값의 형태로
+    열을 추측하는데, 어느 열을 무엇으로 읽었는지가 거기 담겨 나간다.
+    """
+    ext, data = await _read_tabular_upload(file)
+    try:
+        rows, warnings = parse_clinical_upload(ext, data)
+    except EvidenceParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return ClinicalUploadResponse(rows=rows, warnings=warnings)
+
+
+@app.post("/uploads/survey")
+async def upload_survey(file: UploadFile = File(...)) -> SurveyUploadResponse:
+    """엑셀/CSV/TXT로 올린 설문조사 결과를 파싱한다(create 모드, 2026-08-25 요청).
+
+    6칸이 다 안 찬 행도 그대로 돌려준다. 사용자가 폼에서 마저 채울 수 있어야
+    하고, 어느 설문의 어느 칸이 비었는지는 `warnings`에 있다. 미완인 채로
+    `/generate`에 가도 서버가 아니라 프론트(`isSurveyEvidenceComplete`)가
+    걸러낸다.
+    """
+    ext, data = await _read_tabular_upload(file)
+    try:
+        rows, warnings = parse_survey_upload(ext, data)
+    except EvidenceParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return SurveyUploadResponse(rows=rows, warnings=warnings)
 
 
 @app.post("/uploads/product-photo")

@@ -257,6 +257,23 @@ export const SurveyEvidenceSchema = z.object({
 });
 export type SurveyEvidence = z.infer<typeof SurveyEvidenceSchema>;
 
+// POST /uploads/clinical · /uploads/survey 응답. IngredientUploadResponse와 같은
+// 모양이지만 warnings의 무게가 다르다 - 헤더 없는 파일은 값의 형태로 열을
+// 추측해서 읽고, 어느 열을 무엇으로 읽었는지가 여기 담겨 온다. 화면에 안 띄우면
+// 시험기관 자리에 시험기간이 들어가도 아무도 모른다.
+// rows·warnings 둘 다 빠짐없이 넣는다(위 IngredientUploadResponseSchema 주석 참조).
+export const ClinicalUploadResponseSchema = z.object({
+  rows: z.array(ClinicalEvidenceSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+export type ClinicalUploadResponse = z.infer<typeof ClinicalUploadResponseSchema>;
+
+export const SurveyUploadResponseSchema = z.object({
+  rows: z.array(SurveyEvidenceSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+export type SurveyUploadResponse = z.infer<typeof SurveyUploadResponseSchema>;
+
 // 리포트에서 사용자가 수용한 대체표현(models.py ApprovedReplacement). improve
 // 모드에 이걸 실어 보내지 않으면 백엔드가 판정을 처음부터 다시 돌리고(비용 2배)
 // 검출된 모든 위반을 치환한다 - 사용자가 리포트에서 고른 항목이 무시되고 생성
