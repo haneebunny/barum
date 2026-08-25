@@ -914,6 +914,29 @@ class SurveyEvidence(BaseModel):
     method: str = Field(..., description='조사 방법, 예: "온라인 자기기입식 설문"')
 
 
+class ClinicalUploadResponse(BaseModel):
+    """`POST /uploads/clinical` 응답. 엑셀/CSV/TXT를 파싱한 결과.
+
+    `IngredientUploadResponse`와 같은 모양이다. 다만 `warnings`가 더 중요하다.
+    전성분은 헤더 이름으로만 열을 잡지만 실증자료는 헤더 없는 파일도 받아서
+    값의 형태로 추측한다. **무엇을 어떻게 읽었는지 여기 담아 보낸다.**
+    """
+
+    rows: list[ClinicalEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SurveyUploadResponse(BaseModel):
+    """`POST /uploads/survey` 응답. 6칸이 다 안 찬 행도 그대로 담아 보낸다.
+
+    파서가 버리지 않는 이유: 사용자가 폼에서 마저 채울 수 있어야 한다. 어느
+    설문의 어느 칸이 비었는지는 `warnings`에 있다.
+    """
+
+    rows: list[SurveyEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class LayoutModule(BaseModel):
     """상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."""
 
