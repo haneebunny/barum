@@ -6,6 +6,8 @@ import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
 import { recentHistory, rowProps, type HistoryStatus } from "@/lib/mockHistory";
+import { DEMO_RESULT_ID } from "@/lib/demo/demo";
+import { grantDemoAccess } from "@/lib/tickets";
 
 type RegionChoice = "kr" | "ex" | null;
 
@@ -85,6 +87,12 @@ export default function HomePage() {
     } else {
       router.push("/inspect");
     }
+  };
+
+  // 샘플 데이터 체험: 유어베리 세럼으로 프리필된 검사 화면으로. 샘플은 이용권 없이 열람된다.
+  const handleDemo = () => {
+    grantDemoAccess();
+    router.push(`/inspect?id=${DEMO_RESULT_ID}`);
   };
 
   return (
@@ -194,6 +202,15 @@ export default function HomePage() {
               검사 시작 →
             </button>
           )}
+
+          {/* 샘플 데이터 체험 (유어베리 세럼, 프리필) */}
+          <button
+            type="button"
+            onClick={handleDemo}
+            className="mt-[10px] w-full p-[10px] border border-[var(--brand-deep)] bg-transparent text-[var(--brand-deep)] font-mono text-[12px] font-bold cursor-pointer transition-colors duration-100 hover:bg-[var(--brand-deep)] hover:text-[var(--on-brand)] tracking-[0.3px]"
+          >
+            데모로 체험하기 (유어베리 세럼) →
+          </button>
         </div>
 
         {/* 구분선 */}

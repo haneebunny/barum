@@ -9,6 +9,8 @@ import { getRemediation, getReportImageUrl } from "@/lib/api/client";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { useError } from "@/lib/error/ErrorContext";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
+import { DemoFixedPage, type DemoCorrection } from "@/components/DemoFixedPage/DemoFixedPage";
+import { DEMO_RESULT_ID, DEMO_DETAIL_IMAGE } from "@/lib/demo/demo";
 import { Modal } from "@/components/Modal/Modal";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { getProduct, grantsReport, useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
@@ -430,11 +432,17 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const [bulkUndoSnapshot, setBulkUndoSnapshot] = useState<Record<number, "accept" | "exclude" | null> | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // 데모 전용: "고친 페이지 보기" 토글(원본 위반 하이라이트 ↔ 제자리 교정).
+  const [showFixed, setShowFixed] = useState(false);
   // 이용권 체계. 무료로 돌린 리포트는 요약만 보이고, 이용권 1장을 쓰면 전체가
   // 열린다(무료 요약을 나중에 업그레이드하는 경로도 이 흐름을 그대로 쓴다).
   const reportId = envelope.result_id;
-  const { access, isUnlocked, contentRemaining, canGenerateContent, pickPreview, unlock, grantContent } =
+  const isDemo = reportId === DEMO_RESULT_ID;
+  const { access, isUnlocked: rawIsUnlocked, contentRemaining, canGenerateContent: rawCanGenerateContent, pickPreview, unlock, grantContent } =
     useReportAccess(reportId);
+  // 샘플 체험은 이용권 없이 전부 열람된다(결제 없이 바로 볼 수 있게).
+  const isUnlocked = isDemo || rawIsUnlocked;
+  const canGenerateContent = isDemo || rawCanGenerateContent;
   const { has, consume } = useTickets();
   // 결제 모달을 두 목적으로 쓴다. 리포트를 여는 것과 상세페이지 생성 권한을 붙이는 건
   // 파는 이용권도 결제 후 처리도 다르다.
@@ -690,6 +698,14 @@ export function ReportClient({ envelope }: ReportClientProps) {
     activeEnvelope.result_id === "demo-id-3" ||
     activeEnvelope.result_id === "demo-id-5";
   const canShowRealImage = hasCoords && !isMockId && !imageErrors.global;
+  // 데모(유어베리): 원본 이미지는 정적 자산이고, demo_corrections로 제자리 교정을 보여준다.
+  const demoCorrections =
+    (activeEnvelope as unknown as { demo_corrections?: DemoCorrection[] }).demo_corrections || [];
+  const reportImageUrl = isDemo
+    ? DEMO_DETAIL_IMAGE
+    : canShowRealImage
+      ? getReportImageUrl(activeEnvelope.result_id)
+      : null;
 
   const hasInteracted = Object.keys(actions).length > 0;
   const acceptedIndices = hasInteracted
@@ -804,7 +820,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
         {isUnlocked && (
           <p className="m-0 mt-2.5 font-mono text-[11.5px] text-[var(--ink-3)]">
-            {getProduct(access.unlockedWith!).name} 이용권으로 열람 중 · 보관 기한 없음
+            {access.unlockedWith
+              ? `${getProduct(access.unlockedWith).name} 이용권으로 열람 중 · 보관 기한 없음`
+              : "데모 · 전체 열람 중"}
             {contentRemaining > 0 && ` · 상세페이지 생성 ${contentRemaining}건 가능`}
           </p>
         )}
@@ -944,18 +962,35 @@ export function ReportClient({ envelope }: ReportClientProps) {
               <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
               <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-              {isImageMode ? (
+              {isDemo ? (
+                <div className="flex items-center gap-[3px] font-mono text-[11px]">
+                  <button
+                    onClick={() => setShowFixed(false)}
+                    className={`p-[2px_8px] rounded-[3px] ${!showFixed ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)]"}`}
+                  >
+                    원본·위반
+                  </button>
+                  <button
+                    onClick={() => setShowFixed(true)}
+                    className={`p-[2px_8px] rounded-[3px] ${showFixed ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)]"}`}
+                  >
+                    고친 페이지
+                  </button>
+                </div>
+              ) : isImageMode ? (
                 <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
               ) : (
                 <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
               )}
             </div>
             <div id="origPanel" className="flex-1 min-h-0 flex flex-col overflow-auto">
-              {isImageMode ? (
+              {isDemo && showFixed ? (
+                <DemoFixedPage imageUrl={DEMO_DETAIL_IMAGE} corrections={demoCorrections} />
+              ) : isImageMode ? (
                 <ReportImageViewer
                   findByOrder={findByOrder}
                   ujByOrder={ujByOrder}
-                  imageUrl={canShowRealImage ? getReportImageUrl(activeEnvelope.result_id) : null}
+                  imageUrl={reportImageUrl}
                   imageErrorGlobal={!!imageErrors.global}
                   onImageError={() => setImageErrors((prev) => ({ ...prev, global: true }))}
                   actions={actions}

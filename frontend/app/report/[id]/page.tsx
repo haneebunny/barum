@@ -1,9 +1,21 @@
 import { getReport } from "@/lib/api/client";
 import { CheckReportSchema, type ReportEnvelope } from "@/lib/api/schema";
 import { ReportClient } from "./ReportClient";
+import { DEMO_RESULT_ID } from "@/lib/demo/demo";
+import demoReport from "@/lib/demo/fixtures/report.json";
 
 export default async function ReportPage({ params }: PageProps<"/report/[id]">) {
   const { id } = await params;
+
+  // 데모(유어베리): 백엔드 대신 커밋된 픽스처를 그대로 렌더한다(백엔드/Supabase 의존 0).
+  if (id === DEMO_RESULT_ID) {
+    const demoEnv = demoReport as unknown as ReportEnvelope & { demo_corrections?: unknown };
+    const parsed = CheckReportSchema.safeParse(demoEnv.report);
+    if (parsed.success) {
+      return <ReportClient envelope={{ ...demoEnv, report: parsed.data }} />;
+    }
+  }
+
   let envelope: ReportEnvelope;
   try {
     envelope = await getReport(id);
