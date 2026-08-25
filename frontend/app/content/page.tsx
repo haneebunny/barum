@@ -1590,11 +1590,11 @@ function ContentGeneratorContent() {
               {/* 하단 전폭: 추가정보 및 이미지 생성 설정 */}
               <div className="flex flex-col gap-3.5 mt-3.5">
                 <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                  <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보</label>
+                  <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보 (생성 문구에 반영)</label>
                   <textarea
                     value={createNotes}
                     onChange={(e) => setCreateNotes(e.target.value)}
-                    placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
+                    placeholder="타깃·사용감·강조점을 적으면 생성 문구에 반영돼요 (이미지에는 반영되지 않아요)"
                     className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
                   />
                 </div>
