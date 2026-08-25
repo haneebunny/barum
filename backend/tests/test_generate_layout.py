@@ -4,6 +4,7 @@
 from barum.generate.layout import (
     _format_examples,
     clinical_sections_text,
+    ensure_clinical_module,
     ensure_product_spec_module,
     filter_risky_modules,
     plan_layout,
@@ -236,6 +237,46 @@ def test_이미_있으면_중복으로_안_넣는다():
     req = _req(formulation_type="크림")
     result = ensure_product_spec_module(plan, req)
     assert len([m for m in result.modules if m.kind == "product_spec"]) == 1
+
+
+# ── 실증자료 자리 보장 (2026-08-25, 실증자료가 조용히 사라지던 버그 회귀방지) ──
+
+
+def _clin(claim, value):
+    return ClinicalEvidence(claim=claim, value=value)
+
+
+def test_실증자료_없으면_임상모듈을_안_넣는다():
+    plan = _plan(SAFE)
+    result = ensure_clinical_module(plan, _req())
+    assert not any(m.kind.startswith("clinical") for m in result.modules)
+
+
+def test_임상모듈_없어도_실증자료_있으면_자리를_만든다():
+    """폴백 플랜·임상 kind 없는 플래너 결과에서 실증자료가 사라지던 버그."""
+    plan = _plan(SAFE)  # 임상 모듈 없음
+    req = _req(clinical_evidence=[_clin("다크스팟 개선", "87%")])
+    result = ensure_clinical_module(plan, req)
+    clin = [m for m in result.modules if m.kind.startswith("clinical")]
+    assert len(clin) == 1
+    assert clin[0].has_claim_risk is True
+
+
+def test_실증자료_개수만큼_임상자리를_보장한다():
+    plan = _plan(SAFE, CLINICAL)  # 임상 1개 이미 있음
+    req = _req(clinical_evidence=[_clin("다크스팟", "87%"), _clin("피부결", "2.1배")])
+    result = ensure_clinical_module(plan, req)
+    clin = [m for m in result.modules if m.kind.startswith("clinical")]
+    assert len(clin) == 2
+    # kind는 모듈 식별자라 유일해야 한다(중복이면 이미지·섹션이 서로 덮어쓴다).
+    assert len({m.kind for m in clin}) == 2
+
+
+def test_임상자리가_충분하면_더_안_넣는다():
+    plan = _plan(CLINICAL)
+    req = _req(clinical_evidence=[_clin("다크스팟", "87%")])
+    result = ensure_clinical_module(plan, req)
+    assert len([m for m in result.modules if m.kind.startswith("clinical")]) == 1
 
 
 # ── kind 유일성 (2026-08-20, 같은 이미지가 두 번 나오던 버그 회귀방지) ──
