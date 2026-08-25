@@ -816,8 +816,23 @@ def _accept_approved(req: GenerateRequest) -> tuple[list[Replacement], list[str]
     return approved, rejected
 
 
-# 승인된 대체표현을 이미지로 만들 때 쓰는 layout_type (image_text_split: 한쪽에 이미지, 한쪽에 문구)
-_REPLACEMENT_IMAGE_LAYOUT_TYPE = "image_text_split"
+# 승인된 대체표현 카드가 담을 배경 소재를 카드마다 다르게 하는 layout_type 순환.
+#
+# 예전엔 전부 image_text_split(원료 소재 = 잎·꽃잎)이라 improve 상세페이지 이미지가
+# "나뭇잎만" 나왔다(2026-08-25 팀장 실측). 아래 3종을 번갈아 배정해 원료(잎)·연출
+# 공간·제형 질감이 골고루 나오게 한다(_material_hint가 layout_type으로 소재를 정하므로).
+#   image_text_split -> 원료 소재 클로즈업(잎·꽃잎·씨앗·오일 방울)
+#   hero_fullbleed   -> 제품이 놓인 연출 공간(화장대·선반·소품)
+#   mood_macro       -> 제형 질감 극단 클로즈업(_texture_hint = product_type 기반)
+# **카드 모양은 안 바뀐다.** 이미지가 있는 카드는 프론트가 layout_type과 무관하게
+# 균일한 dp-card(이미지+헤드라인+본문)로 그린다(content/page.tsx, build_cards).
+# 즉 layout_type은 여기선 이미지 소재만 가른다. 같은 유형이 반복돼도 images.py의
+# _VARIATION_DIRECTIVES가 등장 순서로 또 갈라준다.
+_REPLACEMENT_IMAGE_LAYOUT_TYPES: tuple[str, ...] = (
+    "image_text_split",
+    "hero_fullbleed",
+    "mood_macro",
+)
 
 
 def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
@@ -828,18 +843,22 @@ def _replacement_image_modules(reps: list[Replacement]) -> list[LayoutModule]:
     주면 기존 동작 그대로다, improve 모드 회귀 없음") 그 확장 지점에 맞춰 합성한다 -
     가짜 계획을 억지로 끼우는 게 아니라 원래 예정된 사용법이다.
 
+    **카드마다 layout_type을 순환**해 배경 소재를 다양화한다(_REPLACEMENT_IMAGE_
+    LAYOUT_TYPES 참고). 잎만 반복되던 문제를 없앤다.
+
     purpose는 일반적인 목적 문구만 담는다(플래너 의도용 필드라 카피를 섞으면 나중에
     헷갈린다, 베베 지적). 실제 원문→대체문구는 `_replacement_copy_sections`로 따로
     만들어 `build_image_plan(sections=...)`에 넘긴다 - #341에서 생긴 copy_by_kind
     경로를 그대로 타면 "글자로 쓰지 마라" 방어(`images.py` `_copy_line`)까지 이미
     붙어 있어서 여기서 또 안 넣어도 된다.
     """
+    types = _REPLACEMENT_IMAGE_LAYOUT_TYPES
     return [
         LayoutModule(
             kind=f"replacement_{i}",
             purpose="완화된 광고 문구 옆에 놓일 배경 이미지",
             has_claim_risk=False,
-            layout_type=_REPLACEMENT_IMAGE_LAYOUT_TYPE,
+            layout_type=types[i % len(types)],
         )
         for i in range(len(reps))
     ]

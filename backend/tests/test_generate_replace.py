@@ -480,9 +480,11 @@ def test_결과에_안_실린_대체표현을_알려준다():
 
 # ── 대체표현 생성 분할 (2026-08-23) ────────────────────────────────────────
 
-def test_항목이_여러_개면_나눠서_부른다():
-    """**출력 토큰이 그대로 대기시간이 된다.** 한 번에 다 물으면 /check의 57%를
-    이 호출 하나가 먹는다(실측 52.3초). 나눠서 동시에 돌리면 18.2초까지 내려간다.
+def test_기본은_한_호출로_전부_묶는다():
+    """**기본은 한 호출로 전부**다(2026-08-25 정확성 우선). 겹칠 대체문구가 서로를
+    봐야 프롬프트의 anti-repeat가 작동해 같은 문구 반복이 안 나온다. 예전엔 지연
+    최적화로 1건씩 쪼갰는데, 그러면 각 호출이 다른 문구를 못 봐서 "피부 생기 부여"가
+    여러 finding에 중복됐다. REPLACEMENT_BATCH_SIZE를 주면 예전처럼 쪼갠다.
     """
     from barum.generate.replace import build_replacements
 
@@ -498,7 +500,7 @@ def test_항목이_여러_개면_나눠서_부른다():
         for span in ("아토피", "여드름", "건선", "치료")
     ]
     build_replacements(findings, rewriter=CountingRewriter())
-    assert CountingRewriter.calls > 1, "한 번에 다 물으면 대기시간이 그대로 남는다"
+    assert CountingRewriter.calls == 1, "기본은 한 호출로 전부 묶는다(anti-repeat 작동)"
 
 
 def test_배치_크기를_키우면_호출이_준다(monkeypatch):
@@ -520,9 +522,14 @@ def test_배치_크기를_키우면_호출이_준다(monkeypatch):
     assert CountingRewriter.calls == 1
 
 
-def test_한_조각이_실패해도_나머지는_산다():
-    """전엔 호출 하나가 실패하면 전부 조건표로 떨어졌다. 이제 그 조각만 떨어진다."""
+def test_쪼갤_때_한_조각이_실패해도_나머지는_산다(monkeypatch):
+    """REPLACEMENT_BATCH_SIZE로 쪼개 병렬로 돌릴 때, 호출 하나가 실패해도 그 조각만
+    조건표로 떨어지고 나머지는 산다(전엔 전부 떨어졌다). 기본은 한 호출이라 이
+    resilience는 쪼갤 때의 계약이므로 env로 분할을 켜고 확인한다.
+    """
     from barum.generate.replace import build_replacements
+
+    monkeypatch.setenv("REPLACEMENT_BATCH_SIZE", "1")
 
     class FlakyRewriter:
         calls = 0
@@ -544,3 +551,49 @@ def test_한_조각이_실패해도_나머지는_산다():
     ]
     reps = build_replacements(findings, rewriter=FlakyRewriter())
     assert any(r.basis == _BASIS_LLM for r in reps), "성공한 조각이 살아야 한다"
+
+
+def test_같은_대체문구는_다른_안전후보로_분리된다(monkeypatch):
+    """서로 다른 위반이 같은 첫 후보로 완화되면 뒤엣것을 다른 안전 후보로 갈아끼운다.
+
+    2026-08-25 실측: "미백 효과"·"피부 재생"이 둘 다 "피부 생기 부여"로 완화돼
+    improve 상세페이지에 같은 제목 카드가 두 장 나왔다. 코드가 결정적으로 분리한다.
+    """
+    import barum.generate.replace as mod
+
+    def _fake_remediation(sentence, violation_type, span=None):
+        # 두 finding 모두 같은 첫 후보 + 서로 다른 둘째 안전 후보를 준다.
+        return ["피부 생기 부여", "촉촉함을 더하는 케어"], "면책"
+
+    monkeypatch.setattr(mod, "get_remediation", _fake_remediation)
+
+    findings = [
+        _finding("미백 효과", "미백 효과가 뛰어난 크림", ViolationType.type_5_deception),
+        _finding("피부 재생", "피부 재생을 돕는 크림", ViolationType.type_5_deception),
+    ]
+    reps = build_replacements(findings)  # 조건표 경로(rewriter 없음)
+
+    assert len(reps) == 2
+    assert len({r.replaced for r in reps}) == 2, "같은 대체문구 두 장이 남으면 안 된다"
+
+
+def test_대체후보가_하나뿐이면_중복을_유지한다(monkeypatch):
+    """분리할 다른 안전 후보가 없으면 억지로 지어내지 않고 그대로 둔다(로그만).
+
+    없는 표현을 만들면 근거 없는 문구가 되므로, 마지막 수단으로 중복을 허용한다.
+    """
+    import barum.generate.replace as mod
+
+    def _fake_remediation(sentence, violation_type, span=None):
+        return ["유일한 안전 표현"], "면책"
+
+    monkeypatch.setattr(mod, "get_remediation", _fake_remediation)
+
+    findings = [
+        _finding("미백 효과", "미백 효과가 뛰어난 크림", ViolationType.type_5_deception),
+        _finding("피부 재생", "피부 재생을 돕는 크림", ViolationType.type_5_deception),
+    ]
+    reps = build_replacements(findings)
+
+    assert len(reps) == 2
+    assert all(r.replaced == "유일한 안전 표현" for r in reps)

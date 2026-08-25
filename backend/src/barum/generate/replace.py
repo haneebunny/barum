@@ -74,6 +74,25 @@ def first_safe(suggestions: list[str]) -> str | None:
     return fallback
 
 
+def _safe_alternates(suggestions: list[str]) -> list[str]:
+    """조건표 후보 중 위반·적발사례 재사용이 아닌 것만 등장 순서로 남긴다.
+
+    first_safe는 '가장 안전한 하나'만 고르지만, 중복 제거(_diversify_duplicates)는
+    이미 쓴 것을 빼고 '그 다음 안전한 후보'가 필요해 목록으로 낸다. 검토필요
+    (needs_review) 후보는 first_safe와 같은 기준으로 남긴다(팩이 실증대상으로 둔
+    표현이라 자료 있으면 쓸 수 있다).
+    """
+    out: list[str] = []
+    for s in suggestions:
+        if not s or reuses_sanctioned_phrase(s):
+            continue
+        m = match_rule(s)
+        if m is not None and m.outcome is RuleOutcome.violation:
+            continue
+        out.append(s)
+    return out
+
+
 def _note_for(text: str, original: str, *, source_flag) -> str | None:
     """대체표현에 붙일 고지 문구. 없으면 None.
 
@@ -268,6 +287,9 @@ def build_replacements(
                 "legal_basis_text": f.legal_basis_text or "",
                 "flag": f.flag.value if hasattr(f.flag, "value") else str(f.flag),
                 "reference": first_safe(suggestions) if suggestions else None,
+                # 조건표 후보 전체를 남긴다. 대체문구가 겹칠 때 _diversify_duplicates가
+                # 이 목록에서 아직 안 쓴 다른 후보로 갈아끼운다(코드 결정적 중복 제거).
+                "suggestions": list(suggestions or []),
             }
         )
 
@@ -306,7 +328,55 @@ def build_replacements(
                 note=_note_for(text, e["span"], source_flag=e["finding"].flag),
             )
         )
-    return reps
+    # **같은 대체문구 두 장을 코드로 막는다.** 서로 다른 위반이 같은 문구로 완화되면
+    # (예: "미백 효과"·"피부 재생" 둘 다 "피부 생기 부여") improve가 같은 제목 카드를
+    # 두 장 낸다(2026-08-25 팀장 실측). 한 호출 생성이 대부분 걸러도, 조건표 폴백이
+    # 같은 첫 후보를 쓰거나 모델이 드물게 겹칠 때가 남는다. 여기서 결정적으로 분리한다.
+    return _diversify_duplicates(reps, entries)
+
+
+def _diversify_duplicates(
+    reps: list[Replacement], entries: list[dict]
+) -> list[Replacement]:
+    """대체문구가 겹치면 뒤엣것을 그 finding의 다른 조건표 후보로 갈아끼운다.
+
+    후보가 더 없으면 어쩔 수 없이 그대로 둔다(로그만 남긴다 — 억지로 다른 말을
+    지어내면 근거 없는 표현이 되므로). 갈아끼운 것은 출처가 조건표라 basis·note도
+    그에 맞게 다시 쓴다.
+    """
+    by_index = {e["index"]: e for e in entries}
+    used: set[str] = set()
+    out: list[Replacement] = []
+    for r in reps:
+        if r.replaced not in used:
+            used.add(r.replaced)
+            out.append(r)
+            continue
+        entry = by_index.get(r.finding_index, {})
+        # 후보도 원래 경로(first_safe)와 같은 안전 필터를 태운다. 위반·적발사례
+        # 재사용 후보로 갈아끼우면 위반을 위반으로 바꿔주는 셈이 된다.
+        alt = next(
+            (c for c in _safe_alternates(entry.get("suggestions", [])) if c not in used),
+            None,
+        )
+        if alt is None:
+            print(f"[replace] 대체문구 중복이나 대체 후보 없음, 유지: {r.replaced!r}")
+            used.add(r.replaced)
+            out.append(r)
+            continue
+        # 여기 오면 entry엔 suggestions가 있으니 finding도 있다(entries가 findings에서 옴).
+        print(f"[replace] 대체문구 중복 → 다른 후보로 교체: {r.replaced!r} -> {alt!r}")
+        used.add(alt)
+        out.append(
+            r.model_copy(
+                update={
+                    "replaced": alt,
+                    "basis": _BASIS,
+                    "note": _note_for(alt, entry["span"], source_flag=entry["finding"].flag),
+                }
+            )
+        )
+    return out
 
 
 def _apply_explanations(findings: list[Finding], explanations: dict[int, str]) -> None:
@@ -334,25 +404,28 @@ def _vtype_value(vtype) -> str:
 
 # 대체표현 생성을 나눠 돌리는 크기·동시 실행 수.
 #
-# **한 번에 다 물으면 출력 토큰이 그대로 대기시간이 된다**(2026-08-23 실측:
-# 지적 5건 한 배치가 52.3초, `/check` 전체의 57%). 입력이 아니라 출력이 지배해서
-# 프롬프트를 줄이는 것보다 나눠서 동시에 돌리는 쪽이 훨씬 크게 듣는다.
+# **기본은 "한 호출로 전부"다(2026-08-25 팀장 지시: "지연 있어도 되니 결과가
+# 제대로 나와야 해").** 겹칠 대체문구가 서로를 봐야 프롬프트의 anti-repeat
+# (_REWRITE_PROMPT "이미 쓴 표현 다시 쓰지 마라")가 실제로 작동한다. create 서술
+# 생성이 "계획된 모듈만큼 한 호출"([content.py])인 것과 같은 방식이다.
 #
-#   단일 배치      52.3초        /check 전체 91.2초
-#   2건씩 3분할    28.4초 (-46%)  /check 전체 67.8초
-#   1건씩 5분할    18.2초 (-65%)  /check 전체 54.0초 (-41%)
+# 예전엔 지연 최적화로 1건씩 쪼개 병렬로 돌렸는데, 그러면 각 호출이 다른 문구를
+# 못 봐서 "피부 생기 부여"가 여러 finding에 중복됐다(2026-08-25 실측: improve
+# 상세페이지에 같은 제목 카드 두 장). 속도 최적화(8/23)가 다양화 로직(8/24)을
+# 조용히 깨뜨린 것이다.
 #
-# **기본값을 1로 둔다.** 호출마다 근거 문서가 다시 실리는 게 걱정이었는데, 재보니
-# 프롬프트 캐시 적중률이 92.8%였다(입력 62,737 토큰 중 58,240이 캐시). 반복 전송
-# 비용이 사실상 없어서 가장 빠른 값을 못 쓸 이유가 없다. 동시 실행은 6으로 막아
-# 지적이 많아도 호출이 무한정 늘지 않게 한다.
-_DEFAULT_BATCH = 1
+# 참고로 남기는 지연 실측(2026-08-23):
+#   단일 배치 52.3초 / 2건씩 28.4초 / 1건씩 18.2초  (`/check` 출력 토큰이 지배)
+#
+# REPLACEMENT_BATCH_SIZE에 양수를 주면 예전처럼 그 크기로 쪼개 병렬(빠르나 중복
+# 위험) — 그 경우에도 _diversify_duplicates가 같은 문구 두 장을 코드로 막는다.
+_DEFAULT_BATCH = 0  # 0 = 전부 한 호출(정확성 우선). 양수면 그 크기로 쪼갬.
 _DEFAULT_WORKERS = 6
 
 
 def _batch_config() -> tuple[int, int]:
-    """(배치 크기, 동시 실행 수). 환경변수로 조절한다."""
-    size = max(1, int(os.getenv("REPLACEMENT_BATCH_SIZE", _DEFAULT_BATCH) or _DEFAULT_BATCH))
+    """(배치 크기, 동시 실행 수). 환경변수로 조절한다. 크기 0이면 '전부 한 호출'."""
+    size = max(0, int(os.getenv("REPLACEMENT_BATCH_SIZE", _DEFAULT_BATCH) or _DEFAULT_BATCH))
     workers = max(1, int(os.getenv("REPLACEMENT_MAX_WORKERS", _DEFAULT_WORKERS) or _DEFAULT_WORKERS))
     return size, workers
 
@@ -370,6 +443,9 @@ def _rewrite(
     검증 없이 내보내면 위반을 위반으로 바꿔주게 된다.
     """
     size, workers = _batch_config()
+    # size 0(기본)이거나 전체보다 크면 한 호출로 전부 보낸다(anti-repeat가 작동).
+    if size <= 0 or size >= len(entries):
+        return _rewrite_chunk(rewriter, entries)
     chunks = [entries[i : i + size] for i in range(0, len(entries), size)]
     if len(chunks) <= 1:
         return _rewrite_chunk(rewriter, entries)
