@@ -219,6 +219,36 @@ def test_실증자료가_없으면_안내문구에_임상_문장이_안_붙는�
     assert all(r.id != "rc_clinical_evidence" for r in resp.risk_confirmations)
 
 
+# 임상 모듈이 없는 플래너 응답. 폴백 플랜도 임상 모듈이 없어 같은 상황이 된다.
+_PLAN_NO_CLINICAL = {
+    "modules": [
+        {"kind": "hero_intro", "purpose": "도입부", "has_claim_risk": False},
+        {"kind": "texture", "purpose": "제형", "has_claim_risk": False},
+    ]
+}
+
+
+def test_임상모듈없는_플랜에서도_실증자료가_카드로_나온다():
+    """버그헌트 2026-08-25: 플래너가 임상 kind를 안 내면(폴백 플랜 포함) 사업자가
+    입력한 실증자료가 카드도 skip 사유도 없이 사라졌다. ensure_clinical_module이
+    자리를 보장해 실제 카드로 나와야 한다(실제 생성 경로로 검증)."""
+    req = GenerateRequest(
+        mode="create",
+        product_name="테스트 세럼",
+        clinical_evidence=[ClinicalEvidence(claim="다크스팟 개선", value="87%")],
+    )
+    resp = generate_content(req, judge=StubJudge(), vlm=SequenceVLM(_PLAN_NO_CLINICAL, _MODULE_TEXT))
+
+    # 임상 자리가 보장돼 계획에 들어간다
+    assert any(m.kind.startswith("clinical") for m in resp.layout_plan.modules)
+    # 실증자료가 섹션·카드로 실제로 나온다(조용히 사라지지 않는다)
+    evidence_section = next(s for s in resp.sections if s.kind == "실증자료")
+    assert "87%" in evidence_section.text
+    assert any(c.clinical_stat is not None for c in resp.cards)
+    # 조용히 사라진 게 아니므로 "자리 부족" skip은 없어야 한다
+    assert not any("자리가 부족" in s.reason for s in resp.skipped_claims)
+
+
 def test_종류를_못정해도_생성이_막히지_않는다():
     # 상품명에 종류 단어가 없어도 스킨케어 레퍼런스로 폴백해 계획이 나와야 한다.
     req = GenerateRequest(mode="create", product_name="아누아")

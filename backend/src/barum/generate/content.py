@@ -21,6 +21,7 @@ from barum.generate.layout import (
     ensure_full_ingredient_module,
     ensure_survey_module,
     ensure_product_spec_module,
+    ensure_clinical_module,
     filter_risky_modules,
     plan_layout,
     select_top_modules,
@@ -726,17 +727,30 @@ def _unplaced_claim_skips(sections: list[Section]) -> list[SkippedClaim]:
 
     조용히 빠지는 것과 "왜 빠졌는지 적힌 채로 빠지는 것"은 완전히 다르다. 전자는
     아무도 못 알아채고, 후자는 화면에도 뜨고 다음 사람이 원인을 찾을 수 있다.
+
+    인정문구뿐 아니라 실증자료(clinical_evidence)도 챙긴다. ensure_clinical_module이
+    자리를 보장하므로 정상 경로에선 안 걸리지만, 그 불변식이 깨져도 사업자가 넣은
+    실증자료가 흔적 없이 사라지지 않게 방어망을 둔다(2026-08-25).
     """
-    return [
-        SkippedClaim(
-            category="인정문구",
-            reason=(
-                f"계획에 이 문구를 실을 모듈이 없어 화면에 넣지 못했습니다: {s.text}"
-            ),
-        )
-        for s in sections
-        if s.source == "approved_claim" and s.module_kind is None
-    ]
+    skips: list[SkippedClaim] = []
+    for s in sections:
+        if s.module_kind is not None:
+            continue
+        if s.source == "approved_claim":
+            skips.append(
+                SkippedClaim(
+                    category="인정문구",
+                    reason=f"계획에 이 문구를 실을 모듈이 없어 화면에 넣지 못했습니다: {s.text}",
+                )
+            )
+        elif s.source == "clinical_evidence":
+            skips.append(
+                SkippedClaim(
+                    category="실증자료",
+                    reason=f"실증자료를 실을 임상 모듈 자리가 부족해 화면에 넣지 못했습니다: {s.text}",
+                )
+            )
+    return skips
 
 
 def build_full_ingredient_section(req: GenerateRequest) -> Section:
@@ -1143,6 +1157,10 @@ def _generate_create_content(
     plan = ensure_product_spec_module(plan, req)
     plan = ensure_full_ingredient_module(plan, req)
     plan = ensure_survey_module(plan, req)
+    # 실증자료 1건당 임상 자리 1개를 보장한다. 이게 없으면 폴백 플랜이나 임상 kind를
+    # 안 내는 플래너 결과에서 실증자료가 카드·skip 사유 없이 사라졌다(2026-08-25).
+    # filter_risky_modules 뒤라야 한다(위 함수 docstring 참고).
+    plan = ensure_clinical_module(plan, req)
 
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
