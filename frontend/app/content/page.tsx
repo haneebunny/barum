@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import NextImage from "next/image";
 import { getReport, generateContent, resolveImageUrl, uploadProductPhoto, uploadIngredients, uploadClinical, uploadSurvey } from "@/lib/api/client";
-import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, Section, SurveyEvidence } from "@/lib/api/schema";
+import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, SurveyEvidence } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
@@ -23,68 +24,6 @@ interface ProductPhotoItem {
   uploading: boolean;
   error: string | null;
 }
-
-interface ContentMockData {
-  productName: string;
-  sections: Array<{ kind: string; source: "remediation" | "llm" | "template"; text: string }>;
-  imagesUploaded: string[];
-  imagesPlaced: Array<{ slot: string; image_url: string }>;
-  layout: Array<{ type: "section" | "image"; i: number }>;
-}
-
-const DEFAULT_MOCKS: Record<string, ContentMockData> = {
-  image: {
-    productName: "글로우 세럼",
-    sections: [
-      { kind: "광고문구", source: "remediation", text: "건조하고 예민해지기 쉬운 피부에 수분과 보습감을 더해줍니다. 매일 사용해 은은한 광채와 촉촉함을 유지해보세요." },
-      { kind: "사용법", source: "llm", text: "세안 후 토너 다음 단계에서 적당량을 덜어 얼굴 전체에 고르게 펴 발라주세요. 아침·저녁 데일리 케어로 사용하기 좋습니다." },
-      { kind: "주의사항", source: "template", text: "화장품 사용 시 이상이 있는 경우 사용을 중지하고 피부과 전문의와 상담하세요. 직사광선을 피해 서늘한 곳에 보관하세요." }
-    ],
-    imagesUploaded: ["상세페이지 상단 배너", "제품 텍스처 컷", "임상 결과 그래프"],
-    imagesPlaced: [
-      { slot: "body_1", image_url: "detail_000_t01.png" },
-      { slot: "body_2", image_url: "detail_000_t02.png" }
-    ],
-    layout: [
-      { type: "section", i: 0 }, { type: "image", i: 0 },
-      { type: "section", i: 1 }, { type: "image", i: 1 },
-      { type: "section", i: 2 }
-    ]
-  },
-  text: {
-    productName: "수분 크림",
-    sections: [
-      { kind: "광고문구", source: "remediation", text: "푸석하고 메마른 피부에 풍부한 수분을 공급하여 촉촉하고 건강한 피부 장벽으로 관리해줍니다." },
-      { kind: "사용법", source: "llm", text: "스킨케어 마지막 단계에서 본품 적당량을 취해 피부 결을 따라 골고루 펴 바른 뒤 가볍게 두드려 흡수시킵니다." },
-      { kind: "주의사항", source: "template", text: "사용 중 붉은 반점, 부어오름, 가려움증 등의 이상 증상이 있을 경우 전문의와 상담하세요." }
-    ],
-    imagesUploaded: [],
-    imagesPlaced: [],
-    layout: [
-      { type: "section", i: 0 },
-      { type: "section", i: 1 },
-      { type: "section", i: 2 }
-    ]
-  },
-  unjudged: {
-    productName: "한방 에센스",
-    sections: [
-      { kind: "광고문구", source: "remediation", text: "피부에 탄력을 더해 촉촉하고 유연하게 가꿔주는 마일드 포뮬러 에센스입니다." },
-      { kind: "사용법", source: "llm", text: "적당량을 덜어 피부 결에 따라 펴 바른 후 손바닥으로 감싸 흡수시킵니다." },
-      { kind: "주의사항", source: "template", text: "상처가 있는 부위 등에는 사용을 자제하시고 어린이의 손이 닿지 않는 곳에 보관하세요." }
-    ],
-    imagesUploaded: ["상세페이지 상단 컷", "전성분 표기 컷"],
-    imagesPlaced: [
-      { slot: "body_1", image_url: "detail_002_t00.png" },
-      { slot: "body_2", image_url: "detail_002_t01.png" }
-    ],
-    layout: [
-      { type: "section", i: 0 }, { type: "image", i: 0 },
-      { type: "section", i: 1 }, { type: "image", i: 1 },
-      { type: "section", i: 2 }
-    ]
-  }
-};
 
 const CERT_CATEGORIES = ["미백", "주름개선", "자외선차단"];
 
@@ -484,15 +423,6 @@ function ContentGeneratorContent() {
         setLoading(false);
       });
   }, [id]);
-
-  // 어떤 mockData를 보여줄지 설정
-  let mockKey = "image";
-  if (id === "demo-text-id" || id === "text" || id === "demo-id-2") {
-    mockKey = "text";
-  } else if (id === "demo-unjudged-id" || id === "unjudged" || id === "a3Fk9mdemo") {
-    mockKey = "unjudged";
-  }
-  const mockData = DEFAULT_MOCKS[mockKey];
 
   // 미리보기·내보내기에 쓰는 제품명.
   // create는 폼 입력칸, improve는 검사 때 입력한 상품명(리포트 envelope)을 쓴다.
@@ -994,7 +924,6 @@ function ContentGeneratorContent() {
           // 판단하고, 모든 분기에 태그를 넣는다. 히어로(사진 위, 밝은 글자)와
           // 나머지(밝은 배경, 어두운 글자)는 대비가 반대라 톤을 분리한다.
           const isApprovedClaim = card.text_source === "approved_claim";
-          const claimTag = isApprovedClaim ? `<span class="dp-claim-tag">인정문구</span>` : "";
           const claimTagOnLight = isApprovedClaim ? `<span class="dp-claim-tag-onlight">인정문구</span>` : "";
 
           // 표 카드(상품 스펙표): headline·body가 비어 있고 table_rows만 있다
@@ -1389,7 +1318,7 @@ function ContentGeneratorContent() {
                       <div className="flex flex-wrap gap-2 mt-2.5">
                         {createProductPhotos.map((p) => (
                           <div key={p.id} className="relative w-[76px] h-[76px] border border-[var(--line-2)] bg-[var(--surface-sub)] overflow-hidden">
-                            <img src={p.previewUrl} alt="제품 사진 미리보기" className="w-full h-full object-cover" />
+                            <NextImage src={p.previewUrl} alt="제품 사진 미리보기" fill sizes="76px" unoptimized className="object-cover" />
                             {p.uploading && (
                               <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-mono">업로드중</div>
                             )}

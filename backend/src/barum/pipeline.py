@@ -8,6 +8,7 @@
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image
@@ -19,7 +20,11 @@ from barum.judge.us_export_readiness import build_us_export_readiness_report
 from barum.generate.replace import build_replacements
 from barum.models import (
     CheckReport,
+    DomesticInputSnapshot,
     Finding,
+    SnapshotIngredientAmount,
+    InputExtraction,
+    InputSentence,
     JudgmentFlag,
     Region,
     Summary,
@@ -280,6 +285,9 @@ def run_check(
     ingredients: str | None = None,
     ingredient_amounts: str | None = None,
     product_name: str | None = None,
+    ingredients_raw: str | None = None,
+    domestic_category: str | None = None,
+    domestic_subcategory: str | None = None,
     verbose: bool = False,
     rewriter: VLM | None = None,
 ) -> CheckReport:
@@ -314,6 +322,7 @@ def run_check(
             image_bytes, image_filename, vlm, verbose=verbose
         )
         for s in _ocr_sentences:
+            s = {**s, "source": s.get("source") or "ocr"}
             sentences.append({**s, "order": base + s.get("order", 0)})
 
     if ad_text:
@@ -325,6 +334,55 @@ def run_check(
     # "짜개"라는 단어가 없는 다른 문장("흠집이 생기지 않아요")까지 효능주장으로
     # 오판되는 걸 막는다(cosmetic_scope.md). 애매하면 화장품 쪽으로 판단하므로
     # False(대상외 확정)일 때만 문장 판정을 건너뛴다.
+    ingredient_input = ingredients_raw if ingredients_raw is not None else ingredients
+    ingredient_list = _split_ingredients(ingredients) if ingredients else None
+    amount_list = _parse_ingredient_amounts(ingredient_amounts) if ingredient_amounts else None
+    ocr_sentences = [
+        InputSentence(
+            text=s["text"],
+            source="ocr",
+            order=s.get("order", index),
+            tile=s.get("tile"),
+            x_start=s.get("x_start"),
+            x_end=s.get("x_end"),
+            y_start=s.get("y_start"),
+            y_end=s.get("y_end"),
+        )
+        for index, s in enumerate(sentences)
+        if s.get("source") == "ocr"
+    ]
+    if image_bytes:
+        ocr_status = "COMPLETE" if n_ocr_failed == 0 else ("PARTIAL" if ocr_sentences else "FAILED")
+    else:
+        ocr_status = "NOT_RUN"
+    ingredients_input_kind = "MISSING"
+    if ingredient_input and ingredient_input.strip():
+        ingredients_input_kind = "TEXT" if ingredients else "FILENAME_ONLY"
+    input_snapshot = DomesticInputSnapshot(
+        captured_at=datetime.now(timezone.utc).isoformat(),
+        product_name=product_name,
+        domestic_category=domestic_category,
+        domestic_subcategory=domestic_subcategory,
+        ad_text_raw=ad_text,
+        ocr_sentences=ocr_sentences,
+        ingredients_raw=ingredient_input,
+        ingredients_input_kind=ingredients_input_kind,
+        normalized_ingredients=ingredient_list or [],
+        ingredient_amounts=[
+            SnapshotIngredientAmount(ingredient=name, amount=amount)
+            for name, amount in (amount_list or [])
+        ],
+        extraction=InputExtraction(
+            ocr_status=ocr_status,
+            ocr_failed_tiles=n_ocr_failed,
+        ),
+        warnings=(
+            ["ingredients_input_looks_like_filename"]
+            if ingredients_input_kind == "FILENAME_ONLY"
+            else []
+        ),
+    )
+
     in_scope, oos_reason = check_product_scope([s["text"] for s in sentences])
     if not in_scope:
         summary = Summary(
@@ -340,10 +398,9 @@ def run_check(
             unjudged=[],
             summary=summary,
             basis=build_regulatory_basis(region),
+            input_snapshot=input_snapshot,
         )
 
-    ingredient_list = _split_ingredients(ingredients) if ingredients else None
-    amount_list = _parse_ingredient_amounts(ingredient_amounts) if ingredient_amounts else None
     result = judge.judge(sentences, region, ingredients=ingredient_list, ingredient_amounts=amount_list)
     findings = _verify_functional_evidence(
         result.findings, image_bytes, product_name, verbose=verbose
@@ -373,6 +430,7 @@ def run_check(
         summary=summary,
         basis=build_regulatory_basis(region),
         replacements=_build_replacements_for_report(findings, rewriter),
+        input_snapshot=input_snapshot,
     )
 
 

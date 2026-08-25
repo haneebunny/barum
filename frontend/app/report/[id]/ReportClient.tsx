@@ -132,23 +132,32 @@ function FindingCard({
 
   useEffect(() => {
     if (hasReportReplacements) return;
-    setLegacyLoading(true);
-    setLegacySuggestions(null);
-    getRemediation({
-      sentence: finding.sentence,
-      violation_type: finding.violation_type,
-      span: finding.span,
-    })
-      .then((res) => {
-        setLegacySuggestions(res.suggestions);
-        setLegacyLoading(false);
+    let active = true;
+    const frame = window.requestAnimationFrame(() => {
+      setLegacyLoading(true);
+      setLegacySuggestions(null);
+      void getRemediation({
+        sentence: finding.sentence,
+        violation_type: finding.violation_type,
+        span: finding.span,
       })
-      .catch((err) => {
-        console.error("Failed to fetch remediation suggestion", err);
-        showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
-        setLegacyLoading(false);
-      });
-  }, [finding, hasReportReplacements]);
+        .then((res) => {
+          if (!active) return;
+          setLegacySuggestions(res.suggestions);
+          setLegacyLoading(false);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error("Failed to fetch remediation suggestion", err);
+          showError("대체 제안 오류", "대체 표현 제안을 불러오지 못했습니다: " + (err instanceof Error ? err.message : String(err)));
+          setLegacyLoading(false);
+        });
+    });
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [finding, hasReportReplacements, showError]);
 
   const cls = finding.flag === "위반" ? "violation" : "review";
   const isExcluded = act === "exclude";
@@ -185,6 +194,7 @@ function FindingCard({
       className={`pl-4 pb-4 border-l-[3px] bg-[var(--surface)] dark:bg-transparent ${isExcluded ? "opacity-50" : ""}`}
       style={{ borderLeftColor: accentColor }}
       data-i={index}
+      data-hovered={isHovered || undefined}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
@@ -573,12 +583,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     ? findGroups.filter((g) => g.representative.flag === flagFilter)
     : findGroups;
 
-  useEffect(() => {
-    setOpenOrderIndex(0);
-    setFlagFilter(null);
-    setBulkUndoSnapshot(null);
-  }, [activeEnvelope]);
-
   // 필터가 걸려 있으면 "보이는 것만"이 대상이다(팀장 판단 필요 지점 - 안 보이는
   // 것까지 바뀌면 화면과 실제 상태가 어긋나 더 놀랍다). 이미 제외(exclude)한
   // 항목은 명시적 결정이라 존중해서 안 건드리고, 이미 수용한 항목은 대상에서
@@ -690,7 +694,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const hasInteracted = Object.keys(actions).length > 0;
   const acceptedIndices = hasInteracted
     ? Object.entries(actions)
-      .filter(([_, act]) => act === "accept")
+      .filter(([, act]) => act === "accept")
       .map(([i]) => i)
       .join(",")
     : d.findings
@@ -1140,14 +1144,14 @@ export function ReportClient({ envelope }: ReportClientProps) {
         <div className="flex flex-col gap-3 py-1 text-[13px] text-[var(--ink-2)] leading-[1.6]">
           <div className="p-3.5 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)]">
             <p className="m-0 font-bold text-[13.5px] leading-snug">
-              수정 권고안에 대해 '수용' 또는 '제외'를 선택하지 않으셨습니다.
+              수정 권고안에 대해 &apos;수용&apos; 또는 &apos;제외&apos;를 선택하지 않으셨습니다.
             </p>
             <p className="m-[6px_0_0] text-[12.5px] text-[var(--ink-3)]">
               모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?
             </p>
           </div>
           <p className="m-0 text-[12px] text-[var(--ink-3)]">
-            '직접 선택'을 누르시면 리포트 화면에서 각 수정 권고안을 개별 검토하실 수 있습니다.
+            &apos;직접 선택&apos;을 누르시면 리포트 화면에서 각 수정 권고안을 개별 검토하실 수 있습니다.
           </p>
         </div>
       </Modal>

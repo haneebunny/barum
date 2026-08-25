@@ -577,7 +577,7 @@ export const GenericReadinessItemSchema = z.object({
 export type GenericReadinessItem = z.infer<typeof GenericReadinessItemSchema>;
 
 export const ExportReadinessReportSchema = z.object({
-  report_type: z.literal("export_readiness"), schema_version: z.literal("2"), result_id: z.string().nullable(), created_at: z.string(),
+  report_type: z.literal("export_readiness"), schema_version: z.literal("2"), result_id: z.string().nullable(), source_report_id: z.string().nullable().optional(), created_at: z.string(),
   destination_country: z.string(), domestic_category: DomesticProductCategorySchema, domestic_subcategory: z.string().nullable(), product_name: z.string().nullable(),
   product_snapshot: z.object({ intended_use: z.string().nullable().optional(), claims: z.array(z.string()).default([]), ingredients: z.array(z.string()).default([]) }).passthrough(),
   profile_status: ReadinessInputStateSchema, profile_snapshot: ExportProfileSchema,
@@ -588,6 +588,73 @@ export const ExportReadinessReportSchema = z.object({
   items: z.array(GenericReadinessItemSchema), disclaimer: z.string(),
 });
 export type ExportReadinessReport = z.infer<typeof ExportReadinessReportSchema>;
+
+// 국내 검사 결과에서 미국 재분석에 재사용하는 원본 입력 스냅샷
+export const InputAssetSchema = z.object({
+  role: z.string(),
+  original_filename: z.string().nullable().optional(),
+  content_type: z.string().nullable().optional(),
+  sha256: z.string().nullable().optional(),
+  size_bytes: z.number().nullable().optional(),
+  storage_ref: z.string().nullable().optional(),
+}).passthrough();
+export type InputAsset = z.infer<typeof InputAssetSchema>;
+
+export const InputSentenceSchema = z.object({
+  text: z.string(),
+  source: z.string(),
+  order: z.number(),
+  tile: z.string().nullable().optional(),
+  x_start: z.number().nullable().optional(),
+  x_end: z.number().nullable().optional(),
+  y_start: z.number().nullable().optional(),
+  y_end: z.number().nullable().optional(),
+}).passthrough();
+export type InputSentence = z.infer<typeof InputSentenceSchema>;
+
+export const SnapshotIngredientAmountSchema = z.object({
+  ingredient: z.string(),
+  amount: z.string(),
+});
+export type SnapshotIngredientAmount = z.infer<typeof SnapshotIngredientAmountSchema>;
+
+export const InputExtractionSchema = z.object({
+  ocr_status: z.enum(["NOT_RUN", "COMPLETE", "PARTIAL", "FAILED"]).default("NOT_RUN"),
+  ocr_failed_tiles: z.number().default(0),
+}).passthrough();
+export type InputExtraction = z.infer<typeof InputExtractionSchema>;
+
+export const DomesticInputSnapshotSchema = z.object({
+  schema_version: z.literal("1").default("1"),
+  source_report_id: z.string().nullable().optional(),
+  source_endpoint: z.string().default("/check"),
+  source_region: RegionSchema.default("KR"),
+  captured_at: z.string(),
+  product_name: z.string().nullable().optional(),
+  domestic_category: z.string().nullable().optional(),
+  domestic_subcategory: z.string().nullable().optional(),
+  ad_text_raw: z.string().nullable().optional(),
+  ocr_sentences: z.array(InputSentenceSchema).default([]),
+  ingredients_raw: z.string().nullable().optional(),
+  ingredients_input_kind: z.enum(["TEXT", "FILENAME_ONLY", "MISSING"]).default("MISSING"),
+  normalized_ingredients: z.array(z.string()).default([]),
+  ingredient_amounts: z.array(SnapshotIngredientAmountSchema).default([]),
+  assets: z.array(InputAssetSchema).default([]),
+  extraction: InputExtractionSchema.default({ ocr_status: "NOT_RUN", ocr_failed_tiles: 0 }),
+  warnings: z.array(z.string()).default([]),
+}).passthrough();
+export type DomesticInputSnapshot = z.infer<typeof DomesticInputSnapshotSchema>;
+
+export const ReportListItemSchema = z.object({
+  result_id: z.string(),
+  created_at: z.string(),
+  region: RegionSchema,
+  product_name: z.string().nullable().optional(),
+  image_available: z.boolean().default(false),
+  snapshot_available: z.boolean().default(false),
+  input_materials: z.array(z.string()).default([]),
+}).passthrough();
+export type ReportListItem = z.infer<typeof ReportListItemSchema>;
 
 // GET /reports/{result_id} 응답 (다시 보기)
 export const ReportEnvelopeSchema = z.object({
@@ -601,6 +668,7 @@ export const ReportEnvelopeSchema = z.object({
   // 중립 폴백("잎, 물방울, 천, 돌 표면")으로 떨어졌다. 그래서 어떤 제품이든
   // 나뭇잎·대리석 사진만 나왔다.
   product_name: z.string().nullable().optional(),
+  input_snapshot: DomesticInputSnapshotSchema.nullable().optional(),
   report: z.union([CheckReportSchema, USPreflightReportSchema, USExportReadinessReportSchema, ExportReadinessReportSchema]),
 });
 export type ReportEnvelope = z.infer<typeof ReportEnvelopeSchema>;

@@ -39,6 +39,56 @@
 ### `GET /reports/{result_id}/image`  (원본 이미지 프록시)
 이미지 입력이었던 검사의 원본을 백엔드가 그대로 스트리밍한다(밴드 하이라이트용 배경). 버킷은 비공개라 이 엔드포인트로만 접근한다. 이미지 없거나 없는 id면 `404`.
 
+### `GET /reports?region=KR&limit=50`  (검사 이력 목록)
+저장된 검사 결과를 최신순으로 요약 조회한다. 로그인 없이 데모 이력을 보여 주기 위한 API이며, 상세 결과는 각 항목의 `result_id`로 다시 조회한다. `limit`의 기본값은 50이다.
+
+응답 항목은 다음 정보를 포함한다.
+
+```jsonc
+[
+  {
+    "result_id": "a3Fk9...",
+    "created_at": "2026-08-11T09:00:00Z",
+    "region": "KR",
+    "product_name": "미백 크림",
+    "image_available": true,
+    "snapshot_available": true,
+    "input_materials": ["ad_text", "ingredients"]
+  }
+]
+```
+
+### `POST /reports/{result_id}/export-readiness`  (국내 결과 기반 미국 준비도 재실행)
+저장된 국내 검사 결과의 입력 스냅샷을 사용해 미국 수출 준비도 보고서를 새로 계산한다. 국내 판정 결과를 미국 판정으로 재사용하지 않고, 원문·전성분·제품 입력을 미국 readiness 규칙에 다시 넣는다.
+
+선택적으로 JSON body로 `profile`을 전달할 수 있다.
+
+```jsonc
+{
+  "profile_state": "PROVIDED",
+  "profile": {
+    "manufacturer_name": "예시 제조사",
+    "facility_name": "예시 제조시설",
+    "us_agent_name": "예시 U.S. Agent"
+  }
+}
+```
+
+응답은 `report_type: "export_readiness"`인 `ExportReadinessReport`이며, 결과에는 과거 입력을 보존하는 `profile_snapshot`과 `product_snapshot`이 포함된다. 원본 국내 검사에 입력 스냅샷이 없거나 지원하지 않는 레거시 결과이면 `422`를 반환한다.
+
+### `GET /reports/{result_id}/readiness`  (저장된 readiness 다시 보기)
+저장된 미국 readiness 보고서를 조회한다. 기존 `GET /reports/{result_id}` 계약과 별개로 readiness 응답의 discriminator(`report_type`)를 보존한다. 결과가 readiness 보고서가 아니거나 존재하지 않으면 `404`다.
+
+#### 국내 검사에서 미국 readiness로 이어지는 데모 흐름
+
+1. `POST /check`로 국내 검사 결과를 생성한다.
+2. 응답의 `result_id`로 `GET /reports` 목록에 결과가 나타나는지 확인한다.
+3. 목록에서 결과를 선택하고 `POST /reports/{result_id}/export-readiness`를 호출한다.
+4. 미국 리포트에서 상태별 항목과 다음 행동을 보여 준다.
+5. 새로고침 후 `GET /reports/{result_id}/readiness`로 같은 readiness 결과를 다시 표시한다.
+
+이 흐름의 readiness 문구는 법적 적합성이나 미국 수출 가능 여부를 확정하지 않고, 준비 필요 자료와 추가 확인 사항을 안내해야 한다.
+
 ## 응답: `CheckReport`
 
 ```jsonc

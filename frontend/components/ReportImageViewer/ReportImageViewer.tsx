@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Image from "next/image";
 import type { Location } from "@/lib/api/schema";
 
 const ZOOM_LEVELS = [100, 160, 220] as const;
@@ -242,12 +243,15 @@ function ZoomableImage({
           className="relative"
           style={{ width: `${zoomPct}%`, aspectRatio: `${srcW} / ${srcH}`, cursor: "zoom-in" }}
         >
-          <img
+          <Image
             src={imageUrl}
             alt="원본 광고"
+            fill
+            sizes="(max-width: 900px) 100vw, 60vw"
+            unoptimized
             onError={onImageError}
             draggable={false}
-            style={{ width: "100%", height: "100%", display: "block", pointerEvents: "none" }}
+            style={{ display: "block", pointerEvents: "none" }}
           />
 
           <div className="absolute inset-0 z-10 pointer-events-none">
@@ -393,10 +397,13 @@ function ZoomableImage({
           className="sticky float-right bottom-2 mr-2 border border-[var(--line-2)] bg-[var(--surface-sub)] shadow-[0_1px_4px_rgba(0,0,0,0.25)]"
           style={{ width: MINIMAP_W, height: minimapH, pointerEvents: "none" }}
         >
-          <img
+          <Image
             src={imageUrl}
             alt=""
-            style={{ width: "100%", height: "100%", display: "block", opacity: 0.9 }}
+            fill
+            sizes={`${MINIMAP_W}px`}
+            unoptimized
+            style={{ display: "block", opacity: 0.9 }}
           />
           {rectStyle && (
             <div

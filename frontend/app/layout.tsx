@@ -2,15 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell/AppShell";
 import { ErrorProvider } from "@/lib/error/ErrorContext";
-import { JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
 
 const d2coding = localFont({
   src: [
@@ -48,7 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   // suppressHydrationWarning: 위 스크립트가 하이드레이션 전에 data-theme를 바꿔서
   // 서버 마크업과 클라이언트 초기값이 다를 수 있다. html 한 곳만 억제한다.
   return (
-    <html lang="ko" suppressHydrationWarning className={`${jetbrainsMono.variable} ${d2coding.variable}`}>
+    <html lang="ko" suppressHydrationWarning className={d2coding.variable}>
       <head>
         <link
           rel="stylesheet"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Modal } from "@/components/Modal/Modal";
 
 interface ErrorContextType {
@@ -21,17 +21,17 @@ export function ErrorProvider({ children }: { children: React.ReactNode }) {
     message: "",
   });
 
-  const showError = (title: string, message: string) => {
+  const showError = useCallback((title: string, message: string) => {
     setErrorState({
       isOpen: true,
       title: title || "오류",
       message: message || "알 수 없는 오류가 발생했습니다.",
     });
-  };
+  }, []);
 
-  const hideError = () => {
+  const hideError = useCallback(() => {
     setErrorState((prev) => ({ ...prev, isOpen: false }));
-  };
+  }, []);
 
   useEffect(() => {
     const handleGlobalError = (event: ErrorEvent) => {
@@ -59,7 +59,7 @@ export function ErrorProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
     };
-  }, []);
+  }, [showError]);
 
   const footer = (
     <button
