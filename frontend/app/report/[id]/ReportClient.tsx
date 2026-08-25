@@ -706,6 +706,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
     <>
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
+        {/* AI 결과 상시 고지. 경보가 아니라 안내라 회색 톤으로만 알린다(§F). */}
+        <p className="m-0 mb-3 text-[12px] text-[var(--ink-3)] leading-[1.6] break-keep">
+          AI 분석 결과이며, 법률 자문이나 최종 적합성 판단을 대신하지 않습니다.
+        </p>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             type="button"
@@ -807,7 +811,7 @@ export function ReportClient({ envelope }: ReportClientProps) {
       </div>
 
       {/* 2단 리포트 그리드 (뼈대 유지) */}
-      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1 items-start">
+      <div className="grid grid-cols-[0.86fr_1.14fr] max-[900px]:grid-cols-1 items-stretch">
         <div className="p-[18px_20px_22px] border-r border-[var(--line)] max-[900px]:border-r-0 max-[900px]:border-b max-[900px]:border-[var(--line)]">
           <div className="flex items-center gap-[11px] m-[0_0_13px]">
             <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">01</span>
@@ -932,108 +936,112 @@ export function ReportClient({ envelope }: ReportClientProps) {
             </div>
           )}
         </div>
-        <div className="p-[18px_20px_22px] flex flex-col min-h-0">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
-            <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-            {isImageMode ? (
-              <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
-            ) : (
-              <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
-            )}
-          </div>
-          <div id="origPanel" className="flex-1 flex flex-col min-h-0 sticky top-[20px]">
-            {isImageMode ? (
-              <ReportImageViewer
-                findByOrder={findByOrder}
-                ujByOrder={ujByOrder}
-                imageUrl={canShowRealImage ? getReportImageUrl(activeEnvelope.result_id) : null}
-                imageErrorGlobal={!!imageErrors.global}
-                onImageError={() => setImageErrors((prev) => ({ ...prev, global: true }))}
-                actions={actions}
-                hoveredIndex={hoveredIndex}
-                onHoverChange={setHoveredIndex}
-              />
-            ) : (
-              (() => {
-                const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
-                const sentenceOrders: Record<string, number> = {};
+        {/* 오른쪽 콘텐츠가 그리드 높이에 영향을 못 주게 absolute로 분리한다.
+            그리드 행 높이는 왼쪽 검증 카드가 결정하고, 오른쪽은 그 높이 안에서 스크롤. */}
+        <div className="relative min-h-0 overflow-hidden max-[900px]:min-h-[70vh]">
+          <div className="absolute inset-0 p-[18px_20px_22px] flex flex-col">
+            <div className="flex items-center gap-[11px] m-[0_0_13px]">
+              <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
+              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+              <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+              {isImageMode ? (
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
+              ) : (
+                <span className="text-[var(--ink-3)] font-mono text-[11px]">텍스트 모드 · 스팬 밑줄</span>
+              )}
+            </div>
+            <div id="origPanel" className="flex-1 min-h-0 flex flex-col overflow-auto">
+              {isImageMode ? (
+                <ReportImageViewer
+                  findByOrder={findByOrder}
+                  ujByOrder={ujByOrder}
+                  imageUrl={canShowRealImage ? getReportImageUrl(activeEnvelope.result_id) : null}
+                  imageErrorGlobal={!!imageErrors.global}
+                  onImageError={() => setImageErrors((prev) => ({ ...prev, global: true }))}
+                  actions={actions}
+                  hoveredIndex={hoveredIndex}
+                  onHoverChange={setHoveredIndex}
+                />
+              ) : (
+                (() => {
+                  const seenFindings: Record<string, Array<{ span: string; cls: string; badge: number; idx: number }>> = {};
+                  const sentenceOrders: Record<string, number> = {};
 
-                findByOrder.forEach((o) => {
-                  const sentence = o.f.sentence;
-                  if (!seenFindings[sentence]) {
-                    seenFindings[sentence] = [];
-                    sentenceOrders[sentence] = o.f.location.order;
-                  }
-                  seenFindings[sentence].push({
-                    span: o.f.span,
-                    cls: o.f.flag === "위반" ? "violation" : "review",
-                    badge: o.num,
-                    idx: o.idx,
-                  });
-                });
-
-                const unjudgedSentences: Array<{ sentence: string; letter: string; order: number }> = [];
-                ujByOrder.forEach((u, i) => {
-                  unjudgedSentences.push({
-                    sentence: u.sentence,
-                    letter: String.fromCharCode(65 + i),
-                    order: u.location.order,
-                  });
-                });
-
-                interface TextSentenceNode {
-                  type: "find" | "uj";
-                  sentence: string;
-                  order: number;
-                  hlItems?: Array<{ span: string; cls: string; badge: number; idx: number }>;
-                  letter?: string;
-                }
-
-                const allSentences: TextSentenceNode[] = [];
-
-                Object.keys(seenFindings).forEach((s) => {
-                  allSentences.push({
-                    type: "find",
-                    sentence: s,
-                    order: sentenceOrders[s],
-                    hlItems: seenFindings[s],
-                  });
-                });
-
-                unjudgedSentences.forEach((u) => {
-                  allSentences.push({
-                    type: "uj",
-                    sentence: u.sentence,
-                    order: u.order,
-                    letter: u.letter,
-                  });
-                });
-
-                allSentences.sort((a, b) => a.order - b.order);
-
-                const htmlContent = allSentences
-                  .map((node) => {
-                    if (node.type === "find" && node.hlItems) {
-                      return markSentence(node.sentence, node.hlItems, actions);
-                    } else if (node.type === "uj" && node.letter) {
-                      return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9.5px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
-                        node.sentence
-                      )}</span>`;
+                  findByOrder.forEach((o) => {
+                    const sentence = o.f.sentence;
+                    if (!seenFindings[sentence]) {
+                      seenFindings[sentence] = [];
+                      sentenceOrders[sentence] = o.f.location.order;
                     }
-                    return "";
-                  })
-                  .join(" ");
+                    seenFindings[sentence].push({
+                      span: o.f.span,
+                      cls: o.f.flag === "위반" ? "violation" : "review",
+                      badge: o.num,
+                      idx: o.idx,
+                    });
+                  });
 
-                return (
-                  <div
-                    className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[15px] text-[var(--ink)] leading-[2]"
-                    dangerouslySetInnerHTML={{ __html: htmlContent }}
-                  />
-                );
-              })()
-            )}
+                  const unjudgedSentences: Array<{ sentence: string; letter: string; order: number }> = [];
+                  ujByOrder.forEach((u, i) => {
+                    unjudgedSentences.push({
+                      sentence: u.sentence,
+                      letter: String.fromCharCode(65 + i),
+                      order: u.location.order,
+                    });
+                  });
+
+                  interface TextSentenceNode {
+                    type: "find" | "uj";
+                    sentence: string;
+                    order: number;
+                    hlItems?: Array<{ span: string; cls: string; badge: number; idx: number }>;
+                    letter?: string;
+                  }
+
+                  const allSentences: TextSentenceNode[] = [];
+
+                  Object.keys(seenFindings).forEach((s) => {
+                    allSentences.push({
+                      type: "find",
+                      sentence: s,
+                      order: sentenceOrders[s],
+                      hlItems: seenFindings[s],
+                    });
+                  });
+
+                  unjudgedSentences.forEach((u) => {
+                    allSentences.push({
+                      type: "uj",
+                      sentence: u.sentence,
+                      order: u.order,
+                      letter: u.letter,
+                    });
+                  });
+
+                  allSentences.sort((a, b) => a.order - b.order);
+
+                  const htmlContent = allSentences
+                    .map((node) => {
+                      if (node.type === "find" && node.hlItems) {
+                        return markSentence(node.sentence, node.hlItems, actions);
+                      } else if (node.type === "uj" && node.letter) {
+                        return `<span class="relative px-[1px] cursor-default border-b-2 border-dashed border-[var(--ink-3)]"><span class="absolute top-[-9px] left-[-2px] font-mono text-[9.5px] font-bold color-inherit">${node.letter}</span>${escapeHtml(
+                          node.sentence
+                        )}</span>`;
+                      }
+                      return "";
+                    })
+                    .join(" ");
+
+                  return (
+                    <div
+                      className="border border-[var(--line-2)] bg-[var(--surface-sub)] p-[16px_15px] text-[15px] text-[var(--ink)] leading-[2]"
+                      dangerouslySetInnerHTML={{ __html: htmlContent }}
+                    />
+                  );
+                })()
+              )}
+            </div>
           </div>
         </div>
       </div>

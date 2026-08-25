@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import NextImage from "next/image";
-import { getReport, generateContent, resolveImageUrl, uploadProductPhoto, uploadIngredients } from "@/lib/api/client";
+import { getReport, generateContent, resolveImageUrl, uploadProductPhoto, uploadIngredients, uploadClinical, uploadSurvey } from "@/lib/api/client";
 import type { CheckReport, ClinicalEvidence, GenerateResponse, IngredientAmount, SurveyEvidence } from "@/lib/api/schema";
 import { Check, X, CaretDown, FileCode, FileImage, FilePdf, Plus, Trash } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
@@ -165,6 +165,20 @@ function ContentGeneratorContent() {
   const [createSurveyEvidence, setCreateSurveyEvidence] = useState<
     Array<SurveyEvidence & { id: string }>
   >([]);
+  // 실증자료·설문 업로드 상태. 전성분(ingredientUpload)과 같은 모양이지만
+  // warnings의 무게가 다르다 - 전성분은 "몇 행을 건너뛰었다"지만 여기엔 헤더
+  // 없는 파일에서 **어느 열을 무엇으로 읽었는지**가 담겨 온다. 안 띄우면 시험기관
+  // 자리에 시험기간이 들어가도 아무도 모른 채 상세페이지까지 간다.
+  const [clinicalUpload, setClinicalUpload] = useState<{
+    uploading: boolean;
+    error: string | null;
+    warnings: string[];
+  }>({ uploading: false, error: null, warnings: [] });
+  const [surveyUpload, setSurveyUpload] = useState<{
+    uploading: boolean;
+    error: string | null;
+    warnings: string[];
+  }>({ uploading: false, error: null, warnings: [] });
   const [createNotes, setCreateNotes] = useState("");
   const [createColorTone, setCreateColorTone] = useState("");
   const [createMood, setCreateMood] = useState("");
@@ -278,6 +292,40 @@ function ContentGeneratorContent() {
   const removeClinicalEvidence = (id: string) => {
     setCreateClinicalEvidence((prev) => prev.filter((row) => row.id !== id));
   };
+  // 이어붙일지 갈아끼울지는 전성분(handleIngredientFileUpload)이 이미 정한 규칙을
+  // 그대로 따른다 - 손입력 행이 채워져 있으면 이어붙이고, 비어있으면 교체한다.
+  const handleClinicalFileUpload = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const file = Array.from(files)[0];
+    if (!file) return;
+    setClinicalUpload({ uploading: true, error: null, warnings: [] });
+    uploadClinical(file)
+      .then((res) => {
+        const newRows = res.rows.map((r) => ({
+          id: nextClinicalEvidenceId(),
+          claim: r.claim,
+          value: r.value,
+          institution: r.institution ?? "",
+          period: r.period ?? "",
+          note: r.note ?? "",
+        }));
+        setCreateClinicalEvidence((prev) => {
+          const hasExisting = prev.some(
+            (row) => row.claim.trim() || row.value.trim()
+          );
+          return hasExisting ? [...prev, ...newRows] : newRows;
+        });
+        setClinicalUpload({ uploading: false, error: null, warnings: res.warnings });
+      })
+      .catch((err) => {
+        console.error("Failed to upload clinical evidence file", err);
+        setClinicalUpload({
+          uploading: false,
+          error: err instanceof Error ? err.message : String(err),
+          warnings: [],
+        });
+      });
+  };
 
   const addSurveyEvidence = () => {
     setCreateSurveyEvidence((prev) => [
@@ -296,6 +344,41 @@ function ContentGeneratorContent() {
   };
   const removeSurveyEvidence = (id: string) => {
     setCreateSurveyEvidence((prev) => prev.filter((row) => row.id !== id));
+  };
+  const handleSurveyFileUpload = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const file = Array.from(files)[0];
+    if (!file) return;
+    setSurveyUpload({ uploading: true, error: null, warnings: [] });
+    uploadSurvey(file)
+      .then((res) => {
+        // 백엔드가 6칸 미완인 행도 그대로 보낸다. 여기서 버리지 않는다 - 어느
+        // 칸이 비었는지는 warnings에 있고, 사용자가 폼에서 마저 채우면 된다.
+        const newRows = res.rows.map((r) => ({
+          id: nextSurveyEvidenceId(),
+          claim: r.claim,
+          value: r.value,
+          sample_size: r.sample_size,
+          institution: r.institution,
+          period: r.period,
+          method: r.method,
+        }));
+        setCreateSurveyEvidence((prev) => {
+          const hasExisting = prev.some(
+            (row) => row.claim.trim() || row.value.trim()
+          );
+          return hasExisting ? [...prev, ...newRows] : newRows;
+        });
+        setSurveyUpload({ uploading: false, error: null, warnings: res.warnings });
+      })
+      .catch((err) => {
+        console.error("Failed to upload survey evidence file", err);
+        setSurveyUpload({
+          uploading: false,
+          error: err instanceof Error ? err.message : String(err),
+          warnings: [],
+        });
+      });
   };
   const isSurveyEvidenceComplete = (row: SurveyEvidence) =>
     !!(row.claim.trim() && row.value.trim() && row.sample_size.trim() && row.institution.trim() && row.period.trim() && row.method.trim());
@@ -821,7 +904,11 @@ function ContentGeneratorContent() {
           const dataUri = card.image_url
             ? await resolveOrInline(card.image_url)
             : null;
-          const isAiGenerated = card.image_status === "generated";
+          // is_original(제품 원본을 그대로 쓴 카드, PR #379)은 "generated"가 될
+          // 일이 없다는 게 백엔드 계약이지만, image_status만 보고 판단하면 그
+          // 결합이 깨질 때 원본에도 "AI 생성" 캡션이 붙는다 - is_original을
+          // 명시적으로도 걸러서 이중으로 막는다(원본은 법적 고지 대상이 아니다).
+          const isAiGenerated = card.image_status === "generated" && !card.is_original;
           const imageCaption = isAiGenerated && dataUri ? aiImageCaption : "";
           const finePrintCard = isFinePrintKind(card.module_kind) ? " dp-fine" : "";
           const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(card.module_kind)}" -->`;
@@ -1163,8 +1250,16 @@ function ContentGeneratorContent() {
         )}
       </div>
 
-      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. */}
-      {!canGenerateContent ? (
+      {/* 콘텐츠 이용권 게이팅. 상세페이지 1건 = 이용권 1장이다. **이미 생성한
+          결과(isGenerated && genResult)는 이용권 소진과 무관하게 항상 보여야
+          한다** - 생성 성공 직후 consumeContent()가 contentRemaining을
+          0으로 만들어 canGenerateContent가 false가 되는데, 게이팅을 여기
+          하나로만 걸면 방금 만든 결과가 화면에서 그대로 사라지고
+          ContentLockCard가 덮어버렸다(발표 직전 팀장 로직검증으로 발견,
+          리포트당 이용권 1장이라 매번 재현). 게이팅은 "생성 시작 전"에만
+          적용한다 - !isGenerated를 같이 걸어서 이미 생성된 뒤엔 이 락이
+          아예 안 뜨게 한다. */}
+      {!canGenerateContent && !isGenerated ? (
         <ContentLockCard
           title="상세페이지 초안을 만들려면 이용권이 필요합니다"
           desc="제품 정보나 수정 권고안을 바탕으로 화장품법을 지키는 상세페이지 초안 1건을 만들어 드립니다. 콘텐츠 생성 이용권 1장이 상세페이지 1건이고, 결합형을 쓰면 리포트 열람까지 함께 처리됩니다."
@@ -1180,8 +1275,9 @@ function ContentGeneratorContent() {
       ) : (
         <>
 
-          {/* 입력 요약 / create 모드 입력 폼 */}
-          {mode === "create" ? (
+          {/* 입력 요약 / create 모드 입력 폼. 생성 완료 후엔 원샷이라 편집 불가라
+              더 볼 이유가 없다 - 결과가 화면을 다 채우게 숨긴다. */}
+          {!isGenerated && (mode === "create" ? (
             <div className="p-[18px_20px] border-b border-[var(--line)]">
               <div className="flex items-center gap-[11px] m-[0_0_13px]">
                 <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">01</span>
@@ -1322,7 +1418,7 @@ function ContentGeneratorContent() {
                             value={row.name}
                             onChange={(e) => updateIngredientAmount(row.id, "name", e.target.value)}
                             placeholder="성분명 (예: 나이아신아마이드)"
-                            className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                            className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                           />
                           <input
                             type="text"
@@ -1369,6 +1465,35 @@ function ContentGeneratorContent() {
 
                   <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
                     <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">실증자료 (임상 수치 모듈에만 필요. barum은 진위를 검증하지 않습니다)</p>
+                    <Dropzone
+                      accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+                      supportedExtensions="XLSX · CSV · TXT"
+                      title="엑셀·CSV·txt로 한 번에 넣기"
+                      subtitle="drop or click"
+                      multiple={false}
+                      compact
+                      disabled={clinicalUpload.uploading}
+                      onFilesSelected={handleClinicalFileUpload}
+                      className="mb-2.5"
+                    />
+                    {clinicalUpload.uploading && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--ink-3)]">업로드 중...</p>
+                    )}
+                    {clinicalUpload.error && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--crit)]">업로드 실패: {clinicalUpload.error}</p>
+                    )}
+                    {clinicalUpload.warnings.length > 0 && (
+                      <div className="m-[0_0_8px] flex flex-col gap-0.5">
+                        {clinicalUpload.warnings.map((w, i) => (
+                          <p key={i} className="m-0 text-[11px] text-[var(--ink-3)]">{w}</p>
+                        ))}
+                      </div>
+                    )}
+                    {/* 아래 입력칸의 min-w-0은 장식이 아니다. input은 기본 고유폭(size=20,
+                        약 180px)이 있고 flex 자식의 min-width는 기본이 auto라 그 아래로 안
+                        줄어든다. 2단 레이아웃에서 이 카드가 338px까지 좁아지면 칸이 카드 밖으로
+                        밀려난다. 설문 블록은 flex-1 입력이 두 개라 51px씩 튀어나갔다(2026-08-25
+                        실측). 파일 업로드가 생기기 전엔 행이 0개로 시작해서 아무도 못 봤다. */}
                     <div className="flex flex-col gap-2.5">
                       {createClinicalEvidence.map((row) => (
                         <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
@@ -1378,7 +1503,7 @@ function ContentGeneratorContent() {
                               value={row.claim}
                               onChange={(e) => updateClinicalEvidence(row.id, "claim", e.target.value)}
                               placeholder="무엇을 개선했는지 (예: 다크스팟 개선)"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                             <input
                               type="text"
@@ -1402,7 +1527,7 @@ function ContentGeneratorContent() {
                               value={row.institution || ""}
                               onChange={(e) => updateClinicalEvidence(row.id, "institution", e.target.value)}
                               placeholder="시험기관명"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                             <input
                               type="text"
@@ -1419,6 +1544,19 @@ function ContentGeneratorContent() {
                             placeholder="피험자 수·조건 등 부연"
                             className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                           />
+                          {/* 무엇을 개선했는지·결과 수치 둘 다 채워야 실제로 전송된다
+                              (handleGenerate 필터) - 하나만 채우면 화면엔 입력한 것처럼
+                              보이는데 생성 요청에선 그 행 자체가 통째로 조용히 빠진다.
+                              "실증자료를 넣었는데 왜 빠졌지"를 겪게 하지 않으려면 반쯤
+                              채운 상태를 화면에서 바로 알려야 한다(팀장 지적, 2026-08-25
+                              - 미백 실증자료를 넣었는데 clinical 모듈이 미입력으로
+                              드롭된 사례). 경고색 없이 안내 톤만(§F - 아직 제출 전
+                              입력 중 상태라 급한 오류가 아니다). */}
+                          {(row.claim.trim() !== "") !== (row.value.trim() !== "") && (
+                            <p className="m-0 text-[11px] text-[var(--ink-3)]">
+                              무엇을 개선했는지와 결과 수치를 둘 다 입력해야 이 실증자료가 반영돼요.
+                            </p>
+                          )}
                         </div>
                       ))}
                       <button
@@ -1433,6 +1571,30 @@ function ContentGeneratorContent() {
 
                   <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
                     <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">설문조사 결과 (향·발림성·재구매의향 등 비효능 항목만. 실증자료 아님)</p>
+                    <Dropzone
+                      accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+                      supportedExtensions="XLSX · CSV · TXT"
+                      title="엑셀·CSV·txt로 한 번에 넣기"
+                      subtitle="drop or click"
+                      multiple={false}
+                      compact
+                      disabled={surveyUpload.uploading}
+                      onFilesSelected={handleSurveyFileUpload}
+                      className="mb-2.5"
+                    />
+                    {surveyUpload.uploading && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--ink-3)]">업로드 중...</p>
+                    )}
+                    {surveyUpload.error && (
+                      <p className="m-[0_0_8px] text-[11px] text-[var(--crit)]">업로드 실패: {surveyUpload.error}</p>
+                    )}
+                    {surveyUpload.warnings.length > 0 && (
+                      <div className="m-[0_0_8px] flex flex-col gap-0.5">
+                        {surveyUpload.warnings.map((w, i) => (
+                          <p key={i} className="m-0 text-[11px] text-[var(--ink-3)]">{w}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-col gap-2.5">
                       {createSurveyEvidence.map((row) => (
                         <div key={row.id} className="border border-dashed border-[var(--line-2)] p-[10px_11px] flex flex-col gap-1.5">
@@ -1442,7 +1604,7 @@ function ContentGeneratorContent() {
                               value={row.claim}
                               onChange={(e) => updateSurveyEvidence(row.id, "claim", e.target.value)}
                               placeholder="무엇에 대한 응답인지 · 필수 (예: 향에 만족)"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12.5px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                             <input
                               type="text"
@@ -1466,14 +1628,14 @@ function ContentGeneratorContent() {
                               value={row.sample_size}
                               onChange={(e) => updateSurveyEvidence(row.id, "sample_size", e.target.value)}
                               placeholder="표본 수 · 필수 (예: 200명)"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                             <input
                               type="text"
                               value={row.institution}
                               onChange={(e) => updateSurveyEvidence(row.id, "institution", e.target.value)}
                               placeholder="조사기관명 · 필수"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -1482,14 +1644,14 @@ function ContentGeneratorContent() {
                               value={row.period}
                               onChange={(e) => updateSurveyEvidence(row.id, "period", e.target.value)}
                               placeholder="조사 시기 · 필수 (예: 2026년 3월)"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                             <input
                               type="text"
                               value={row.method}
                               onChange={(e) => updateSurveyEvidence(row.id, "method", e.target.value)}
                               placeholder="조사 방법 · 필수 (예: 온라인 자기기입식 설문)"
-                              className="flex-1 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
+                              className="flex-1 min-w-0 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                             />
                           </div>
                           {!isSurveyEvidenceComplete(row) && (
@@ -1515,11 +1677,11 @@ function ContentGeneratorContent() {
               {/* 하단 전폭: 추가정보 및 이미지 생성 설정 */}
               <div className="flex flex-col gap-3.5 mt-3.5">
                 <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px]">
-                  <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보</label>
+                  <label className="block font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_8px] tracking-[0.3px]">추가정보 (생성 문구에 반영)</label>
                   <textarea
                     value={createNotes}
                     onChange={(e) => setCreateNotes(e.target.value)}
-                    placeholder="상품 종류·타깃·기타 참고사항을 자유롭게 적어주세요"
+                    placeholder="타깃·사용감·강조점을 적으면 생성 문구에 반영돼요 (이미지에는 반영되지 않아요)"
                     className="w-full min-h-[64px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[13px] p-[8px_10px] outline-none focus:border-[var(--brand)] resize-y"
                   />
                 </div>
@@ -1592,7 +1754,7 @@ function ContentGeneratorContent() {
                 </div>
               </div>
             </div>
-          )}
+          ))}
 
           {/* 생성 결과 */}
           <div className="p-[18px_20px] border-b-0">
@@ -1630,6 +1792,11 @@ function ContentGeneratorContent() {
                 {mode === "create" && createProductPhotos.some((p) => p.uploading) && (
                   <p className="m-0 text-[11.5px] text-[var(--ink-3)]">제품 사진 업로드가 끝날 때까지 잠시만 기다려주세요.</p>
                 )}
+                {/* AI 사용 시점 상시 고지(AI기본법 제31조③). 결과물 하단 aiPageNotice는
+                    "결과"에 AI가 쓰였다는 사후 고지고, 이건 "생성 시작 전" 고지라
+                    자리가 다르다 - 둘 다 있어야 한다(팀장 지시, 2026-08-25). 경보가
+                    아니라 상시 안내라 경고색 대신 --ink-3 톤만 쓴다. */}
+                <p className="m-0 text-[11px] text-[var(--ink-3)]">생성 결과에는 AI가 만든 문구와 이미지가 포함될 수 있습니다.</p>
                 <button
                   className="font-sans text-[13px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] disabled:opacity-50 disabled:cursor-not-allowed"
                   id="startGen"
@@ -1693,47 +1860,29 @@ function ContentGeneratorContent() {
                   )}
                 </div>
 
-                {genResult.layout_plan && genResult.layout_plan.modules.length > 0 && (
-                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mb-3.5">
-                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
-                      구성 계획 · {genResult.layout_plan.modules.length}개 모듈
-                      {genResult.layout_plan.product_type && ` · ${genResult.layout_plan.product_type}`}
-                      {" · "}
-                      {genResult.layout_plan.source === "planner" ? "AI 계획" : "고정 플랜"}
-                    </p>
-                    <ol className="list-none m-0 p-0 flex flex-wrap gap-1.5">
-                      {genResult.layout_plan.modules.map((m, i) => (
-                        <li
-                          key={`${m.kind}-${i}`}
-                          className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
-                        >
-                          <span className="text-[var(--ink-3)]">{i + 1}.</span>
-                          {m.kind}
-                          {m.has_claim_risk && (
-                            <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
-                              ✓근거
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
                 {genResult.skipped_claims.length > 0 && (
                   <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[15px_16px] mb-3.5">
                     <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
                       근거 부족으로 제외됨 · {genResult.skipped_claims.length}건
                     </p>
                     <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
-                      {genResult.skipped_claims.map((s, i) => (
-                        <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
-                          <X size={13} weight="bold" className="shrink-0 mt-0.5" />
-                          <span>
-                            <b className="text-[var(--ink-2)] font-semibold">{s.category}</b>: {s.reason}
-                          </span>
-                        </li>
-                      ))}
+                      {genResult.skipped_claims.map((s, i) => {
+                        // category가 "미백"·"주름개선"처럼 사용자 대면 한글이면 라벨로 살리고,
+                        // clinical_intro·bundle_suggestion처럼 내부 모듈 kind(영어 snake_case)가
+                        // 그대로 새면 라벨을 숨기고 reason만 보여준다 - reason은 이미 한글로
+                        // 충분히 설명적이다(팀장 지적 2026-08-25, category가 언제 영어로
+                        // 새는지는 백엔드 쪽이라 프론트에서 값으로 판별한다).
+                        const isRawIdentifier = /^[a-z][a-z0-9_]*$/.test(s.category);
+                        return (
+                          <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
+                            <X size={13} weight="bold" className="shrink-0 mt-0.5" />
+                            <span>
+                              {!isRawIdentifier && <b className="text-[var(--ink-2)] font-semibold">{s.category}: </b>}
+                              {s.reason}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

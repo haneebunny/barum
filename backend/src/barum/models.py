@@ -1019,6 +1019,29 @@ class SurveyEvidence(BaseModel):
     method: str = Field(..., description='조사 방법, 예: "온라인 자기기입식 설문"')
 
 
+class ClinicalUploadResponse(BaseModel):
+    """`POST /uploads/clinical` 응답. 엑셀/CSV/TXT를 파싱한 결과.
+
+    `IngredientUploadResponse`와 같은 모양이다. 다만 `warnings`가 더 중요하다.
+    전성분은 헤더 이름으로만 열을 잡지만 실증자료는 헤더 없는 파일도 받아서
+    값의 형태로 추측한다. **무엇을 어떻게 읽었는지 여기 담아 보낸다.**
+    """
+
+    rows: list[ClinicalEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SurveyUploadResponse(BaseModel):
+    """`POST /uploads/survey` 응답. 6칸이 다 안 찬 행도 그대로 담아 보낸다.
+
+    파서가 버리지 않는 이유: 사용자가 폼에서 마저 채울 수 있어야 한다. 어느
+    설문의 어느 칸이 비었는지는 `warnings`에 있다.
+    """
+
+    rows: list[SurveyEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class LayoutModule(BaseModel):
     """상세페이지 한 모듈. `data/layout_references/*.json` 스키마를 그대로 따른다."""
 
@@ -1140,7 +1163,12 @@ class ContentCard(BaseModel):
     text: str
     text_source: str  # remediation | llm | template | approved_claim 등 Section.source 그대로
     image_url: str | None = None
-    image_status: str = "skipped"  # generated | skipped
+    image_status: str = "skipped"  # generated | skipped | placed
+    # 판매자가 올린 제품사진 원본을 그대로 쓴 카드(나노바나나 재합성이 아님).
+    # True면 프론트가 "AI 생성" 캡션을 안 붙이고 원본으로 표시한다. 재합성은
+    # 라벨을 뭉개고 비용도 드는데, 원본을 그대로 쓰면 라벨이 완벽하고 과금이 0이다
+    # (2026-08-24 팀장 지시: "기존 입력 이미지는 그대로 사용").
+    is_original: bool = False
     # 대체표현이 실증대상일 때 붙는 고지. 카드에 같이 안 실으면 사용자가 위반에서
     # 벗어난 줄 알고 그대로 쓴다(2026-08-20 팀장 지시와 같은 이유).
     note: str | None = None

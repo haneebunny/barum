@@ -82,7 +82,7 @@ export function rowProps(item: MockHistoryItem) {
     status_crit: meta.crit,
     count_label: item.status === "draft" ? "검사 전" : `위반 ${item.n_violation} · 검토 ${item.n_needs_review}`,
     count_crit: item.n_violation > 0,
-    score_label: item.score === null ? undefined : `점수 ${item.score}점`,
+    score_label: undefined,
     date_label: dateLabel(item.created_at),
   };
 }

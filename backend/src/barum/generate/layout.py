@@ -240,7 +240,9 @@ def filter_risky_modules(
             else:
                 skipped.append(
                     SkippedClaim(
-                        category=module.kind,
+                        # category는 사용자에게 그대로 보이는 라벨이라 영어 kind(hero_intro 등)를
+                        # 쓰면 안 된다. 한글 purpose를 쓰고, 비면 kind로만 폴백한다(2026-08-25).
+                        category=module.purpose or module.kind,
                         reason="실증자료(인체적용시험 결과)가 입력되지 않아 임상 수치 모듈을 뺐습니다",
                     )
                 )
@@ -250,7 +252,7 @@ def filter_risky_modules(
             continue
         skipped.append(
             SkippedClaim(
-                category=module.kind,
+                category=module.purpose or module.kind,
                 reason="기능성 인증서로 뒷받침되는 인정문구가 없어 효능 주장 모듈을 뺐습니다",
             )
         )
@@ -314,6 +316,48 @@ def ensure_full_ingredient_module(plan: LayoutPlan, req: GenerateRequest) -> Lay
         layout_type="table_info",
     )
     return LayoutPlan(modules=[*plan.modules, module], product_type=plan.product_type, source=plan.source)
+
+
+def ensure_clinical_module(plan: LayoutPlan, req: GenerateRequest) -> LayoutPlan:
+    """실증자료가 있으면 그 개수만큼 임상 모듈 자리를 보장한다.
+
+    설문·전성분·스펙과 달리 clinical만 안전망이 없었다. 폴백 플랜(_FALLBACK_MODULES)엔
+    임상 모듈이 없고, 플래너가 임상 kind를 안 내거나 실증자료 개수보다 적게 내면,
+    사업자가 입력한 실증자료가 카드도 skip 사유도 없이 조용히 사라졌다(2026-08-25
+    버그헌트). "실증자료 1건 = 임상 카드 1장"(2026-08-23 팀장 확정)을 지키려면
+    자리 수가 자료 수 이상이어야 한다.
+
+    **반드시 filter_risky_modules 뒤에 부른다.** 여기서 붙이는 모듈은
+    has_claim_risk=True라, 필터를 먼저 태우면 근거 판정에 걸려 도로 빠질 수 있다.
+    필터 뒤에 붙이면 has_clinical_evidence로 이미 통과한 것과 같은 자리를 얻는다.
+    """
+    evidence = req.clinical_evidence or []
+    existing = [m for m in plan.modules if m.kind.startswith(_CLINICAL_PREFIX)]
+    need = len(evidence) - len(existing)
+    if need <= 0:
+        return plan
+    used = {m.kind for m in plan.modules}
+    additions: list[LayoutModule] = []
+    for _ in range(need):
+        # 유일한 임상 kind를 만든다. kind는 파이프라인 전체에서 모듈 식별자라
+        # (이미지·섹션 매핑) 중복되면 서로 덮어쓴다([[_uniquify_kinds]] 참고).
+        kind = f"{_CLINICAL_PREFIX}_result"
+        i = 2
+        while kind in used:
+            kind = f"{_CLINICAL_PREFIX}_result_{i}"
+            i += 1
+        used.add(kind)
+        additions.append(
+            LayoutModule(
+                kind=kind,
+                purpose="임상 시험 결과",
+                has_claim_risk=True,
+                layout_type="section_statement",
+            )
+        )
+    return LayoutPlan(
+        modules=[*plan.modules, *additions], product_type=plan.product_type, source=plan.source
+    )
 
 
 def clinical_sections_text(evidence: list[ClinicalEvidence]) -> str:

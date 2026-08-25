@@ -21,6 +21,7 @@ from barum.generate.layout import (
     ensure_full_ingredient_module,
     ensure_survey_module,
     ensure_product_spec_module,
+    ensure_clinical_module,
     filter_risky_modules,
     plan_layout,
     select_top_modules,
@@ -659,7 +660,8 @@ def _drop_unfilled_risky_modules(
         if module.has_claim_risk and module.kind not in filled:
             skipped.append(
                 SkippedClaim(
-                    category=module.kind,
+                    # 사용자 노출 라벨이라 영어 kind 대신 한글 purpose를 쓴다(2026-08-25).
+                    category=module.purpose or module.kind,
                     reason="이 모듈을 채울 인정문구·실증자료가 부족해 계획에서 뺐습니다",
                 )
             )
@@ -725,17 +727,30 @@ def _unplaced_claim_skips(sections: list[Section]) -> list[SkippedClaim]:
 
     조용히 빠지는 것과 "왜 빠졌는지 적힌 채로 빠지는 것"은 완전히 다르다. 전자는
     아무도 못 알아채고, 후자는 화면에도 뜨고 다음 사람이 원인을 찾을 수 있다.
+
+    인정문구뿐 아니라 실증자료(clinical_evidence)도 챙긴다. ensure_clinical_module이
+    자리를 보장하므로 정상 경로에선 안 걸리지만, 그 불변식이 깨져도 사업자가 넣은
+    실증자료가 흔적 없이 사라지지 않게 방어망을 둔다(2026-08-25).
     """
-    return [
-        SkippedClaim(
-            category="인정문구",
-            reason=(
-                f"계획에 이 문구를 실을 모듈이 없어 화면에 넣지 못했습니다: {s.text}"
-            ),
-        )
-        for s in sections
-        if s.source == "approved_claim" and s.module_kind is None
-    ]
+    skips: list[SkippedClaim] = []
+    for s in sections:
+        if s.module_kind is not None:
+            continue
+        if s.source == "approved_claim":
+            skips.append(
+                SkippedClaim(
+                    category="인정문구",
+                    reason=f"계획에 이 문구를 실을 모듈이 없어 화면에 넣지 못했습니다: {s.text}",
+                )
+            )
+        elif s.source == "clinical_evidence":
+            skips.append(
+                SkippedClaim(
+                    category="실증자료",
+                    reason=f"실증자료를 실을 임상 모듈 자리가 부족해 화면에 넣지 못했습니다: {s.text}",
+                )
+            )
+    return skips
 
 
 def build_full_ingredient_section(req: GenerateRequest) -> Section:
@@ -1071,10 +1086,24 @@ def build_cards(
         img = images.get(module.kind)
         image_url = img.image_url if img else None
         image_status = img.status if img else "skipped"
-        if not image_url and len(cards) == 0 and image_plan.placed:
-            # 생성된 모듈 이미지가 없을 때, 첫 카드(히어로)는 배치된 원본/업로드 사진을 사용
-            image_url = image_plan.placed[0].image_url
-            image_status = "placed"
+        is_original = False
+        # 제품 원본이 올라왔으면 히어로(첫 카드)는 **생성 이미지가 있어도** 원본을
+        # 우선한다(팀장 지시 2026-08-24: "기존 입력 이미지는 그대로 사용"). 나노바나나
+        # 재합성은 라벨을 뭉개고(YOURBERRY→YOUARFRAY) 비용도 드는데, 원본은 라벨이
+        # 완벽하고 과금이 0이다. 그래서 히어로 모듈은 애초에 이미지 생성도 스킵한다
+        # (_generate_create_content). placed의 product_photo 슬롯을 그대로 쓴다.
+        if len(cards) == 0 and image_plan.placed:
+            product_photo = next(
+                (p for p in image_plan.placed if p.slot == "product_photo"), None
+            )
+            if product_photo is not None:
+                image_url = product_photo.image_url
+                image_status = "placed"
+                is_original = True
+            elif not image_url:
+                # 제품사진은 없지만 다른 배치 이미지가 있으면 그걸 히어로에 쓴다(기존 동작).
+                image_url = image_plan.placed[0].image_url
+                image_status = "placed"
 
         # 인정문구는 법으로 정해진 문구라 길어도 헤드라인 자리를 지킨다.
         head, body = split_headline(
@@ -1091,6 +1120,7 @@ def build_cards(
                 text_source=sec.source,
                 image_url=image_url,
                 image_status=image_status,
+                is_original=is_original,
                 table_rows=sec.table_rows,
                 clinical_stat=sec.clinical_stat,
             )
@@ -1127,6 +1157,10 @@ def _generate_create_content(
     plan = ensure_product_spec_module(plan, req)
     plan = ensure_full_ingredient_module(plan, req)
     plan = ensure_survey_module(plan, req)
+    # 실증자료 1건당 임상 자리 1개를 보장한다. 이게 없으면 폴백 플랜이나 임상 kind를
+    # 안 내는 플래너 결과에서 실증자료가 카드·skip 사유 없이 사라졌다(2026-08-25).
+    # filter_risky_modules 뒤라야 한다(위 함수 docstring 참고).
+    plan = ensure_clinical_module(plan, req)
 
     # 3. 모듈별 내용 채우기. 위험 모듈은 LLM을 안 태운다.
     #    임상 모듈이 여러 개여도 실증자료 섹션은 하나만 낸다(같은 자료 반복 방지).
@@ -1200,9 +1234,16 @@ def _generate_create_content(
 
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
-    # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성
+    # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성.
+    # **제품 원본이 올라왔으면 히어로(첫 모듈) 배경은 만들지 않는다**(팀장 지시
+    # 2026-08-24). 히어로 카드는 build_cards가 placed의 제품 원본을 그대로 쓰므로
+    # (is_original), 여기서 배경을 만들어봐야 안 쓰이고 나노바나나 비용만 나간다.
+    # placed 목록은 req 기반이라(build_image_plan 내부) 모듈을 빼도 원본은 남는다.
+    image_plan_source = plan
+    if req.product_photo_ids and plan.modules:
+        image_plan_source = plan.model_copy(update={"modules": plan.modules[1:]})
     image_plan = build_image_plan(
-        req, plan, image_generator, image_sink, photo_resolver, sections=cleaned
+        req, image_plan_source, image_generator, image_sink, photo_resolver, sections=cleaned
     )
     # 6. 생성물 재검증
     recheck, risks = _recheck(cleaned, req, judge)

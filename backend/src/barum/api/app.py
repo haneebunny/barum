@@ -24,6 +24,7 @@ from barum.models import (
     CheckReport,
     DomesticInputSnapshot,
     DomesticProductCategory,
+    ClinicalUploadResponse,
     ExportReadinessReport,
     ExportReadinessFromReportRequest,
     ExportReadinessRequest,
@@ -37,15 +38,22 @@ from barum.models import (
     RemediationResponse,
     ReportListItem,
     StoredCheck,
+    SurveyUploadResponse,
     USPreflightReport,
     ExportProduct,
     ExportProfile,
     USExportReadinessReport,
 )
 from barum.generate.content import generate_content
+from barum.generate.images import dominant_tone
 from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
+from barum.preprocess.evidence_upload import (
+    EvidenceParseError,
+    parse_clinical_upload,
+    parse_survey_upload,
+)
 from barum.preprocess.ingredient_upload import IngredientParseError, parse_ingredient_upload
 from barum.pipeline import run_check, run_us_sunscreen_check, run_us_export_readiness
 from barum.storage.checks_store import (
@@ -897,11 +905,12 @@ def get_generated_image(image_id: str) -> Response:
 _PHOTO_ID_RE = re.compile(r"^[0-9a-f]{32}\.(?:png|jpg|webp)$")
 
 
-# 전성분 업로드 확장자 화이트리스트. content-type은 브라우저·OS마다 제각각이라
-# (csv를 application/vnd.ms-excel로 보내는 경우도 흔하다) 확장자를 판단 기준으로
-# 삼고, content-type은 명백히 엉뚱한 값만 걸러내는 보조 신호로만 쓴다.
-_INGREDIENT_EXTS = {".xlsx", ".csv", ".txt"}
-_INGREDIENT_CT_ALLOW = {
+# 표 형식 업로드(전성분·실증자료·설문) 공용 확장자 화이트리스트. content-type은
+# 브라우저·OS마다 제각각이라 (csv를 application/vnd.ms-excel로 보내는 경우도
+# 흔하다) 확장자를 판단 기준으로 삼고, content-type은 명백히 엉뚱한 값만
+# 걸러내는 보조 신호로만 쓴다.
+_TABULAR_EXTS = {".xlsx", ".csv", ".txt"}
+_TABULAR_CT_ALLOW = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
     "text/csv",
@@ -911,6 +920,34 @@ _INGREDIENT_CT_ALLOW = {
     "",
 }
 _MAX_INGREDIENT_FILE_BYTES = 5 * 1024 * 1024
+
+
+async def _read_tabular_upload(file: UploadFile) -> tuple[str, bytes]:
+    """표 업로드 세 곳이 공유하는 파일 검사. (확장자, 바이트)를 낸다.
+
+    상한은 모듈 전역을 그때그때 읽는다. 테스트가 `_MAX_INGREDIENT_FILE_BYTES`를
+    monkeypatch해서 413을 확인하기 때문에, 인자로 굳혀 받으면 그 검증이 죽는다.
+    """
+    filename = file.filename or ""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in _TABULAR_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
+        )
+    if file.content_type not in _TABULAR_CT_ALLOW:
+        raise HTTPException(
+            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="빈 파일입니다.")
+    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
+        )
+    return ext, data
 
 
 @app.post("/uploads/ingredients")
@@ -924,30 +961,47 @@ async def upload_ingredients(file: UploadFile = File(...)) -> IngredientUploadRe
     파일 자체를 못 읽으면(헤더 없음·시트 없음·손상) 422. 행 단위 문제는 조용히
     건너뛰지 않고 `warnings`로 같이 낸다.
     """
-    filename = file.filename or ""
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in _INGREDIENT_EXTS:
-        raise HTTPException(
-            status_code=415,
-            detail=f"지원하지 않는 파일 형식입니다: {ext or '(확장자 없음)'}. xlsx·csv·txt만 가능합니다.",
-        )
-    if file.content_type not in _INGREDIENT_CT_ALLOW:
-        raise HTTPException(
-            status_code=415, detail=f"지원하지 않는 파일 형식입니다: {file.content_type!r}"
-        )
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=422, detail="빈 파일입니다.")
-    if len(data) > _MAX_INGREDIENT_FILE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"파일이 너무 큽니다({_MAX_INGREDIENT_FILE_BYTES // (1024 * 1024)}MB 이하만 가능합니다).",
-        )
+    ext, data = await _read_tabular_upload(file)
     try:
         rows, warnings = parse_ingredient_upload(ext, data)
     except IngredientParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return IngredientUploadResponse(rows=rows, warnings=warnings)
+
+
+@app.post("/uploads/clinical")
+async def upload_clinical(file: UploadFile = File(...)) -> ClinicalUploadResponse:
+    """엑셀/CSV/TXT로 올린 실증자료(임상)를 파싱한다(create 모드, 2026-08-25 요청).
+
+    전성분과 같은 흐름이다. 저장하지 않고 파싱 결과만 즉시 돌려주면 프론트가
+    `clinical_evidence` 행에 채운다.
+
+    **`warnings`를 화면에 반드시 띄워야 한다.** 헤더 없는 파일은 값의 형태로
+    열을 추측하는데, 어느 열을 무엇으로 읽었는지가 거기 담겨 나간다.
+    """
+    ext, data = await _read_tabular_upload(file)
+    try:
+        rows, warnings = parse_clinical_upload(ext, data)
+    except EvidenceParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return ClinicalUploadResponse(rows=rows, warnings=warnings)
+
+
+@app.post("/uploads/survey")
+async def upload_survey(file: UploadFile = File(...)) -> SurveyUploadResponse:
+    """엑셀/CSV/TXT로 올린 설문조사 결과를 파싱한다(create 모드, 2026-08-25 요청).
+
+    6칸이 다 안 찬 행도 그대로 돌려준다. 사용자가 폼에서 마저 채울 수 있어야
+    하고, 어느 설문의 어느 칸이 비었는지는 `warnings`에 있다. 미완인 채로
+    `/generate`에 가도 서버가 아니라 프론트(`isSurveyEvidenceComplete`)가
+    걸러낸다.
+    """
+    ext, data = await _read_tabular_upload(file)
+    try:
+        rows, warnings = parse_survey_upload(ext, data)
+    except EvidenceParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return SurveyUploadResponse(rows=rows, warnings=warnings)
 
 
 @app.post("/uploads/product-photo")
@@ -1064,14 +1118,43 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         return cached
 
     image_gen = _image_generator()
+    # create 모드는 "모듈별 배경 이미지도 생성하기" 체크박스(image_generation.requested)를
+    # 켰을 때만 실제로 생성(과금)한다. 예전엔 서버 env(IMAGE_GENERATION_ENABLED=1)만 켜져
+    # 있으면 체크박스를 꺼도 요청마다 나노바나나가 나갔다(2026-08-25 냐냐 발견, 비용 사고).
+    # image_gen을 None으로 내리면 build_image_plan이 생성 경로를 아예 안 탄다. improve
+    # 모드는 체크박스가 없고 대체표현 배경 생성이 기본 동작이라 그대로 둔다.
+    if image_gen and req.mode == "create" and not (req.image_generation and req.image_generation.requested):
+        print("    [info] create 이미지 생성 체크박스 꺼짐 - 배경 생성 건너뜀")
+        image_gen = None
     client = _checks_client() if image_gen else None
+
+    # 제품사진이 올라왔으면 지배색을 뽑아 배경 톤에 반영한다(PIL 픽셀 분석, 과금 0).
+    # 이게 없어서 제품이 핑크여도 배경이 늘 "세럼=민트"로 고정됐다(2026-08-24 로직
+    # 검증: 색 추출 코드가 아예 없었다). 사용자가 color_tone을 직접 넣었으면 그걸
+    # 존중하고 안 덮는다.
+    if req.mode == "create" and req.product_photo_ids and not req.color_tone and client:
+        first = req.product_photo_ids[0]
+        if _PHOTO_ID_RE.match(first):
+            try:
+                photo_bytes = download_image(client, f"uploads/{first}")
+                tone = dominant_tone(photo_bytes)
+                if tone:
+                    req = req.model_copy(update={"color_tone": tone})
+                    print(f"    [info] 제품 색 추출 -> 배경 톤: {tone}")
+            except Exception as e:
+                print(f"    [skip] 제품 색 추출 실패: {type(e).__name__}: {e}")
+
     resp = generate_content(
         req,
         judge=_build_judge(),
         vlm=_section_vlm(),
         image_generator=image_gen,
         image_sink=_image_sink(client) if client else None,
-        photo_resolver=_resolve_reference_photos(client) if client else None,
+        # **제품사진을 나노바나나 참조로 넘기지 않는다**(팀장 지시 2026-08-24).
+        # 재합성하면 라벨이 뭉개지고(YOURBERRY→YOUARFRAY) 비용도 든다. 제품 원본은
+        # build_cards가 히어로 카드에 그대로 쓰고(is_original), 나머지 배경은 제품
+        # 없이 순수 생성한다. improve도 원래 참조를 안 쓴다.
+        photo_resolver=None,
     )
     put_cached_generate(cache_key, resp)
     return resp

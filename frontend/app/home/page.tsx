@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
-import { Modal } from "@/components/Modal/Modal";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
 import { recentHistory, rowProps, type HistoryStatus } from "@/lib/mockHistory";
-import { setDraft } from "@/lib/draftHandoff";
 
-type EntryTab = "KR" | "EX";
+type RegionChoice = "kr" | "ex" | null;
 
 const CONTINUE_ITEMS = recentHistory(3);
 
@@ -17,295 +15,257 @@ function continueHref(result_id: string, status: HistoryStatus) {
   return status === "draft" ? `/inspect?id=${result_id}` : `/report/${result_id}`;
 }
 
+const WORKFLOW_STEPS = [
+  { icon: "map-pin", label: "판매 지역 선택" },
+  { icon: "photo", label: "광고 입력" },
+  { icon: "list-details", label: "제품 정보", optional: true },
+  { icon: "search", label: "검사 실행" },
+  { icon: "report", label: "결과 확인" },
+];
+
+function WorkflowIcon({ name }: { name: string }) {
+  switch (name) {
+    case "map-pin":
+      return (
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+          <path d="M12 21c-4-4-8-7.5-8-12a8 8 0 1 1 16 0c0 4.5-4 8-8 12z" />
+          <circle cx="12" cy="9" r="2.5" />
+        </svg>
+      );
+    case "photo":
+      return (
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+          <rect x="3" y="3" width="18" height="18" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+      );
+    case "list-details":
+      return (
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+          <path d="M13 5h8M13 9h5M13 15h8M13 19h5M3 5l3 0M3 9l3 0M3 15l3 0M3 19l3 0" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M16 16l5 5" />
+        </svg>
+      );
+    case "report":
+      return (
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+          <rect x="3" y="3" width="18" height="18" />
+          <path d="M8 16V12M12 16V8M16 16v-2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function HomePage() {
   const router = useRouter();
-  const [selectedRegion, setSelectedRegion] = useState("미국 FDA·FTC");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<EntryTab>("KR");
-  const [adText, setAdText] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
+  const [region, setRegion] = useState<RegionChoice>(null);
+  const [selectedCountry, setSelectedCountry] = useState("미국 FDA·FTC");
 
-  const triggerRef = useRef<HTMLSpanElement>(null);
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const openModal = (e?: React.MouseEvent | React.KeyboardEvent) => {
-    e?.stopPropagation();
-    e?.preventDefault();
-    setIsModalOpen(true);
-  };
-  const closeModal = () => setIsModalOpen(false);
-
-  const selectRegion = (region: string) => {
-    setSelectedRegion(region);
-    closeModal();
-  };
-
-  const handleSelKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      openModal(e);
-    }
-  };
-
-  useEffect(() => {
-    if (isModalOpen) {
-      closeBtnRef.current?.focus();
-    } else {
-      triggerRef.current?.focus();
-    }
-  }, [isModalOpen]);
-
-  // 재방문 기록: 랜딩이 이 값을 보고 CTA를 "내 콘솔로"로 바꾼다
   useEffect(() => {
     try {
       localStorage.setItem("barum-entered", "1");
     } catch {
-      // 저장 실패해도 기능엔 지장 없음
+      /* noop */
     }
   }, []);
 
-  const getInspectUrl = () => {
-    if (activeTab === "EX" && selectedRegion === "미국 FDA·FTC") {
-      return "/inspect?region=us";
+  const handleStart = () => {
+    if (!region) return;
+    if (region === "ex" && selectedCountry === "미국 FDA·FTC") {
+      router.push("/inspect?region=us");
+    } else {
+      router.push("/inspect");
     }
-    return "/inspect";
-  };
-
-  const submitText = (text: string) => {
-    if (!text.trim()) return;
-    setDraft({ ad_text: text });
-    router.push(getInspectUrl());
-  };
-
-  const submitFiles = (files: File[]) => {
-    if (files.length === 0) return;
-    setDraft({ files });
-    router.push(getInspectUrl());
-  };
-
-  const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submitText(adText);
-    }
-  };
-
-  const handlePromptPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const text = e.clipboardData.getData("text");
-    if (text.trim()) submitText(text);
-  };
-
-  const handleDropzoneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDropzoneDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDropzoneDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    submitFiles(Array.from(e.dataTransfer.files));
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    submitFiles(Array.from(e.target.files ?? []));
-  };
-
-  const handleSkipStart = () => {
-    router.push(getInspectUrl());
   };
 
   return (
     <>
       <PageContent>
-      {/* 랜딩에서 설득이 끝난 사람의 작업 화면: 마케팅 카피 없이 얇은 한 줄만 */}
-      <div className="pt-[26px] pb-[4px] flex flex-col sm:flex-row sm:items-baseline gap-[6px] sm:gap-[10px]">
-        <h1 className="m-0 text-[var(--ink)] text-[22px] font-extrabold tracking-[-0.3px] whitespace-nowrap flex items-center gap-2">
-          <span className="text-[var(--brand-ink)] font-mono">›</span>
-          무엇을 검사할까요?
-          <span className="inline-block w-[0.14em] h-[1em] bg-[var(--brand-ink)] align-[-2px] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true"></span>
-        </h1>
-        <span className="font-mono text-[13px] text-[var(--ink-3)]">이미지 · 문구 · 제품정보 중 있는 것만 넣으면 됩니다</span>
-      </div>
+        {/* 헤더 */}
+        <div className="pt-[48px] pb-[6px]">
+          <h1 className="m-0 text-[var(--ink)] text-[26px] font-extrabold tracking-[-0.3px] whitespace-nowrap flex items-center gap-2">
+            <span className="text-[var(--brand-ink)] font-mono">›</span>
+            무엇을 검사할까요?
+            <span className="inline-block w-[0.14em] h-[1em] bg-[var(--brand-ink)] align-[-2px] animate-[blink_1.1s_steps(1)_infinite]" aria-hidden="true" />
+          </h1>
+        </div>
 
-      <div className="pt-[18px] pb-[4px]">
-        <div className="border border-[var(--line-2)] bg-[var(--surface)]">
-          {/* 탭 바: KR/EX 기준 전환 */}
-          <div className="flex items-center border-b border-[var(--line)] bg-[var(--surface-sub)] overflow-x-auto">
+        {/* 지역 선택 카드 */}
+        <div className="pt-[24px] pb-[4px]">
+          <div className="flex gap-0">
             <button
               type="button"
-              onClick={() => setActiveTab("KR")}
-              className={`flex items-center gap-2 shrink-0 p-[9px_14px] border-r border-[var(--line)] font-mono text-[11.5px] tracking-[0.3px] transition-colors duration-150 cursor-pointer ${
-                activeTab === "KR" ? "bg-[var(--surface)] text-[var(--ink)]" : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
+              onClick={() => setRegion("kr")}
+              className={`flex-1 text-left border border-[var(--line-2)] bg-[var(--surface)] cursor-pointer transition-[border-color] duration-150 hover:border-[var(--brand-ink)] ${
+                region === "kr" ? "border-[var(--brand-deep)] border-2" : ""
               }`}
+              style={{ borderRight: region === "kr" ? undefined : "none" }}
             >
-              <span className="bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold p-[1px_6px]">KR</span>
-              국내 · 화장품법
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("EX")}
-              className={`flex items-center gap-2 shrink-0 p-[9px_14px] border-r border-[var(--line)] font-mono text-[11.5px] tracking-[0.3px] transition-colors duration-150 cursor-pointer ${
-                activeTab === "EX" ? "bg-[var(--surface)] text-[var(--ink)]" : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--nav-hover)]"
-              }`}
-            >
-              <span className="bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold p-[1px_6px]">EX</span>
-              해외 수출 ·{" "}
-              <span
-                role="button"
-                tabIndex={0}
-                ref={triggerRef}
-                onClick={e => {
-                  e.stopPropagation();
-                  setActiveTab("EX");
-                  openModal(e);
-                }}
-                onKeyDown={handleSelKeyDown}
-                aria-haspopup="dialog"
-                aria-expanded={isModalOpen}
-                className="underline decoration-dashed underline-offset-2 hover:text-[var(--ink)]"
-              >
-                {selectedRegion} ▾
-              </span>
-            </button>
-            <span className="ml-auto pr-3 font-mono text-[10.5px] text-[var(--ink-3)] hidden sm:inline whitespace-nowrap">
-              $ bareum check --{activeTab.toLowerCase()}
-            </span>
-          </div>
-
-          {/* 문구 프롬프트 + 파일 드롭존 */}
-          <div className="p-[16px_18px]">
-            <div className="flex items-start gap-2">
-              <span className="text-[var(--brand-ink)] font-mono text-[13.5px] leading-[1.6] mt-[1px]">›</span>
-              <textarea
-                value={adText}
-                onChange={e => setAdText(e.target.value)}
-                onPaste={handlePromptPaste}
-                onKeyDown={handlePromptKeyDown}
-                placeholder="검사할 문구를 붙여넣으세요"
-                rows={1}
-                className="flex-1 resize-none border-0 bg-transparent outline-none font-mono text-[13.5px] text-[var(--ink)] placeholder:text-[var(--ink-3)] leading-[1.6]"
-              />
-            </div>
-
-            <div
-              className={`mt-3 border border-dashed p-[18px_16px] text-center cursor-pointer transition-all duration-150 ${
-                isDragging ? "border-[var(--brand)] bg-[var(--surface)]" : "border-[var(--line-2)] bg-[var(--surface-sub)]"
-              }`}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={handleDropzoneDragOver}
-              onDragLeave={handleDropzoneDragLeave}
-              onDrop={handleDropzoneDrop}
-              role="button"
-              tabIndex={0}
-              aria-label="이미지·파일 첨부"
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-            >
-              <div className="text-[var(--brand-ink)] mb-2 flex justify-center">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="square">
-                  <path d="M12 19V5M12 5l-5 5M12 5l5 5" />
-                </svg>
+              <div className={`h-[3px] transition-colors duration-150 ${region === "kr" ? "bg-[var(--brand-deep)]" : "bg-[var(--line-2)]"}`} />
+              <div className="p-[20px_18px]">
+                <div className="flex items-center gap-[10px] mb-[8px]">
+                  <span className={`w-[32px] h-[32px] flex items-center justify-center border text-[15px] transition-colors duration-150 ${
+                    region === "kr"
+                      ? "bg-[var(--brand-deep)] text-[var(--on-brand)] border-[var(--brand-deep)]"
+                      : "border-[var(--line-2)] text-[var(--ink-3)]"
+                  }`}>
+                    <svg className="w-[16px] h-[16px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+                      <path d="M3 21h18M5 21V7l8-4 8 4v14" />
+                      <path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
+                    </svg>
+                  </span>
+                  <span className="text-[16px] font-bold text-[var(--ink)]">국내</span>
+                </div>
+                <span className="font-mono text-[10.5px] text-[var(--ink-3)]">화장품법 제13조 기준</span>
               </div>
-              <p className="m-0 text-[13.5px] text-[var(--ink-2)]">
-                이미지·파일은 여기로 끌어다 놓거나{" "}
-                <span className="text-[var(--brand-ink)] font-semibold underline underline-offset-2">파일 선택</span>
-              </p>
-              <p className="mt-1 mb-0 font-mono text-[10.5px] text-[var(--ink-3)]">PNG · JPG · PDF · 여러 장 가능</p>
-              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileInputChange} />
-            </div>
-          </div>
+            </button>
 
-          {/* 하단 안내 */}
-          <div className="flex items-center justify-between gap-3 p-[9px_18px] border-t border-dashed border-[var(--line-2)] flex-wrap">
-            <span className="font-mono text-[10.5px] text-[var(--ink-3)]">
-              붙여넣거나 끌어다 놓는 순간 검사 준비로 넘어가요 · 기준은 나중에 탭으로 바꿔 다시 검사할 수 있어요
-            </span>
             <button
               type="button"
-              onClick={handleSkipStart}
-              className="shrink-0 font-mono text-[11px] font-bold text-[var(--brand-ink)] bg-transparent border-0 cursor-pointer hover:underline"
+              onClick={() => setRegion("ex")}
+              className={`flex-1 text-left border border-[var(--line-2)] bg-[var(--surface)] cursor-pointer transition-[border-color] duration-150 hover:border-[var(--brand-ink)] ${
+                region === "ex" ? "border-[var(--brand-deep)] border-2" : ""
+              }`}
             >
-              자료 없이 시작 →
+              <div className={`h-[3px] transition-colors duration-150 ${region === "ex" ? "bg-[var(--brand-deep)]" : "bg-[var(--line-2)]"}`} />
+              <div className="p-[20px_18px]">
+                <div className="flex items-center gap-[10px] mb-[8px]">
+                  <span className={`w-[32px] h-[32px] flex items-center justify-center border text-[15px] transition-colors duration-150 ${
+                    region === "ex"
+                      ? "bg-[var(--brand-deep)] text-[var(--on-brand)] border-[var(--brand-deep)]"
+                      : "border-[var(--line-2)] text-[var(--ink-3)]"
+                  }`}>
+                    <svg className="w-[16px] h-[16px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square">
+                      <path d="M2 12h5l2.5-8 5 16 2.5-8H22" />
+                    </svg>
+                  </span>
+                  <span className="text-[16px] font-bold text-[var(--ink)]">해외</span>
+                </div>
+                <span className="font-mono text-[10.5px] text-[var(--ink-3)]">수출 대상국 규정 기준</span>
+              </div>
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="pt-[22px] pb-[8px]">
-        <div className="flex items-center gap-[11px] m-[0_0_13px]">
-          <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">
-            <svg className="w-3.25 h-3.25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="square">
-              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-          </span>
-          <h2 className="m-0 text-[15px] font-bold text-[var(--ink)] tracking-[-0.2px]">이어서 하기</h2>
-          <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-          <span className="text-[var(--ink-3)] font-mono text-[12px]">최근 프로젝트 3</span>
+          {/* 해외 선택 시 나라 선택 패널 */}
+          {region === "ex" && (
+            <div className="border border-t-0 border-[var(--line-2)] bg-[var(--surface-sub)] p-[10px_14px]">
+              <span className="font-mono text-[10.5px] text-[var(--ink-3)]">› 대상국 선택</span>
+              <div className="flex gap-[6px] mt-[8px] flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCountry("미국 FDA·FTC")}
+                  className={`font-mono text-[11px] p-[5px_12px] border cursor-pointer transition-all duration-100 ${
+                    selectedCountry === "미국 FDA·FTC"
+                      ? "bg-[var(--brand-deep)] text-[var(--on-brand)] border-[var(--brand-deep)]"
+                      : "bg-transparent text-[var(--ink-3)] border-[var(--line-2)] hover:border-[var(--brand-ink)] hover:text-[var(--ink)]"
+                  }`}
+                >
+                  미국 FDA·FTC
+                </button>
+                <button type="button" disabled className="font-mono text-[11px] p-[5px_12px] border border-[var(--line-2)] bg-transparent text-[var(--ink-3)] opacity-40 cursor-not-allowed">
+                  EU 준비 중
+                </button>
+                <button type="button" disabled className="font-mono text-[11px] p-[5px_12px] border border-[var(--line-2)] bg-transparent text-[var(--ink-3)] opacity-40 cursor-not-allowed">
+                  일본 준비 중
+                </button>
+                <button type="button" disabled className="font-mono text-[11px] p-[5px_12px] border border-[var(--line-2)] bg-transparent text-[var(--ink-3)] opacity-40 cursor-not-allowed">
+                  중국 준비 중
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 검사 시작 버튼 */}
+          {region && (
+            <button
+              type="button"
+              onClick={handleStart}
+              className="mt-[14px] w-full p-[11px] border-0 bg-[var(--brand-deep)] text-[var(--on-brand)] font-mono text-[12px] font-bold cursor-pointer transition-colors duration-100 hover:bg-[var(--brand)] tracking-[0.3px]"
+            >
+              검사 시작 →
+            </button>
+          )}
         </div>
 
-        <HistoryRowList>
-          {CONTINUE_ITEMS.map(item => {
-            return (
+        {/* 구분선 */}
+        <div className="border-t border-dashed border-[var(--line)] my-[28px]" />
+
+        {/* 이어서 하기 */}
+        <div className="pb-[8px]">
+          <div className="flex items-center gap-[11px] m-[0_0_13px]">
+            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">
+              <svg className="w-3.25 h-3.25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="square">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </span>
+            <h2 className="m-0 text-[15px] font-bold text-[var(--ink)] tracking-[-0.2px]">이어서 하기</h2>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
+            <span className="text-[var(--ink-3)] font-mono text-[12px]">최근 3</span>
+          </div>
+
+          <HistoryRowList>
+            {CONTINUE_ITEMS.map(item => (
               <HistoryRow
                 key={item.result_id}
                 href={continueHref(item.result_id, item.status)}
                 {...rowProps(item)}
               />
-            );
-          })}
-        </HistoryRowList>
-      </div>
+            ))}
+          </HistoryRowList>
+        </div>
+
+        {/* 구분선 */}
+        <div className="border-t border-dashed border-[var(--line)] my-[28px]" />
+
+        {/* 검사 워크플로우 */}
+        <div className="pb-[4px]">
+          <div className="flex items-center gap-[8px] mb-[14px]">
+            <span className="font-mono text-[10.5px] text-[var(--ink-3)] tracking-[0.5px]">검사 워크플로우</span>
+            <span className="flex-1 h-0 border-t border-dashed border-[var(--line)]" />
+          </div>
+
+          <div className="flex items-start">
+            {WORKFLOW_STEPS.map((step, i) => (
+              <div key={step.icon} className="contents">
+                {i > 0 && (
+                  <span className="font-mono text-[11px] text-[var(--line-2)] pt-[8px] shrink-0 select-none">→</span>
+                )}
+                <div className="flex-1 flex flex-col items-center gap-[6px]">
+                  <span
+                    className={`w-[30px] h-[30px] flex items-center justify-center border-[1.5px] ${
+                      i === 0
+                        ? "bg-[var(--brand-deep)] text-[var(--on-brand)] border-[var(--brand-deep)]"
+                        : step.optional
+                          ? "bg-[var(--surface)] text-[var(--ink-3)] border-dashed border-[var(--line-2)]"
+                          : "bg-[var(--surface)] text-[var(--ink-3)] border-[var(--line-2)]"
+                    }`}
+                  >
+                    <WorkflowIcon name={step.icon} />
+                  </span>
+                  <span className={`text-[11px] text-center leading-[1.35] max-w-[72px] ${
+                    step.optional ? "text-[var(--ink-3)]" : "text-[var(--ink-2)]"
+                  }`}>
+                    {step.label}
+                    {step.optional && <><br /><span className="font-mono text-[9.5px]">(선택)</span></>}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </PageContent>
 
       <PageFooter />
-
-      <Modal
-        isOpen={isModalOpen}
-        title="대상국 선택"
-        onClose={closeModal}
-        ref={closeBtnRef}
-      >
-        <button
-          className={`flex items-center gap-[9px] w-full text-left border-0 bg-transparent text-[var(--ink-2)] font-mono text-[12.5px] p-[9px_10px] cursor-pointer transition-all duration-[120ms] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] ${
-            selectedRegion === "미국 FDA·FTC" ? "bg-[var(--nav-active-bg)] text-[var(--ink)] font-bold" : ""
-          }`}
-          onClick={() => selectRegion("미국 FDA·FTC")}
-        >
-          <span className="text-[var(--brand-ink)]">›</span> 미국 <span className="ml-auto text-[var(--ink-3)] text-[11px]">FDA · FTC</span>
-        </button>
-        <button
-          className="flex items-center gap-[9px] w-full text-left border-0 bg-transparent text-[var(--ink-3)] font-mono text-[12.5px] p-[9px_10px] cursor-not-allowed"
-          disabled
-          title="준비 중"
-        >
-          <span className="text-[var(--ink-3)]">›</span> 유럽연합 <span className="ml-auto text-[var(--ink-3)] text-[11px]">준비 중</span>
-        </button>
-        <button
-          className="flex items-center gap-[9px] w-full text-left border-0 bg-transparent text-[var(--ink-3)] font-mono text-[12.5px] p-[9px_10px] cursor-not-allowed"
-          disabled
-          title="준비 중"
-        >
-          <span className="text-[var(--ink-3)]">›</span> 일본 <span className="ml-auto text-[var(--ink-3)] text-[11px]">준비 중</span>
-        </button>
-        <button
-          className="flex items-center gap-[9px] w-full text-left border-0 bg-transparent text-[var(--ink-3)] font-mono text-[12.5px] p-[9px_10px] cursor-not-allowed"
-          disabled
-          title="준비 중"
-        >
-          <span className="text-[var(--ink-3)]">›</span> 중국 <span className="ml-auto text-[var(--ink-3)] text-[11px]">준비 중</span>
-        </button>
-      </Modal>
     </>
   );
 }

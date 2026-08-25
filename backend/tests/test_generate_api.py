@@ -162,13 +162,43 @@ def test_create_모드_실제로_켜면_module_images에_URL이_채워진다(mon
     ).StubJudge())
     monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
 
-    r = client.post("/generate", json={"mode": "create", "product_name": "테스트 세럼"})
+    # create 모드는 "모듈별 배경 이미지도 생성하기" 체크박스를 켰을 때만 생성한다.
+    r = client.post(
+        "/generate",
+        json={"mode": "create", "product_name": "테스트 세럼", "image_generation": {"requested": True}},
+    )
     assert r.status_code == 200
     body = r.json()
     images = body["image_plan"]["module_images"]
     assert images, "module_images가 비어있으면 배선이 여전히 끊긴 것"
     assert images[0]["status"] == "generated"
     assert images[0]["image_url"].startswith("/generated/")
+
+
+def test_create_체크박스_꺼져있으면_이미지를_생성하지_않는다(monkeypatch):
+    """비용 사고 회귀 테스트(2026-08-25 냐냐 발견): 서버 env가 켜져 있어도 요청에
+    image_generation.requested가 없으면 실제 생성(generate_image, 나노바나나 과금)을
+    부르면 안 된다. 예전엔 체크박스를 꺼도 create 요청마다 이미지가 생성됐다."""
+    monkeypatch.setenv("IMAGE_GENERATION_ENABLED", "1")
+
+    calls = {"n": 0}
+
+    class SpyGenerator:
+        def generate_image(self, prompt, images):
+            calls["n"] += 1  # 여기 들어오면 과금이다
+            return b"PNG"
+
+    monkeypatch.setattr(app_module, "get_image_generator", lambda model=None: SpyGenerator())
+    monkeypatch.setattr(app_module, "_checks_client", lambda: FakeBucketClient())
+    monkeypatch.setattr(app_module, "_build_judge", lambda: __import__(
+        "barum.judge.cosmetic", fromlist=["StubJudge"]
+    ).StubJudge())
+    monkeypatch.setattr(app_module, "_section_vlm", lambda: SequenceVLM(_PLAN, _MODULE_TEXT))
+
+    r = client.post("/generate", json={"mode": "create", "product_name": "테스트 세럼"})
+    assert r.status_code == 200
+    assert calls["n"] == 0, "체크박스가 꺼졌는데 generate_image가 불렸다(과금 발생)"
+    assert r.json()["image_plan"]["module_images"] == []
 
 
 # ── 제품사진 업로드 → AI 합성 (2026-08-19, 팀장 승인 방식 A) ──────────────────
@@ -288,8 +318,14 @@ def test_resolve_reference_photos는_리포트에_이미지가_없으면_빈_목
     assert resolve(req) == []
 
 
-def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘긴다(monkeypatch):
-    """업로드 → /generate에서 photo_id 참조까지 end-to-end 배선 확인."""
+def test_generate가_업로드한_사진을_히어로_원본으로_쓰고_참조로는_안_넘긴다(monkeypatch):
+    """제품 원본은 히어로 카드에 그대로 쓰고(is_original), 나노바나나 참조로는
+    넘기지 않는다(팀장 결정 2026-08-24).
+
+    한때 제품사진을 참조로 넘겨 배경과 합성했는데, 재합성이 라벨을 뭉개고
+    (YOURBERRY→YOUARFRAY) 비용도 들었다. 원본을 그대로 쓰면 라벨이 완벽하고
+    히어로 배경 생성이 스킵돼 과금이 준다. 배경은 제품 없이 순수 생성한다.
+    """
     client_fake = FakeBucketClient()
     photo_id = "c" * 32 + ".png"
     client_fake.files[f"uploads/{photo_id}"] = b"PHOTOBYTES"
@@ -309,8 +345,12 @@ def test_generate가_업로드한_사진을_참조이미지로_생성기에_넘�
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["image_plan"]["module_images"][0]["status"] == "generated"
-    assert fake_gen.images_received == [[b"PHOTOBYTES"]]
+    # 참조로 안 넘김: 생성기가 받은 참조 이미지가 전부 비어 있다(제품 재합성 안 함).
+    assert all(imgs == [] for imgs in fake_gen.images_received)
+    # 히어로 카드는 제품 원본을 그대로 쓴다(재합성이 아니라 업로드 원본).
+    hero = body["cards"][0]
+    assert hero["is_original"] is True
+    assert hero["image_url"] == f"/uploads/{photo_id}"
 
 
 def test_improve_모드는_리포트_이미지를_참조로_넘기지_않는다(monkeypatch):

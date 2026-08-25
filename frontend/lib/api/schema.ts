@@ -257,6 +257,23 @@ export const SurveyEvidenceSchema = z.object({
 });
 export type SurveyEvidence = z.infer<typeof SurveyEvidenceSchema>;
 
+// POST /uploads/clinical · /uploads/survey 응답. IngredientUploadResponse와 같은
+// 모양이지만 warnings의 무게가 다르다 - 헤더 없는 파일은 값의 형태로 열을
+// 추측해서 읽고, 어느 열을 무엇으로 읽었는지가 여기 담겨 온다. 화면에 안 띄우면
+// 시험기관 자리에 시험기간이 들어가도 아무도 모른다.
+// rows·warnings 둘 다 빠짐없이 넣는다(위 IngredientUploadResponseSchema 주석 참조).
+export const ClinicalUploadResponseSchema = z.object({
+  rows: z.array(ClinicalEvidenceSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+export type ClinicalUploadResponse = z.infer<typeof ClinicalUploadResponseSchema>;
+
+export const SurveyUploadResponseSchema = z.object({
+  rows: z.array(SurveyEvidenceSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+export type SurveyUploadResponse = z.infer<typeof SurveyUploadResponseSchema>;
+
 // 리포트에서 사용자가 수용한 대체표현(models.py ApprovedReplacement). improve
 // 모드에 이걸 실어 보내지 않으면 백엔드가 판정을 처음부터 다시 돌리고(비용 2배)
 // 검출된 모든 위반을 치환한다 - 사용자가 리포트에서 고른 항목이 무시되고 생성
@@ -343,7 +360,12 @@ export const ContentCardSchema = z.object({
   text: z.string(),
   text_source: z.string(),
   image_url: z.string().nullable().default(null),
-  image_status: z.string().default("skipped"),
+  image_status: z.string().default("skipped"), // generated | skipped | placed
+  // 판매자가 올린 제품사진 원본을 그대로 쓴 카드(나노바나나 재합성이 아님).
+  // true면 "AI 생성" 캡션을 안 붙이고 원본으로 표시한다 - 원본은 AI가 만든 게
+  // 아니라 법적 고지 대상도 아니다(PR #379, 팀장 지시 2026-08-24: 재합성이
+  // 라벨을 뭉갰다 - YOURBERRY→YOUARFRAY).
+  is_original: z.boolean().default(false),
   // 실증자료 필요 고지. 있으면 화면에 반드시 같이 노출한다(빠뜨리면 사용자가
   // 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
   note: z.string().nullable().default(null),

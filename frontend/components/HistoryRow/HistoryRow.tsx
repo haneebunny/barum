@@ -157,7 +157,7 @@ export function HistoryRowLocked({ product_name, region_label, status_label, dat
       <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-5 p-[12px_10px] blur-[3px] select-none" aria-hidden="true">
         <div className="min-w-0">
           <span className="text-[var(--ink)] font-semibold text-[14.5px] truncate min-w-0 block">{product_name}</span>
-          <MetaLine items={[region_label, "위반 -- · 검토 --", "점수 --"]} />
+          <MetaLine items={[region_label, "위반 -- · 검토 --"]} />
         </div>
         <div className="flex items-center gap-3.5 shrink-0">
           <span className="font-mono text-[11px] text-[var(--ink-2)] whitespace-nowrap">[ {status_label} ]</span>
