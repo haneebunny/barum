@@ -891,7 +891,11 @@ function ContentGeneratorContent() {
           const dataUri = card.image_url
             ? await resolveOrInline(card.image_url)
             : null;
-          const isAiGenerated = card.image_status === "generated";
+          // is_original(제품 원본을 그대로 쓴 카드, PR #379)은 "generated"가 될
+          // 일이 없다는 게 백엔드 계약이지만, image_status만 보고 판단하면 그
+          // 결합이 깨질 때 원본에도 "AI 생성" 캡션이 붙는다 - is_original을
+          // 명시적으로도 걸러서 이중으로 막는다(원본은 법적 고지 대상이 아니다).
+          const isAiGenerated = card.image_status === "generated" && !card.is_original;
           const imageCaption = isAiGenerated && dataUri ? aiImageCaption : "";
           const finePrintCard = isFinePrintKind(card.module_kind) ? " dp-fine" : "";
           const swapComment = `<!-- 이미지 교체: 아래 background-image url(...)을 판매자 본인 제품 사진으로 바꾸세요. data-swap="${escapeAttr(card.module_kind)}" -->`;
