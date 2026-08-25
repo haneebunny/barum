@@ -1503,6 +1503,19 @@ function ContentGeneratorContent() {
                             placeholder="피험자 수·조건 등 부연"
                             className="w-full border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)] text-[12px] p-[6px_9px] outline-none focus:border-[var(--brand)]"
                           />
+                          {/* 무엇을 개선했는지·결과 수치 둘 다 채워야 실제로 전송된다
+                              (handleGenerate 필터) - 하나만 채우면 화면엔 입력한 것처럼
+                              보이는데 생성 요청에선 그 행 자체가 통째로 조용히 빠진다.
+                              "실증자료를 넣었는데 왜 빠졌지"를 겪게 하지 않으려면 반쯤
+                              채운 상태를 화면에서 바로 알려야 한다(팀장 지적, 2026-08-25
+                              - 미백 실증자료를 넣었는데 clinical 모듈이 미입력으로
+                              드롭된 사례). 경고색 없이 안내 톤만(§F - 아직 제출 전
+                              입력 중 상태라 급한 오류가 아니다). */}
+                          {(row.claim.trim() !== "") !== (row.value.trim() !== "") && (
+                            <p className="m-0 text-[11px] text-[var(--ink-3)]">
+                              무엇을 개선했는지와 결과 수치를 둘 다 입력해야 이 실증자료가 반영돼요.
+                            </p>
+                          )}
                         </div>
                       ))}
                       <button
@@ -1782,47 +1795,29 @@ function ContentGeneratorContent() {
                   )}
                 </div>
 
-                {genResult.layout_plan && genResult.layout_plan.modules.length > 0 && (
-                  <div className="border border-[var(--line-2)] bg-[var(--surface)] p-[15px_16px] mb-3.5">
-                    <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
-                      구성 계획 · {genResult.layout_plan.modules.length}개 모듈
-                      {genResult.layout_plan.product_type && ` · ${genResult.layout_plan.product_type}`}
-                      {" · "}
-                      {genResult.layout_plan.source === "planner" ? "AI 계획" : "고정 플랜"}
-                    </p>
-                    <ol className="list-none m-0 p-0 flex flex-wrap gap-1.5">
-                      {genResult.layout_plan.modules.map((m, i) => (
-                        <li
-                          key={`${m.kind}-${i}`}
-                          className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
-                        >
-                          <span className="text-[var(--ink-3)]">{i + 1}.</span>
-                          {m.purpose || m.kind}
-                          {m.has_claim_risk && (
-                            <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
-                              ✓근거
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
                 {genResult.skipped_claims.length > 0 && (
                   <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] p-[15px_16px] mb-3.5">
                     <p className="font-mono text-[10.5px] text-[var(--ink-3)] m-[0_0_10px] tracking-[0.3px]">
                       근거 부족으로 제외됨 · {genResult.skipped_claims.length}건
                     </p>
                     <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
-                      {genResult.skipped_claims.map((s, i) => (
-                        <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
-                          <X size={13} weight="bold" className="shrink-0 mt-0.5" />
-                          <span>
-                            <b className="text-[var(--ink-2)] font-semibold">{s.category}</b>: {s.reason}
-                          </span>
-                        </li>
-                      ))}
+                      {genResult.skipped_claims.map((s, i) => {
+                        // category가 "미백"·"주름개선"처럼 사용자 대면 한글이면 라벨로 살리고,
+                        // clinical_intro·bundle_suggestion처럼 내부 모듈 kind(영어 snake_case)가
+                        // 그대로 새면 라벨을 숨기고 reason만 보여준다 - reason은 이미 한글로
+                        // 충분히 설명적이다(팀장 지적 2026-08-25, category가 언제 영어로
+                        // 새는지는 백엔드 쪽이라 프론트에서 값으로 판별한다).
+                        const isRawIdentifier = /^[a-z][a-z0-9_]*$/.test(s.category);
+                        return (
+                          <li key={i} className="text-[12px] text-[var(--ink-3)] flex items-start gap-1.75">
+                            <X size={13} weight="bold" className="shrink-0 mt-0.5" />
+                            <span>
+                              {!isRawIdentifier && <b className="text-[var(--ink-2)] font-semibold">{s.category}: </b>}
+                              {s.reason}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
