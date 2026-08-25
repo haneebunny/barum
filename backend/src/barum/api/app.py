@@ -5,7 +5,6 @@
 """
 
 import os
-import json
 import re
 from datetime import datetime, timezone
 
@@ -15,15 +14,11 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from barum.judge.cosmetic import CosmeticJudge, PromptJudge, RagJudge, StubJudge
-from barum.judge.export_readiness import build_export_readiness_report
 from barum.judge.us_sunscreen import USSunscreenJudge
 from barum.models import (
     CheckReport,
-    ExportReadinessReport,
-    ExportReadinessRequest,
     GenerateRequest,
     GenerateResponse,
     IngredientUploadResponse,
@@ -33,17 +28,14 @@ from barum.models import (
     RemediationResponse,
     StoredCheck,
     USPreflightReport,
-    ExportProduct,
-    ExportProfile,
-    USExportReadinessReport,
 )
 from barum.generate.content import generate_content
 from barum.generate.images import dominant_tone
 from barum.generate.replace import first_safe
 from barum.reference.citations import build_regulatory_basis
 from barum.reference.remediation import get_remediation
+from barum.pipeline import run_check, run_us_sunscreen_check
 from barum.preprocess.ingredient_upload import IngredientParseError, parse_ingredient_upload
-from barum.pipeline import run_check, run_us_sunscreen_check, run_us_export_readiness
 from barum.storage.checks_store import (
     build_cache_key,
     build_check_row,
@@ -191,7 +183,7 @@ def _maybe_checks_client():
 
 
 def _persist_check(
-    report: BaseModel,
+    report: CheckReport,
     region: str,
     image_bytes: bytes | None,
     content_type: str | None,
@@ -227,32 +219,6 @@ def _persist_check(
         return None
 
 
-def _parse_readiness_json(raw: str | None, field_name: str, model_type):
-    """multipart JSON 문자열을 준비도 입력 모델로 안전하게 변환한다."""
-    if raw is None or not raw.strip():
-        payload = {}
-    else:
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{field_name}은(는) 유효한 JSON 객체여야 합니다.",
-            ) from exc
-    if not isinstance(payload, dict):
-        raise HTTPException(
-            status_code=422,
-            detail=f"{field_name}은(는) JSON 객체여야 합니다.",
-        )
-    try:
-        return model_type.model_validate(payload)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"{field_name} 형식이 올바르지 않습니다: {exc}",
-        ) from exc
-
-
 @app.get("/health")
 def health() -> dict:
     """헬스체크."""
@@ -281,15 +247,10 @@ def get_report(result_id: str) -> StoredCheck:
         raise HTTPException(status_code=404, detail="해당 검사 이력을 찾을 수 없습니다.")
     
     region = Region(row["region"])
-    report_data = row["report"]
-    if report_data.get("report_type") == "export_readiness":
-        report = ExportReadinessReport(**report_data)
-    elif report_data.get("report_type") == "us_export_readiness":
-        report = USExportReadinessReport(**report_data)
-    elif region == Region.US:
-        report = USPreflightReport(**report_data)
+    if region == Region.US:
+        report = USPreflightReport(**row["report"])
     else:
-        report = CheckReport(**report_data)
+        report = CheckReport(**row["report"])
 
     return StoredCheck(
         result_id=row["id"],
@@ -299,31 +260,6 @@ def get_report(result_id: str) -> StoredCheck:
         product_name=row.get("product_name"),
         report=report,
     )
-
-
-@app.get(
-    "/reports/{result_id}/readiness",
-    response_model=USExportReadinessReport | ExportReadinessReport,
-)
-def get_readiness_report(
-    result_id: str,
-) -> USExportReadinessReport | ExportReadinessReport:
-    """기존 checks JSON에서 v1·generic v2 준비도 리포트를 복원한다."""
-    row = get_check(_checks_client(), result_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="해당 검사 이력을 찾을 수 없습니다.")
-    report_data = row.get("report") or {}
-    report_type = report_data.get("report_type")
-    if report_type not in {"us_export_readiness", "export_readiness"}:
-        raise HTTPException(status_code=404, detail="미국 수출 준비도 리포트를 찾을 수 없습니다.")
-    report = (
-        ExportReadinessReport(**report_data)
-        if report_type == "export_readiness"
-        else USExportReadinessReport(**report_data)
-    )
-    if report.result_id is None:
-        report.result_id = row.get("id")
-    return report
 
 
 @app.get("/reports/{result_id}/image")
@@ -503,78 +439,6 @@ async def check_us_sunscreen(
     )
     if cache_key:
         save_cached_check(cache_key, report)
-    return report
-
-
-@app.post("/export-readiness/us-sunscreen", response_model=USExportReadinessReport)
-async def export_readiness_us_sunscreen(
-    country: str = Form("US", description="대상국. 현재 미국만 지원."),
-    ad_text: str | None = Form(None),
-    image: UploadFile | None = File(None),
-    ingredients: str | None = Form(None, description="전성분(콤마 구분)."),
-    product_name: str | None = Form(None),
-    product: str = Form("{}", description="제품별 준비도 입력 JSON 문자열."),
-    profile: str = Form("{}", description="제조·수출 프로필 JSON 문자열."),
-) -> USExportReadinessReport:
-    """미국 선스크린 수출 준비도 7개 카테고리 리포트를 만든다."""
-    if country != "US":
-        raise HTTPException(
-            status_code=400,
-            detail=f"현재는 미국(US) 수출 준비도만 지원합니다. 받은 값: {country!r}",
-        )
-
-    product_input = _parse_readiness_json(product, "product", ExportProduct)
-    profile_input = _parse_readiness_json(profile, "profile", ExportProfile)
-    image_bytes = await image.read() if image is not None else None
-    ocr_vlm = (
-        get_vlm(os.environ.get("OCR_PROVIDER", "gemini"), model=role_model("ocr"))
-        if image_bytes
-        else None
-    )
-    report = run_us_export_readiness(
-        ad_text=ad_text,
-        image_bytes=image_bytes,
-        image_filename=image.filename if image is not None else None,
-        vlm=ocr_vlm,
-        judge=USSunscreenJudge(),
-        ingredients=ingredients,
-        product_name=product_name,
-        product=product_input,
-        profile=profile_input,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    report.result_id = _persist_check(
-        report,
-        region="US",
-        image_bytes=image_bytes,
-        content_type=image.content_type if image is not None else None,
-        product_name=product_name,
-    )
-    return report
-
-
-@app.post("/export-readiness", response_model=ExportReadinessReport)
-def export_readiness(req: ExportReadinessRequest) -> ExportReadinessReport:
-    """국내 카테고리와 제품별 rule-pack 분기를 적용한 generic readiness v2."""
-    if req.destination_country != "US":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "현재 generic readiness 규칙은 미국(US)만 지원합니다. "
-                f"받은 값: {req.destination_country!r}"
-            ),
-        )
-    report = build_export_readiness_report(
-        req,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    report.result_id = _persist_check(
-        report,
-        region="US",
-        image_bytes=None,
-        content_type=None,
-        product_name=req.product_name,
-    )
     return report
 
 

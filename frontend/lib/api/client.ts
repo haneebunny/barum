@@ -5,8 +5,6 @@ import {
   ReportEnvelopeSchema,
   RemediationResponseSchema,
   USPreflightReportSchema,
-  USExportReadinessReportSchema,
-  ExportReadinessReportSchema,
   GenerateResponseSchema,
   IngredientUploadResponseSchema,
 } from "./schema";
@@ -20,14 +18,6 @@ import type {
   GenerateRequest,
   GenerateResponse,
   USPreflightReport,
-  ExportProfile,
-  ExportProduct,
-  USExportReadinessReport,
-  ExportReadinessReport,
-  DomesticProductCategory,
-  GenericLabelEvidence,
-  GenericProductEvidence,
-  ReadinessInputState,
   IngredientUploadResponse,
 } from "./schema";
 
@@ -541,83 +531,6 @@ export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<US
   }
 
   return validateResponse(USPreflightReportSchema, await response.json(), "POST /check/us-sunscreen");
-}
-
-export interface USExportReadinessInput {
-  adText?: string;
-  image?: File;
-  ingredients?: string;
-  productName?: string;
-  product: ExportProduct;
-  profile: ExportProfile;
-}
-
-export async function createUSExportReadiness(
-  input: USExportReadinessInput,
-): Promise<USExportReadinessReport> {
-  const url = `${getApiUrl()}/export-readiness/us-sunscreen`;
-  const formData = new FormData();
-  formData.append("country", "US");
-
-  if (input.adText) formData.append("ad_text", input.adText);
-  if (input.image) formData.append("image", input.image);
-  if (input.ingredients) formData.append("ingredients", input.ingredients);
-  if (input.productName) formData.append("product_name", input.productName);
-  formData.append("product", JSON.stringify(input.product));
-  formData.append("profile", JSON.stringify(input.profile));
-
-  const response = await fetch(url, { method: "POST", body: formData });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`US export readiness check failed: ${response.status} - ${errText}`);
-  }
-
-  return validateResponse(
-    USExportReadinessReportSchema,
-    await response.json(),
-    "POST /export-readiness/us-sunscreen",
-  );
-}
-
-export interface ExportReadinessInput {
-  destination_country: "US";
-  domestic_category: DomesticProductCategory;
-  domestic_subcategory?: string | null;
-  product_name?: string | null;
-  intended_use?: string | null;
-  claims: string[];
-  ingredients: string[];
-  label_evidence: GenericLabelEvidence;
-  product_evidence: GenericProductEvidence;
-  profile_state: ReadinessInputState;
-  profile: ExportProfile;
-}
-
-export async function createExportReadiness(input: ExportReadinessInput): Promise<ExportReadinessReport> {
-  const response = await fetch(`${getApiUrl()}/export-readiness`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`Export readiness check failed: ${response.status} - ${await response.text()}`);
-  }
-  return validateResponse(ExportReadinessReportSchema, await response.json(), "POST /export-readiness");
-}
-
-export async function getUSExportReadiness(resultId: string): Promise<USExportReadinessReport | ExportReadinessReport> {
-  const url = `${getApiUrl()}/reports/${resultId}/readiness`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Failed to fetch US export readiness (id=${resultId}): ${response.status} - ${errText}`);
-  }
-
-  return validateResponse(
-    z.union([USExportReadinessReportSchema, ExportReadinessReportSchema]),
-    await response.json(),
-    `GET /reports/${resultId}/readiness`,
-  );
 }
 
 const UploadProductPhotoResponseSchema = z.object({ photo_id: z.string() });

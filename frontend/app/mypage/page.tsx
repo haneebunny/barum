@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { recentHistory, rowProps } from "@/lib/mockHistory";
-import type { ExportProfile } from "@/lib/api/schema";
-import { DEFAULT_EXPORT_PROFILE, readExportProfile, writeExportProfile } from "@/lib/exportProfile";
 import {
   EXPIRY_WARNING_DAYS,
   BETA_PRODUCTS,
@@ -35,6 +33,7 @@ function lotStatus(lot: TicketLot): string {
   if (left <= EXPIRY_WARNING_DAYS) return `${lot.remaining}건 남음 · 만료 ${left}일 전`;
   return `${lot.remaining}건 남음`;
 }
+
 export default function MyPage() {
   // 구매 자체는 결제 모달이 처리한다. 여기선 잔액과 이력만 읽는다.
   const { lots, balance, expiringSoon } = useTickets();
@@ -59,32 +58,6 @@ export default function MyPage() {
   const purchaseHistory = [...lots].sort(
     (a, b) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime(),
   );
-
-
-  const [exportProfile, setExportProfile] = useState<ExportProfile>(DEFAULT_EXPORT_PROFILE);
-  const [profileSaved, setProfileSaved] = useState(false);
-  const profileFields: Array<[keyof ExportProfile, string]> = [
-    ["legal_manufacturer", "법인명"],
-    ["manufacturer_name", "제조사명"],
-    ["manufacturing_site", "제조 시설명"],
-    ["manufacturing_site_address", "제조 시설 주소"],
-    ["us_agent_name", "U.S. Agent 이름"],
-    ["us_agent_contact", "U.S. Agent 연락처"],
-    ["importer_name", "미국 수입자"],
-    ["importer_contact", "수입자 연락처"],
-  ];
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setExportProfile(readExportProfile()));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  const updateProfile = <K extends keyof ExportProfile>(key: K, value: ExportProfile[K]) => {
-    setExportProfile((previous) => ({ ...previous, [key]: value }));
-    setProfileSaved(false);
-  };
-
-  const textValue = (key: keyof ExportProfile) => String(exportProfile[key] ?? "");
 
   return (
     <>
@@ -196,47 +169,6 @@ export default function MyPage() {
             >
               이용권 구매 <span className="font-mono">→</span>
             </button>
-          </div>
-        </div>
-
-
-        {/* 미국 수출 프로필: 여러 제품에서 재사용 */}
-        <div className="py-[18px] border-b border-[var(--line)]">
-          <div className="flex items-center gap-[11px] m-[0_0_13px]">
-            <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11px] p-[2px_7px] inline-flex items-center">02</span>
-            <h2 className="m-0 text-[13px] font-bold text-[var(--ink)] tracking-[-0.2px]">미국 수출 프로필</h2>
-            <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
-            <span className="text-[var(--ink-3)] font-mono text-[10.5px]">다음 검사에 재사용</span>
-          </div>
-          <p className="m-[0_0_12px] text-[12px] text-[var(--ink-3)] leading-[1.6]">
-            제조 시설과 미국 유통 파트너 정보를 한 번 저장하면 다른 제품의 수출 준비에서도 다시 사용할 수 있습니다.
-          </p>
-          <div className="grid grid-cols-2 gap-2.5 max-[900px]:grid-cols-1">
-            {profileFields.map(([key, label]) => (
-              <label key={key} className="text-[11.5px] text-[var(--ink-2)]">
-                {label}
-                <input
-                  className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                  value={textValue(key)}
-                  onChange={(event) => updateProfile(key, event.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 flex items-center gap-3">
-            <button
-              type="button"
-              className="font-sans text-[12.5px] font-bold p-[9px_14px] border border-[var(--brand)] bg-[var(--brand)] text-[var(--on-brand)] cursor-pointer hover:bg-[var(--brand-deep)]"
-              onClick={() => {
-                writeExportProfile(exportProfile);
-                setProfileSaved(true);
-              }}
-            >
-              프로필 저장
-            </button>
-            <span className="font-mono text-[10.5px] text-[var(--brand-ink)]" aria-live="polite">
-              {profileSaved ? "저장됨 · 다음 미국 검사에 재사용됩니다." : "변경사항이 있습니다."}
-            </span>
           </div>
         </div>
 

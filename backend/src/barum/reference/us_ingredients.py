@@ -98,18 +98,3 @@ def check_sunscreen_ingredients(ingredient_names: list[str]) -> dict[str, list[s
             continue
         (approved if is_us_approved(name) else unapproved).append(name)
     return {"approved": approved, "unapproved": unapproved}
-
-
-@lru_cache(maxsize=1)
-def _us_active_details() -> dict[str, dict]:
-    """정규화된 공식 성분명 → M020 데이터 레코드."""
-    return {
-        _normalize(row["성분명"]): row
-        for row in _load_us()["categories"]["자외선차단"]
-    }
-
-
-def sunscreen_active_details(ingredient_name: str) -> dict | None:
-    """성분의 M020 데이터 레코드를 반환한다(없으면 None)."""
-    canonical = canonical_name(ingredient_name)
-    return _us_active_details().get(_normalize(canonical))
