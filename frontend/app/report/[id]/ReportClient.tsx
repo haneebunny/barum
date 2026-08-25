@@ -702,6 +702,10 @@ export function ReportClient({ envelope }: ReportClientProps) {
     <>
       {/* 요약 상단바 */}
       <div className="p-[18px_20px] border-b border-[var(--line)]">
+        {/* AI 결과 상시 고지. 경보가 아니라 안내라 회색 톤으로만 알린다(§F). */}
+        <p className="m-0 mb-3 text-[12px] text-[var(--ink-3)] leading-[1.6] break-keep">
+          AI 분석 결과이며, 법률 자문이나 최종 적합성 판단을 대신하지 않습니다.
+        </p>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             type="button"
