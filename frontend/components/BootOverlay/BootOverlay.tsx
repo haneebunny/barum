@@ -48,22 +48,20 @@ export function useConsoleEntry() {
 }
 
 export function BootOverlay({ show }: { show: boolean }) {
-  const [lineCount, setLineCount] = useState(0);
+  if (!show) return null;
+  return <VisibleBootOverlay />;
+}
+
+function VisibleBootOverlay() {
+  const [lineCount, setLineCount] = useState(1);
 
   useEffect(() => {
-    if (!show) {
-      setLineCount(0);
-      return;
-    }
-    setLineCount(1);
     const t = setInterval(
       () => setLineCount(prev => Math.min(prev + 1, BOOT_LINES.length)),
       LINE_INTERVAL_MS
     );
     return () => clearInterval(t);
-  }, [show]);
-
-  if (!show) return null;
+  }, []);
 
   return (
     <div

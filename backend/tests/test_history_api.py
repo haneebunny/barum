@@ -24,6 +24,7 @@ class _FakeTable:
         self._store = store
         self._insert = None
         self._eq_id = None
+        self._eq_column = None
 
     def insert(self, row):
         self._insert = row
@@ -33,10 +34,14 @@ class _FakeTable:
         return self
 
     def eq(self, col, val):
+        self._eq_column = col
         self._eq_id = val
         return self
 
     def limit(self, n):
+        return self
+
+    def order(self, *args, **kwargs):
         return self
 
     def execute(self):
@@ -44,6 +49,8 @@ class _FakeTable:
             self._store.rows[self._insert["id"]] = self._insert
             return SimpleNamespace(data=[self._insert])
         if self._eq_id is not None:
+            if self._eq_column == "region":
+                return SimpleNamespace(data=[row for row in self._store.rows.values() if row.get("region") == self._eq_id])
             row = self._store.rows.get(self._eq_id)
             return SimpleNamespace(data=[row] if row else [])
         return SimpleNamespace(data=list(self._store.rows.values()))
@@ -103,6 +110,132 @@ def test_check_text_returns_result_id_and_saves(fake):
     assert saved["region"] == "KR"
     assert saved["image_sha256"] is None  # 텍스트 입력이라 이미지 없음
     assert saved["report"]["summary"]["n_findings"] >= 1
+
+
+def test_check_persists_input_snapshot_without_changing_check_response(fake):
+    response = client.post(
+        "/check",
+        data={
+            "region": "KR",
+            "ad_text": "Moisturizes dry skin",
+            "ingredients": "Water, Glycerin",
+            "product_name": "Demo Cream",
+            "domestic_category": "skincare",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "input_snapshot" not in body
+
+    snapshot = fake.rows[body["result_id"]]["report"]["input_snapshot"]
+    assert snapshot["source_report_id"] == body["result_id"]
+    assert snapshot["source_region"] == "KR"
+    assert snapshot["ad_text_raw"] == "Moisturizes dry skin"
+    assert snapshot["normalized_ingredients"] == ["Water", "Glycerin"]
+    assert snapshot["product_name"] == "Demo Cream"
+
+    detail = client.get(f"/reports/{body['result_id']}")
+    assert detail.status_code == 200
+    assert detail.json()["input_snapshot"]["schema_version"] == "1"
+
+
+def test_filename_only_ingredient_input_is_not_judged_as_an_ingredient(fake):
+    response = client.post(
+        "/check",
+        data={"region": "KR", "ad_text": "Moisturizes dry skin", "ingredients": "ingredients.xlsx"},
+    )
+    assert response.status_code == 200
+    snapshot = fake.rows[response.json()["result_id"]]["report"]["input_snapshot"]
+    assert snapshot["ingredients_input_kind"] == "FILENAME_ONLY"
+    assert snapshot["normalized_ingredients"] == []
+    assert "ingredients_input_looks_like_filename" in snapshot["warnings"]
+
+
+def test_domestic_report_list_and_us_rerun_require_explicit_category(fake):
+    source = client.post(
+        "/check",
+        data={
+            "region": "KR",
+            "ad_text": "SPF 30 sun protection",
+            "ingredients": "Water, Glycerin",
+            "product_name": "Demo Sun Cream",
+        },
+    )
+    assert source.status_code == 200
+    source_id = source.json()["result_id"]
+
+    history = client.get("/reports", params={"region": "KR"})
+    assert history.status_code == 200
+    item = next(item for item in history.json() if item["result_id"] == source_id)
+    assert item["snapshot_available"] is True
+    assert "ad_text" in item["input_materials"]
+    assert "ingredients" in item["input_materials"]
+
+    rerun = client.post(f"/reports/{source_id}/export-readiness")
+    assert rerun.status_code == 422
+    assert rerun.json()["detail"]["code"] == "DOMESTIC_CATEGORY_REQUIRED"
+
+
+def test_domestic_report_us_rerun_accepts_snapshot_category(fake):
+    source = client.post(
+        "/check",
+        data={
+            "region": "KR",
+            "ad_text": "SPF 30 sun protection",
+            "ingredients": "Water, Glycerin",
+            "product_name": "Demo Sun Cream",
+            "domestic_category": "sun_care",
+        },
+    )
+    assert source.status_code == 200
+    source_id = source.json()["result_id"]
+
+    rerun = client.post(f"/reports/{source_id}/export-readiness")
+    assert rerun.status_code == 200
+    report = rerun.json()
+    assert report["report_type"] == "export_readiness"
+    assert report["source_report_id"] == source_id
+    assert report["product_snapshot"]["ingredients"] == ["Water", "Glycerin"]
+    assert report["product_snapshot"]["claims"] == ["SPF 30 sun protection"]
+
+
+def test_domestic_report_us_rerun_accepts_category_override(fake):
+    source = client.post(
+        "/check",
+        data={
+            "region": "KR",
+            "ad_text": "SPF 30 sun protection",
+            "ingredients": "Water, Glycerin",
+            "product_name": "Demo Sun Cream",
+        },
+    )
+    assert source.status_code == 200
+    source_id = source.json()["result_id"]
+
+    rerun = client.post(
+        f"/reports/{source_id}/export-readiness",
+        json={"domestic_category": "sun_care"},
+    )
+    assert rerun.status_code == 200
+    report = rerun.json()
+    assert report["report_type"] == "export_readiness"
+    assert report["source_report_id"] == source_id
+    assert report["product_snapshot"]["ingredients"] == ["Water", "Glycerin"]
+    assert report["product_snapshot"]["claims"] == ["SPF 30 sun protection"]
+
+
+def test_old_report_without_snapshot_returns_explicit_rerun_error(fake):
+    fake.rows["legacy-rid"] = {
+        "id": "legacy-rid",
+        "created_at": "2026-08-11T00:00:00Z",
+        "region": "KR",
+        "report": {"findings": [], "unjudged": [], "summary": {"region": "KR", "n_sentences": 0, "n_findings": 0}},
+        "image_sha256": None,
+        "image_path": None,
+    }
+    response = client.post("/reports/legacy-rid/export-readiness")
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INPUT_SNAPSHOT_UNAVAILABLE"
 
 
 def test_get_report_returns_stored_check(fake):

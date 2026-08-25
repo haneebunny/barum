@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -22,15 +22,20 @@ from barum.judge.export_readiness import build_export_readiness_report
 from barum.judge.us_sunscreen import USSunscreenJudge
 from barum.models import (
     CheckReport,
+    DomesticInputSnapshot,
+    DomesticProductCategory,
     ExportReadinessReport,
+    ExportReadinessFromReportRequest,
     ExportReadinessRequest,
     GenerateRequest,
     GenerateResponse,
+    InputAsset,
     IngredientUploadResponse,
     Region,
     RegulatoryBasis,
     RemediationRequest,
     RemediationResponse,
+    ReportListItem,
     StoredCheck,
     USPreflightReport,
     ExportProduct,
@@ -53,6 +58,7 @@ from barum.storage.checks_store import (
     new_result_id,
     save_cached_check,
     save_check,
+    list_checks,
     sha256_hex,
     upload_image,
 )
@@ -215,6 +221,13 @@ def _persist_check(
             ext = _CT_TO_EXT.get(content_type or "", ".bin")
             image_path = f"{result_id}{ext}"
             upload_image(client, image_path, image_bytes, content_type or "application/octet-stream")
+        snapshot = getattr(report, "input_snapshot", None)
+        if snapshot is not None:
+            snapshot.source_report_id = result_id
+            if image_path and snapshot.assets:
+                for asset in snapshot.assets:
+                    if asset.storage_ref is None:
+                        asset.storage_ref = image_path
         row = build_check_row(
             result_id, region, report.model_dump(mode="json"), image_sha256, image_path,
             product_name=product_name, cache_key=cache_key,
@@ -250,6 +263,40 @@ def _parse_readiness_json(raw: str | None, field_name: str, model_type):
             status_code=422,
             detail=f"{field_name} 형식이 올바르지 않습니다: {exc}",
         ) from exc
+
+
+_INGREDIENT_FILE_SUFFIXES = (".csv", ".txt", ".pdf", ".xls", ".xlsx", ".doc", ".docx")
+
+
+def _looks_like_ingredient_filename(value: str | None) -> bool:
+    """Frontend가 보낸 한 개 이상의 파일명을 실제 성분으로 오판하지 않게 식별한다."""
+    if not value:
+        return False
+    candidates = [part.strip().lower() for part in re.split(r"[,\n]+", value) if part.strip()]
+    return bool(candidates) and all(
+        "/" in candidate
+        or "\\" in candidate
+        or candidate.endswith(_INGREDIENT_FILE_SUFFIXES)
+        for candidate in candidates
+    )
+
+
+def _snapshot_materials(snapshot: DomesticInputSnapshot | None) -> list[str]:
+    """이력 목록에서 사용자가 실제로 제공한 자료 종류를 짧은 라벨로 만든다."""
+    if snapshot is None:
+        return []
+    materials: list[str] = []
+    if snapshot.ad_text_raw and snapshot.ad_text_raw.strip():
+        materials.append("ad_text")
+    if snapshot.ocr_sentences:
+        materials.append("image_ocr")
+    if snapshot.assets:
+        materials.append("image")
+    if snapshot.normalized_ingredients:
+        materials.append("ingredients")
+    elif snapshot.ingredients_input_kind == "FILENAME_ONLY":
+        materials.append("ingredient_file_reference")
+    return materials
 
 
 @app.get("/health")
@@ -292,12 +339,44 @@ def get_report(result_id: str) -> StoredCheck:
 
     return StoredCheck(
         result_id=row["id"],
-        created_at=str(row["created_at"]),
+        created_at=str(row.get("created_at", "")),
         region=region,
         image_available=bool(row.get("image_path")),
         product_name=row.get("product_name"),
+        input_snapshot=getattr(report, "input_snapshot", None),
         report=report,
     )
+
+
+@app.get("/reports", response_model=list[ReportListItem])
+def list_reports(
+    region: Region | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+) -> list[ReportListItem]:
+    """해외 수출 화면에서 국내 검사 결과를 선택할 수 있도록 이력을 반환한다."""
+    rows = list_checks(_checks_client(), region.value if region else None, limit=limit)
+    items: list[ReportListItem] = []
+    for row in rows:
+        report_data = row.get("report") or {}
+        raw_snapshot = report_data.get("input_snapshot")
+        try:
+            snapshot = DomesticInputSnapshot.model_validate(raw_snapshot) if raw_snapshot else None
+            parsed_region = Region(row.get("region", "KR"))
+        except Exception:
+            snapshot = None
+            parsed_region = Region.KR
+        items.append(
+            ReportListItem(
+                result_id=row["id"],
+                created_at=str(row.get("created_at", "")),
+                region=parsed_region,
+                product_name=row.get("product_name") or (snapshot.product_name if snapshot else None),
+                image_available=bool(row.get("image_path")),
+                snapshot_available=snapshot is not None,
+                input_materials=_snapshot_materials(snapshot),
+            )
+        )
+    return items
 
 
 @app.get(
@@ -337,7 +416,7 @@ def get_report_image(result_id: str) -> Response:
     return Response(content=data, media_type=_EXT_TO_CT.get(ext, "application/octet-stream"))
 
 
-@app.post("/check", response_model=CheckReport)
+@app.post("/check", response_model=CheckReport, response_model_exclude={"input_snapshot"})
 async def check(
     region: Region = Form(...),
     ad_text: str | None = Form(None),
@@ -353,6 +432,8 @@ async def check(
     product_name: str | None = Form(
         None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
     ),
+    domestic_category: str | None = Form(None),
+    domestic_subcategory: str | None = Form(None),
 ) -> CheckReport:
     """광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.
 
@@ -366,6 +447,14 @@ async def check(
             detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
+    ingredients_for_judge = None if _looks_like_ingredient_filename(ingredients) else ingredients
+    ingredients_input_kind = (
+        "FILENAME_ONLY"
+        if _looks_like_ingredient_filename(ingredients)
+        else "TEXT"
+        if ingredients and ingredients.strip()
+        else "MISSING"
+    )
     cache_key = None
     if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
         image_sha256 = sha256_hex(image_bytes)
@@ -373,9 +462,13 @@ async def check(
             image_sha256=image_sha256,
             region_or_country=region.value,
             ad_text=ad_text,
-            ingredients=ingredients,
+            ingredients=ingredients_for_judge,
             ingredient_amounts=ingredient_amounts,
             product_name=product_name,
+            domestic_category=domestic_category,
+            domestic_subcategory=domestic_subcategory,
+            ingredients_raw=ingredients,
+            ingredients_input_kind=ingredients_input_kind,
         )
         cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
         if cached_report is not None and isinstance(cached_report, CheckReport):
@@ -396,11 +489,24 @@ async def check(
         image_filename=image.filename if image is not None else None,
         vlm=ocr_vlm,
         judge=_build_judge(),
-        ingredients=ingredients,
+        ingredients=ingredients_for_judge,
         ingredient_amounts=ingredient_amounts,
         product_name=product_name,
+        ingredients_raw=ingredients,
+        domestic_category=domestic_category,
+        domestic_subcategory=domestic_subcategory,
         rewriter=_replacement_rewriter(),
     )
+    if report.input_snapshot is not None and image_bytes:
+        report.input_snapshot.assets = [
+            InputAsset(
+                role="advertising_or_detail_image",
+                original_filename=image.filename if image is not None else None,
+                content_type=image.content_type if image is not None else None,
+                sha256=sha256_hex(image_bytes),
+                size_bytes=len(image_bytes),
+            )
+        ]
     # **OCR이 깨진 결과는 캐시하지 않는다**(2026-08-24 팀장 발견).
     # 실패한 리포트를 캐시에 박으면 화면이 "다시 시도해 주세요"라고 안내해도
     # 재시도가 같은 실패를 캐시에서 그대로 돌려받는다. 재시도가 원천적으로
@@ -417,7 +523,10 @@ async def check(
         report, region.value, image_bytes, image.content_type if image else None,
         product_name=product_name, cache_key=cache_key,
     )
-    if cache_key:
+    if cache_key and (
+        report.result_id is not None
+        or os.environ.get("CHECKS_PERSIST", "1") == "0"
+    ):
         save_cached_check(cache_key, report)
     return report
 
@@ -448,6 +557,12 @@ async def check_us_sunscreen(
             detail=f"현재는 미국(US) 프리플라이트만 지원합니다. 받은 값: {country!r}",
         )
 
+    if image is not None and image.content_type not in _CT_TO_EXT:
+        raise HTTPException(
+            status_code=415,
+            detail="광고 이미지는 JPG, PNG, WebP 형식만 지원합니다.",
+        )
+
     image_bytes = await image.read() if image is not None else None
     if not ad_text and not image_bytes:
         raise HTTPException(
@@ -455,6 +570,14 @@ async def check_us_sunscreen(
             detail="광고 문구(ad_text) 또는 광고 이미지(image) 중 최소 하나는 입력해야 합니다.",
         )
 
+    ingredients_for_judge = None if _looks_like_ingredient_filename(ingredients) else ingredients
+    ingredients_input_kind = (
+        "FILENAME_ONLY"
+        if _looks_like_ingredient_filename(ingredients)
+        else "TEXT"
+        if ingredients and ingredients.strip()
+        else "MISSING"
+    )
     cache_key = None
     if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
         image_sha256 = sha256_hex(image_bytes)
@@ -462,8 +585,10 @@ async def check_us_sunscreen(
             image_sha256=image_sha256,
             region_or_country=country,
             ad_text=ad_text,
-            ingredients=ingredients,
+            ingredients=ingredients_for_judge,
             product_name=product_name,
+            ingredients_raw=ingredients,
+            ingredients_input_kind=ingredients_input_kind,
         )
         cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
         if cached_report is not None and isinstance(cached_report, USPreflightReport):
@@ -482,7 +607,7 @@ async def check_us_sunscreen(
         image_filename=image.filename if image is not None else None,
         vlm=ocr_vlm,
         judge=USSunscreenJudge(),
-        ingredients=ingredients,
+        ingredients=ingredients_for_judge,
         product_name=product_name,
     )
     # 국내 경로와 같은 이유로 OCR이 깨진 결과는 캐시하지 않는다(재시도 가능해야 한다).
@@ -500,7 +625,10 @@ async def check_us_sunscreen(
         product_name=product_name,
         cache_key=cache_key,
     )
-    if cache_key:
+    if cache_key and (
+        report.result_id is not None
+        or os.environ.get("CHECKS_PERSIST", "1") == "0"
+    ):
         save_cached_check(cache_key, report)
     return report
 
@@ -573,6 +701,84 @@ def export_readiness(req: ExportReadinessRequest) -> ExportReadinessReport:
         image_bytes=None,
         content_type=None,
         product_name=req.product_name,
+    )
+    return report
+
+
+@app.post("/reports/{result_id}/export-readiness", response_model=ExportReadinessReport)
+def export_readiness_from_report(
+    result_id: str,
+    overrides: ExportReadinessFromReportRequest | None = Body(default=None),
+) -> ExportReadinessReport:
+    """국내 원본 입력 스냅샷만으로 미국 generic readiness를 새로 실행한다."""
+    row = get_check(_checks_client(), result_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="국내 검사 결과를 찾을 수 없습니다.")
+    if row.get("region") != Region.KR.value:
+        raise HTTPException(status_code=400, detail="국내(KR) 검사 결과만 미국 재분석에 사용할 수 있습니다.")
+
+    report_data = row.get("report") or {}
+    snapshot_data = report_data.get("input_snapshot")
+    if not snapshot_data:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INPUT_SNAPSHOT_UNAVAILABLE",
+                "message": "이 국내 검사에는 재분석할 원본 입력 스냅샷이 없습니다.",
+            },
+        )
+    try:
+        snapshot = DomesticInputSnapshot.model_validate(snapshot_data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INPUT_SNAPSHOT_INVALID", "message": "원본 입력 스냅샷을 읽을 수 없습니다."},
+        ) from exc
+
+    overrides = overrides or ExportReadinessFromReportRequest()
+    category = overrides.domestic_category
+    if category is None and snapshot.domestic_category:
+        try:
+            category = DomesticProductCategory(snapshot.domestic_category)
+        except ValueError:
+            category = None
+    if category is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "DOMESTIC_CATEGORY_REQUIRED",
+                "message": "국내 제품 카테고리를 자동으로 확인할 수 없어 카테고리 확인이 필요합니다.",
+            },
+        )
+
+    claims = []
+    if snapshot.ad_text_raw and snapshot.ad_text_raw.strip():
+        claims.append(snapshot.ad_text_raw.strip())
+    claims.extend(sentence.text for sentence in snapshot.ocr_sentences if sentence.text.strip())
+    request = ExportReadinessRequest(
+        destination_country="US",
+        domestic_category=category,
+        domestic_subcategory=overrides.domestic_subcategory or snapshot.domestic_subcategory,
+        product_name=snapshot.product_name,
+        claims=claims,
+        ingredients=snapshot.normalized_ingredients,
+        ingredient_amounts={
+            item.ingredient: item.amount for item in snapshot.ingredient_amounts
+        },
+        profile_state=overrides.profile_state,
+        profile=overrides.profile,
+    )
+    report = build_export_readiness_report(
+        request,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    report.source_report_id = result_id
+    report.result_id = _persist_check(
+        report,
+        region=Region.US.value,
+        image_bytes=None,
+        content_type=None,
+        product_name=snapshot.product_name,
     )
     return report
 

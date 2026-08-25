@@ -170,6 +170,69 @@ class RegulatoryBasis(BaseModel):
     citations: list[BasisCitation]
 
 
+class InputAsset(BaseModel):
+    """국내 검사에 사용된 원본 자료의 보존 메타데이터."""
+
+    role: str
+    original_filename: str | None = None
+    content_type: str | None = None
+    sha256: str | None = None
+    size_bytes: int | None = None
+    storage_ref: str | None = None
+
+
+class InputSentence(BaseModel):
+    """미국 재분석에 재사용할 수 있도록 보존하는 추출 문장."""
+
+    text: str
+    source: str
+    order: int
+    tile: str | None = None
+    x_start: int | None = None
+    x_end: int | None = None
+    y_start: int | None = None
+    y_end: int | None = None
+
+
+class SnapshotIngredientAmount(BaseModel):
+    """국내 검사에서 입력된 성분 함량 원문의 구조화된 일부."""
+
+    ingredient: str
+    amount: str
+
+
+class InputExtraction(BaseModel):
+    """원본 자료에서 추출된 OCR 처리 상태."""
+
+    ocr_status: Literal["NOT_RUN", "COMPLETE", "PARTIAL", "FAILED"] = "NOT_RUN"
+    ocr_failed_tiles: int = 0
+
+
+class DomesticInputSnapshot(BaseModel):
+    """국내 판정 결과와 분리해 보존하는 미국 재분석용 원본 입력 스냅샷.
+
+    과거 리포트에는 이 필드가 없을 수 있으므로 모든 값은 조회 시 optional 호환을 전제로 한다.
+    """
+
+    schema_version: Literal["1"] = "1"
+    source_report_id: str | None = None
+    source_endpoint: str = "/check"
+    source_region: Region = Region.KR
+    captured_at: str
+    product_name: str | None = None
+    domestic_category: str | None = None
+    domestic_subcategory: str | None = None
+    ad_text_raw: str | None = None
+    ocr_sentences: list[InputSentence] = Field(default_factory=list)
+    ingredients_raw: str | None = None
+    ingredients_input_kind: Literal["TEXT", "FILENAME_ONLY", "MISSING"] = "MISSING"
+    normalized_ingredients: list[str] = Field(default_factory=list)
+    ingredient_amounts: list[SnapshotIngredientAmount] = Field(default_factory=list)
+    assets: list[InputAsset] = Field(default_factory=list)
+    extraction: InputExtraction = Field(default_factory=InputExtraction)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CheckReport(BaseModel):
     """`POST /check` 응답. findings + unjudged + summary.
 
@@ -184,6 +247,7 @@ class CheckReport(BaseModel):
     summary: Summary
     result_id: str | None = None
     basis: RegulatoryBasis | None = None
+    input_snapshot: DomesticInputSnapshot | None = None
     # 지적별 대체표현. **판정할 때 배치로 한 번에 만들어 여기 싣는다**(팀장 지시,
     # 2026-08-22). 전에는 리포트 화면이 카드를 펼칠 때마다 /remediate를 1건씩
     # 불러서 카드당 5~8초가 걸렸고, 다시 보기로 열면 또 불렀다. 판정에 이미 LLM이
@@ -509,6 +573,33 @@ class ExportReadinessRequest(BaseModel):
         return value
 
 
+class ExportReadinessFromReportRequest(BaseModel):
+    """저장된 국내 검사 결과로 미국 readiness를 재실행할 때의 선택적 보정값."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    domestic_category: DomesticProductCategory | None = None
+    domestic_subcategory: str | None = None
+    profile_state: ReadinessInputState = ReadinessInputState.NOT_ENTERED
+    profile: ExportProfile = Field(default_factory=ExportProfile)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_profile_state(cls, value: Any) -> Any:
+        """프로필 값이 전달되면 별도 상태 입력 없이 제공됨으로 표시한다."""
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        profile = value.get("profile")
+        if (
+            value.get("profile_state") in (None, ReadinessInputState.NOT_ENTERED.value)
+            and isinstance(profile, dict)
+            and any(v not in (None, "", [], {}) for v in profile.values())
+        ):
+            value["profile_state"] = ReadinessInputState.PROVIDED.value
+        return value
+
+
 class RegulatoryRoute(BaseModel):
     """사용자에게 보여줄 label과 시스템 code를 분리한 내부 규제 경로 후보."""
 
@@ -560,6 +651,7 @@ class ExportReadinessReport(BaseModel):
     report_type: Literal["export_readiness"] = "export_readiness"
     schema_version: Literal["2"] = "2"
     result_id: str | None = None
+    source_report_id: str | None = None
     created_at: str
     destination_country: str
     domestic_category: DomesticProductCategory
@@ -590,12 +682,25 @@ class StoredCheck(BaseModel):
     region: Region
     image_available: bool
     product_name: str | None = None
+    input_snapshot: DomesticInputSnapshot | None = None
     report: Union[
         CheckReport,
         USPreflightReport,
         USExportReadinessReport,
         ExportReadinessReport,
     ]
+
+
+class ReportListItem(BaseModel):
+    """해외 수출 화면에서 원본 국내 검사를 선택할 때 필요한 최소 이력 정보."""
+
+    result_id: str
+    created_at: str
+    region: Region
+    product_name: str | None = None
+    image_available: bool = False
+    snapshot_available: bool = False
+    input_materials: list[str] = Field(default_factory=list)
 
 
 class RemediationRequest(BaseModel):

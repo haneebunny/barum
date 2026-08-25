@@ -3,53 +3,40 @@
 import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { checkAd, createExportReadiness } from "@/lib/api/client";
-import type { CheckReport, DomesticProductCategory, ExportProfile, ExportReadinessReport, GenericLabelEvidence, GenericProductEvidence, ReadinessInputState } from "@/lib/api/schema";
+import { checkAd, checkUSPreflight, getReport, getReports, uploadIngredients } from "@/lib/api/client";
+import type { CheckReport, DomesticInputSnapshot, ReportEnvelope, ReportListItem, USPreflightReport } from "@/lib/api/schema";
 import { UploadSimple, Check, X, CircleNotch, Warning, Minus } from "@phosphor-icons/react";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { useError } from "@/lib/error/ErrorContext";
 import { takeDraft } from "@/lib/draftHandoff";
-import { DEFAULT_EXPORT_PROFILE, readExportProfile } from "@/lib/exportProfile";
 
-type NullableBoolean = boolean | null;
-
-function parseNullableBoolean(value: string): NullableBoolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return null;
-}
-
-function nullableBooleanValue(value: NullableBoolean): string {
-  return value === null ? "" : value ? "true" : "false";
-}
-
-function getAnalysisStats(report: CheckReport | ExportReadinessReport) {
-  if ("items" in report) {
-    return {
-      issueCount: report.items.filter((item) => item.status !== "COMPLIANT").length,
-      imageFindings: 0,
-    };
-  }
+function getAnalysisStats(report: CheckReport | USPreflightReport) {
   return {
     issueCount: report.findings.length,
-    imageFindings: report.findings.filter((finding) => finding.location?.tile).length,
+    imageFindings: report.findings[0] && "location" in report.findings[0] ? report.findings.filter((finding) => finding.location?.tile).length : 0,
   };
 }
 
-const CATEGORY_OPTIONS: Array<{ value: DomesticProductCategory; label: string }> = [
+const CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "skincare", label: "기초 화장품" }, { value: "sun_care", label: "선케어·자외선 차단" },
   { value: "cleansing", label: "클렌징" }, { value: "makeup", label: "메이크업" }, { value: "mask_pack", label: "마스크팩" },
   { value: "haircare", label: "헤어케어" }, { value: "bodycare", label: "바디케어" }, { value: "fragrance", label: "향수·향 제품" }, { value: "other", label: "기타" },
 ];
 
-const EVIDENCE_STATE_OPTIONS: Array<{ value: ReadinessInputState; label: string }> = [
-  { value: "PROVIDED", label: "자료 있음" }, { value: "NOT_AVAILABLE", label: "자료 없음" },
-  { value: "UNKNOWN", label: "있는지 모름" }, { value: "NOT_ENTERED", label: "나중에 입력" },
-];
+function formatReportDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+}
 
-function evidence(input_state: ReadinessInputState) { return { input_state, evidence: [] }; }
+function getSnapshot(envelope: ReportEnvelope | null): DomesticInputSnapshot | null {
+  return envelope?.input_snapshot ?? null;
+}
+
+function categoryLabel(value: string | null | undefined): string {
+  return CATEGORY_OPTIONS.find((option) => option.value === value)?.label || value || "분류 미입력";
+}
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { useDailyChecks, useTickets } from "@/lib/tickets";
 
@@ -58,6 +45,43 @@ interface FileItem {
   name: string;
   ext: string;
   file?: File;
+  ingredientParseStatus?: "uploading" | "done" | "error";
+  ingredientRows?: Array<{ name: string; amount: string }>;
+  ingredientWarnings?: string[];
+  ingredientError?: string;
+}
+
+const INGREDIENT_FILE_EXTENSIONS = new Set([".xlsx", ".csv", ".txt"]);
+const AD_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const AD_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function getFileParts(file: File): Pick<FileItem, "name" | "ext"> {
+  const lastDot = file.name.lastIndexOf(".");
+  return {
+    name: lastDot === -1 ? file.name : file.name.substring(0, lastDot),
+    ext: lastDot === -1 ? "" : file.name.substring(lastDot),
+  };
+}
+
+function isSupportedAdImage(file: File): boolean {
+  const { ext } = getFileParts(file);
+  return AD_IMAGE_EXTENSIONS.has(ext.toLowerCase())
+    && (!file.type || AD_IMAGE_MIME_TYPES.has(file.type.toLowerCase()));
+}
+
+function createLocalReportId(region: "US" | "KR"): string {
+  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${region.toLowerCase()}-local-${suffix}`;
+}
+
+function cacheUSPreflight(resultId: string, report: USPreflightReport): void {
+  try {
+    window.sessionStorage.setItem(`us-preflight-${resultId}`, JSON.stringify(report));
+  } catch (error) {
+    console.warn("미국 프리플라이트 결과를 임시 저장하지 못했습니다.", error);
+  }
 }
 
 function InspectContent() {
@@ -79,39 +103,58 @@ function InspectContent() {
       ? "정제수, 티타늄디옥사이드, 아연옥사이드, 부틸렌글라이콜, 글리세린"
       : ""
   );
-  const [adFiles, setAdFiles] = useState<FileItem[]>(
-    isSunscreenDraft
-      ? [{ id: "ad-file-draft", name: "선크림_기획안", ext: ".pdf" }]
-      : []
-  );
+  const [adFiles, setAdFiles] = useState<FileItem[]>([]);
+  const [adFileError, setAdFileError] = useState<string | null>(null);
   const [pFiles, setPFiles] = useState<FileItem[]>([]);
+  const [ingredientFileError, setIngredientFileError] = useState<string | null>(null);
   const [productName, setProductName] = useState(isSunscreenDraft ? "미국 수출 선스크린 데모" : "");
-  const [domesticCategory, setDomesticCategory] = useState<DomesticProductCategory>(isSunscreenDraft ? "sun_care" : "skincare");
-  const [domesticSubcategory, setDomesticSubcategory] = useState("");
-  const [labelEvidenceState, setLabelEvidenceState] = useState<ReadinessInputState>("NOT_ENTERED");
-  const [sunLabelState, setSunLabelState] = useState<ReadinessInputState>("NOT_ENTERED");
-  const [sunTestState, setSunTestState] = useState<ReadinessInputState>("NOT_ENTERED");
-  const [intendedUse, setIntendedUse] = useState(isSunscreenDraft ? "sunscreen" : "");
-  const [spfValue, setSpfValue] = useState("");
-  const [spfDisplayed, setSpfDisplayed] = useState<NullableBoolean>(null);
-  const [broadSpectrum, setBroadSpectrum] = useState<NullableBoolean>(null);
-  const [waterResistant, setWaterResistant] = useState<NullableBoolean>(null);
-  const [waterResistanceMinutes, setWaterResistanceMinutes] = useState("");
-  const [spfTestReport, setSpfTestReport] = useState<NullableBoolean>(null);
-  const [broadSpectrumTestReport, setBroadSpectrumTestReport] = useState<NullableBoolean>(null);
-  const [waterResistanceTestReport, setWaterResistanceTestReport] = useState<NullableBoolean>(null);
-  const [drugFactsReady, setDrugFactsReady] = useState<NullableBoolean>(null);
-  const [claimsReviewed, setClaimsReviewed] = useState<NullableBoolean>(null);
-  const [drugListingReady, setDrugListingReady] = useState<NullableBoolean>(null);
-  const [exportProfile, setExportProfile] = useState<ExportProfile>(DEFAULT_EXPORT_PROFILE);
-
+  const [domesticReports, setDomesticReports] = useState<ReportListItem[]>([]);
+  const [domesticReportsLoading, setDomesticReportsLoading] = useState(false);
+  const [domesticReportsAvailable, setDomesticReportsAvailable] = useState(true);
+  const [selectedDomesticReportId, setSelectedDomesticReportId] = useState<string | null>(null);
+  const [selectedDomesticReport, setSelectedDomesticReport] = useState<ReportEnvelope | null>(null);
+  const [selectedDomesticReportLoading, setSelectedDomesticReportLoading] = useState(false);
+  const [selectedDomesticReportError, setSelectedDomesticReportError] = useState<string | null>(null);
   const [inspectStatus, setInspectStatus] = useState<"running" | "done" | null>(null);
-  const status = inspectStatus || (adText.trim().length > 0 || adFiles.length > 0 || ingText.trim().length > 0 || productName.trim().length > 0 ? "ready" : "idle");
+  const selectedSnapshot = getSnapshot(selectedDomesticReport);
+  const hasImportedSource = Boolean(selectedDomesticReportId && selectedSnapshot);
+  const importedClaims = selectedSnapshot
+    ? [selectedSnapshot.ad_text_raw, ...selectedSnapshot.ocr_sentences.map((sentence) => sentence.text)]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join("\n")
+    : "";
+  const directRasterImage = adFiles.find((item) => item.file && isSupportedAdImage(item.file))?.file;
+  const hasAnalysisSource = hasImportedSource
+    ? importedClaims.trim().length > 0
+    : adText.trim().length > 0 || Boolean(directRasterImage);
+  const status = inspectStatus || (hasAnalysisSource ? "ready" : "idle");
+  const importedInputsDisabled = status === "running" || hasImportedSource;
 
   useEffect(() => {
     if (regionParam !== "US") return;
-    const frame = window.requestAnimationFrame(() => setExportProfile(readExportProfile()));
-    return () => window.cancelAnimationFrame(frame);
+    let active = true;
+    const frame = window.requestAnimationFrame(() => {
+      setDomesticReportsLoading(true);
+      setDomesticReportsAvailable(true);
+      getReports("KR")
+        .then((reports) => {
+          if (active) {
+            setDomesticReports(reports);
+            setDomesticReportsAvailable(true);
+          }
+        })
+        .catch((error) => {
+          console.warn("국내 검사 결과 재사용 기능을 사용할 수 없어 직접 입력으로 전환합니다.", error);
+          if (active) setDomesticReportsAvailable(false);
+        })
+        .finally(() => {
+          if (active) setDomesticReportsLoading(false);
+        });
+    });
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frame);
+    };
   }, [regionParam]);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -134,15 +177,18 @@ function InspectContent() {
     if (!draft) return;
     const frame = window.requestAnimationFrame(() => {
       if (draft.ad_text) setAdText(draft.ad_text);
-      if (draft.files?.length) setAdFiles(draft.files.map((file, i) => {
-        const lastDot = file.name.lastIndexOf(".");
-        return {
-          id: `ad-file-draft-${Date.now()}-${i}`,
-          name: lastDot === -1 ? file.name : file.name.substring(0, lastDot),
-          ext: lastDot === -1 ? "" : file.name.substring(lastDot),
-          file,
-        };
-      }));
+      if (draft.files?.length) {
+        const image = draft.files.find(isSupportedAdImage);
+        if (image) {
+          setAdFiles([{ id: `ad-file-draft-${Date.now()}`, ...getFileParts(image), file: image }]);
+        }
+        const rejected = draft.files.filter((file) => !isSupportedAdImage(file));
+        if (rejected.length > 0 || draft.files.length > 1) {
+          setAdFileError(image
+            ? "광고 이미지는 JPG, PNG, WEBP 중 1개만 사용할 수 있습니다. 지원되는 첫 이미지만 가져왔습니다."
+            : "초안의 첨부 파일은 지원하지 않습니다. JPG, PNG, WEBP 이미지 중 1개를 다시 첨부해 주세요.");
+        }
+      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -186,24 +232,63 @@ function InspectContent() {
     const newItems: FileItem[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const lastDot = file.name.lastIndexOf(".");
-      let name = file.name;
-      let ext = "";
-      if (lastDot !== -1) {
-        name = file.name.substring(0, lastDot);
-        ext = file.name.substring(lastDot);
-      }
       newItems.push({
         id: `${isProductInfo ? "p" : "ad"}-file-${Date.now()}-${i}-${Math.random()}`,
-        name,
-        ext,
+        ...getFileParts(file),
         file,
+        ingredientParseStatus: isProductInfo ? "uploading" : undefined,
       });
     }
     if (isProductInfo) {
-      setPFiles((prev) => [...prev, ...newItems]);
+      const supportedItems = newItems.filter((item) => INGREDIENT_FILE_EXTENSIONS.has(item.ext.toLowerCase()));
+      const rejectedItems = newItems.filter((item) => !INGREDIENT_FILE_EXTENSIONS.has(item.ext.toLowerCase()));
+      setIngredientFileError(
+        rejectedItems.length > 0
+          ? `지원하지 않는 파일은 제외했습니다: ${rejectedItems.map((item) => `${item.name}${item.ext}`).join(", ")}. xlsx, csv, txt만 첨부할 수 있습니다.`
+          : null,
+      );
+      if (supportedItems.length === 0) return;
+
+      setPFiles((prev) => [...prev, ...supportedItems]);
+      supportedItems.forEach((item) => {
+        if (!item.file) return;
+        void uploadIngredients(item.file)
+          .then((response) => {
+            setPFiles((current) => current.map((fileItem) => fileItem.id === item.id
+              ? {
+                  ...fileItem,
+                  ingredientParseStatus: "done",
+                  ingredientRows: response.rows,
+                  ingredientWarnings: response.warnings,
+                  ingredientError: undefined,
+                }
+              : fileItem));
+          })
+          .catch((error) => {
+            setPFiles((current) => current.map((fileItem) => fileItem.id === item.id
+              ? {
+                  ...fileItem,
+                  ingredientParseStatus: "error",
+                  ingredientRows: [],
+                  ingredientWarnings: [],
+                  ingredientError: error instanceof Error ? error.message : "파일을 해석하지 못했습니다.",
+                }
+              : fileItem));
+          });
+      });
     } else {
-      setAdFiles((prev) => [...prev, ...newItems]);
+      const supportedItems = newItems.filter((item) => item.file && isSupportedAdImage(item.file));
+      const rejectedItems = newItems.filter((item) => !item.file || !isSupportedAdImage(item.file));
+      if (supportedItems.length === 0) {
+        setAdFileError("지원하지 않는 파일입니다. 광고 이미지는 JPG, PNG, WEBP 중 1개만 첨부해 주세요.");
+        return;
+      }
+      setAdFiles([supportedItems[0]]);
+      setAdFileError(
+        rejectedItems.length > 0 || files.length > 1
+          ? "광고 이미지는 JPG, PNG, WEBP 중 1개만 사용할 수 있습니다. 지원되는 첫 이미지만 첨부했습니다."
+          : null,
+      );
     }
   };
 
@@ -214,7 +299,7 @@ function InspectContent() {
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (status === "running") return;
+    if (status === "running" || hasImportedSource) return;
     setIsDragging(true);
   };
 
@@ -226,7 +311,7 @@ function InspectContent() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    if (status === "running") return;
+    if (status === "running" || hasImportedSource) return;
     addFilesToList(e.dataTransfer.files, false);
   };
 
@@ -235,7 +320,7 @@ function InspectContent() {
   // 없었다, 2026-08-23).
   const handleDragOverP = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (status === "running") return;
+    if (status === "running" || hasImportedSource) return;
     setIsDraggingP(true);
   };
 
@@ -247,41 +332,32 @@ function InspectContent() {
   const handleDropP = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDraggingP(false);
-    if (status === "running") return;
+    if (status === "running" || hasImportedSource) return;
     addFilesToList(e.dataTransfer.files, true);
   };
 
   const removeAdFile = (id: string) => {
     setAdFiles((prev) => prev.filter((f) => f.id !== id));
+    setAdFileError(null);
   };
 
   const removePFile = (id: string) => {
     setPFiles((prev) => prev.filter((f) => f.id !== id));
+    setIngredientFileError(null);
   };
 
   const handleReset = () => {
     setAdText("");
     setIngText("");
     setAdFiles([]);
+    setAdFileError(null);
     setPFiles([]);
+    setIngredientFileError(null);
     setProductName("");
-    setDomesticCategory("skincare");
-    setDomesticSubcategory("");
-    setLabelEvidenceState("NOT_ENTERED");
-    setSunLabelState("NOT_ENTERED");
-    setSunTestState("NOT_ENTERED");
-    setIntendedUse("");
-    setSpfValue("");
-    setSpfDisplayed(null);
-    setBroadSpectrum(null);
-    setWaterResistant(null);
-    setWaterResistanceMinutes("");
-    setSpfTestReport(null);
-    setBroadSpectrumTestReport(null);
-    setWaterResistanceTestReport(null);
-    setDrugFactsReady(null);
-    setClaimsReviewed(null);
-    setDrugListingReady(null);
+    setSelectedDomesticReportId(null);
+    setSelectedDomesticReport(null);
+    setSelectedDomesticReportError(null);
+    setSelectedDomesticReportLoading(false);
     setInspectStatus(null);
     setResultId(null);
     setIsLogModalOpen(false);
@@ -294,10 +370,61 @@ function InspectContent() {
     ]);
   };
 
+  const handleDomesticReportSelect = async (report: ReportListItem) => {
+    if (status === "running") return;
+    setSelectedDomesticReportId(report.result_id);
+    setSelectedDomesticReport(null);
+    setSelectedDomesticReportError(null);
+    setResultId(null);
+    setInspectStatus(null);
+    if (!report.snapshot_available) return;
+
+    setSelectedDomesticReportLoading(true);
+    try {
+      const envelope = await getReport(report.result_id);
+      if (!envelope.input_snapshot) {
+        throw new Error("이 과거 리포트에는 미국 수출에 재사용할 원본 입력이 저장되어 있지 않습니다.");
+      }
+      setSelectedDomesticReport(envelope);
+    } catch (error) {
+      setSelectedDomesticReportError(error instanceof Error ? error.message : "국내 검사 원본을 불러오지 못했습니다.");
+    } finally {
+      setSelectedDomesticReportLoading(false);
+    }
+  };
+
+  const clearDomesticReport = () => {
+    if (status === "running") return;
+    setSelectedDomesticReportId(null);
+    setSelectedDomesticReport(null);
+    setSelectedDomesticReportError(null);
+    setSelectedDomesticReportLoading(false);
+    setInspectStatus(null);
+    setResultId(null);
+  };
+
 
   const handleRun = async () => {
-    const hasInput = adText.trim() || adFiles.length > 0 || ingText.trim() || productName.trim();
-    if (status === "running" || !hasInput) return;
+    if (status === "running" || !hasAnalysisSource) return;
+
+    const uploadingIngredientFiles = pFiles.filter((file) => file.ingredientParseStatus === "uploading");
+    if (uploadingIngredientFiles.length > 0) {
+      showError("전성분 파일 분석 중", "전성분 파일 해석이 끝난 뒤 다시 실행해 주세요.");
+      return;
+    }
+    const failedIngredientFiles = pFiles.filter((file) => file.ingredientParseStatus === "error");
+    if (failedIngredientFiles.length > 0) {
+      showError(
+        "전성분 파일 확인 필요",
+        `해석하지 못한 파일이 있습니다: ${failedIngredientFiles.map((file) => `${file.name}${file.ext}`).join(", ")}. 파일을 삭제하거나 다시 첨부해 주세요.`,
+      );
+      return;
+    }
+
+    if (isUS && selectedDomesticReportId && !selectedSnapshot) {
+      showError("원본 자료 확인 필요", "선택한 국내 리포트에는 재사용할 원본 입력이 없습니다. 직접 입력으로 전환하거나 snapshot이 저장된 리포트를 선택해 주세요.");
+      return;
+    }
 
     if (!canRunCheck) {
       setIsBlockedOpen(true);
@@ -313,50 +440,70 @@ function InspectContent() {
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // API 호출용 파라미터 조립
-    const actualImage = adFiles.find((f) => f.file)?.file;
-    const ingredients = ingText || pFiles.map((f) => `${f.name}${f.ext}`).join(", ");
-    // generic US readiness는 현재 JSON 계약이라 광고 이미지를 전송하지 않는다.
-    // 사용자가 이미지가 분석됐다고 오해하지 않도록 해당 진행 단계의 문구를 분리한다.
-    const imageAnalysisSupported = regionParam !== "US";
+    const actualImage = directRasterImage;
+    const parsedIngredients = pFiles
+      .flatMap((file) => file.ingredientRows || [])
+      // /check 계열의 ingredients는 성분명 목록 계약이다. 함량은 FileItem에
+      // 보존해 화면에만 표시하고 ingredient_amounts 계약이 연결되기 전에는 섞지 않는다.
+      .map((row) => row.name)
+      .filter(Boolean)
+      .join(", ");
+    // 직접 붙여넣은 값과 파일 파싱값을 모두 보존한다. 파일명은 성분으로 보내지 않는다.
+    const ingredients = [ingText.trim(), parsedIngredients].filter(Boolean).join(", ");
+    // 미국은 이전 프리플라이트 API를 사용해 기존 결과 화면과 같은 형식으로 표시한다.
+    const isDirectImageAnalysis = !hasImportedSource && Boolean(actualImage?.type.startsWith("image/"));
+    const importedOcrSentenceCount = selectedSnapshot?.ocr_sentences.length || 0;
+    const imageStepLabel = hasImportedSource
+      ? "저장 OCR 문장 재사용"
+      : isDirectImageAnalysis
+        ? "이미지 OCR 분석"
+        : "이미지 자료 확인";
+    const imageStepResult = (imageFindings: number): Pick<TaskStep, "status" | "valueText"> => {
+      if (hasImportedSource) {
+        return {
+          status: "done",
+          valueText: importedOcrSentenceCount > 0 ? `${importedOcrSentenceCount}문장 재사용` : "저장 문장 없음",
+        };
+      }
+      if (!isDirectImageAnalysis) return { status: "done", valueText: "대상 없음" };
+      return {
+        status: imageFindings > 0 ? "warn" : "done",
+        valueText: imageFindings > 0 ? `${imageFindings}건 감지` : "이상 없음",
+      };
+    };
 
-    // 1단계: API 호출 시작 (US면 전용 엔드포인트)
+    // 1단계: API 호출 시작 (US면 이전 프리플라이트 엔드포인트)
+    const importedIngredients = selectedSnapshot?.normalized_ingredients.length
+      ? selectedSnapshot.normalized_ingredients.join(", ")
+      : selectedSnapshot?.ingredients_input_kind === "TEXT" ? selectedSnapshot.ingredients_raw || undefined : undefined;
     const apiPromise = regionParam === "US"
-      ? createExportReadiness({
-          destination_country: "US",
-          domestic_category: domesticCategory,
-          domestic_subcategory: domesticSubcategory || null,
-          product_name: productName || null,
-          intended_use: intendedUse || null,
-          claims: adText ? [adText] : [],
-          ingredients: ingredients ? ingredients.split(",").map((item) => item.trim()).filter(Boolean) : [],
-          label_evidence: {
-            statement_of_identity: evidence(labelEvidenceState), net_quantity: evidence(labelEvidenceState),
-            business_name_address: evidence(labelEvidenceState), ingredient_declaration: evidence(labelEvidenceState),
-            english_required_information: evidence(labelEvidenceState), adverse_event_contact: evidence(labelEvidenceState),
-          } satisfies GenericLabelEvidence,
-          product_evidence: {
-            facility_registration: evidence("NOT_ENTERED"), product_listing: evidence("NOT_ENTERED"), safety_substantiation: evidence("NOT_ENTERED"), color_additives: evidence("NOT_ENTERED"),
-            spf_test: evidence(sunTestState), broad_spectrum_test: evidence(sunTestState), water_resistance_test: evidence(sunTestState), drug_facts_label: evidence(sunLabelState),
-          } satisfies GenericProductEvidence,
-          profile_state: Object.values(exportProfile).some((value) => value !== null && value !== "" && value !== undefined) ? "PROVIDED" : "NOT_ENTERED",
-          profile: exportProfile,
+      ? checkUSPreflight({
+          adText: hasImportedSource ? importedClaims || undefined : adText || undefined,
+          image: hasImportedSource ? undefined : actualImage,
+          ingredients: hasImportedSource ? importedIngredients : ingredients || undefined,
+          productName: hasImportedSource ? selectedSnapshot?.product_name || undefined : productName || undefined,
         })
       : checkAd({
           region: regionParam,
           adText: adText || undefined,
           image: actualImage,
           ingredients: ingredients || undefined,
+          // 국내 화면에는 아직 제품명/분류 입력 UI가 없으므로 빈 값을 명시해
+          // 저장 snapshot의 계약을 유지한다. 이후 입력 UI가 생기면 이 값만 연결한다.
+          productName: null,
+          domesticCategory: null,
+          domesticSubcategory: null,
         });
 
-    const isImage = adFiles.length > 0;
+    const isImage = isDirectImageAnalysis;
 
     if (reduceMotion) {
       try {
         const report = await apiPromise;
-        const rid = report.result_id ?? `us-${Date.now()}`;
+        const rid = report.result_id ?? createLocalReportId(regionParam);
         setResultId(rid);
         if (regionParam === "US") {
-          sessionStorage.setItem(`us-readiness-${rid}`, JSON.stringify(report));
+          cacheUSPreflight(rid, report as USPreflightReport);
         }
 
         const { issueCount, imageFindings } = getAnalysisStats(report);
@@ -365,7 +512,7 @@ function InspectContent() {
           { id: 1, label: "자료 확인", status: "done", valueText: isImage ? `이미지 ${adFiles.length}개` : "광고 문구" },
           { id: 2, label: "광고 문구 분석", status: "done", valueText: "완료" },
           { id: 3, label: "규제 기준 대조", status: issueCount > 0 ? "warn" : "done", valueText: issueCount > 0 ? `${issueCount}건 확인 필요` : "이상 없음" },
-          { id: 4, label: imageAnalysisSupported ? "이미지 내 위험 표현 검사" : "이미지 참고자료", status: imageAnalysisSupported && isImage ? (imageFindings > 0 ? "warn" : "done") : "done", valueText: !imageAnalysisSupported ? (isImage ? "별도 분석 안 함" : "대상 없음") : (isImage ? (imageFindings > 0 ? `${imageFindings}건 감지` : "이상 없음") : "대상 없음") },
+          { id: 4, label: imageStepLabel, ...imageStepResult(imageFindings) },
           { id: 5, label: "수정 권고안 준비", status: "done", valueText: "준비 완료" },
         ]);
         setInspectStatus("done");
@@ -386,7 +533,7 @@ function InspectContent() {
         { id: 1, label: "자료 확인", status: "running" },
         { id: 2, label: "광고 문구 분석", status: "idle" },
         { id: 3, label: "규제 기준 대조", status: "idle" },
-        { id: 4, label: imageAnalysisSupported ? "이미지 내 위험 표현 검사" : "이미지 참고자료", status: "idle" },
+        { id: 4, label: imageStepLabel, status: "idle" },
         { id: 5, label: "수정 권고안 준비", status: "idle" },
       ]);
 
@@ -408,10 +555,10 @@ function InspectContent() {
 
       // 3단계: 실제 API 응답 대기
       const report = await apiPromise;
-      const rid = report.result_id ?? `us-${Date.now()}`;
+      const rid = report.result_id ?? createLocalReportId(regionParam);
       setResultId(rid);
       if (regionParam === "US") {
-        sessionStorage.setItem(`us-readiness-${rid}`, JSON.stringify(report));
+        cacheUSPreflight(rid, report as USPreflightReport);
       }
 
       const { issueCount, imageFindings } = getAnalysisStats(report);
@@ -426,7 +573,7 @@ function InspectContent() {
 
       // 4단계 완료 처리 후 5단계 시작
       setSteps(prev => prev.map(s => {
-        if (s.id === 4) return { ...s, status: imageAnalysisSupported && isImage ? (imageFindings > 0 ? "warn" : "done") : "done", valueText: !imageAnalysisSupported ? (isImage ? "별도 분석 안 함" : "대상 없음") : (isImage ? (imageFindings > 0 ? `${imageFindings}건 감지` : "이상 없음") : "대상 없음") };
+        if (s.id === 4) return { ...s, ...imageStepResult(imageFindings) };
         if (s.id === 5) return { ...s, status: "running" };
         return s;
       }));
@@ -515,7 +662,7 @@ function InspectContent() {
                 placeholder="예) 단 4주 만에 여드름 완치! 미국 피부과가 인정한 미백 세럼. 부작용 전혀 없는 100% 순수 성분."
                 value={adText}
                 onChange={handleAdTextChange}
-                disabled={status === "running"}
+                disabled={importedInputsDisabled}
               />
             </div>
             <div className="flex items-center gap-2.5 text-[var(--ink-3)] font-mono text-[10.5px] m-[13px_0_11px] before:content-[''] before:flex-1 before:border-t before:border-[var(--line)] after:content-[''] after:flex-1 after:border-t after:border-[var(--line)]">
@@ -523,9 +670,9 @@ function InspectContent() {
             </div>
             <div
               className={`border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-center p-[15px_16px] transition-all duration-[120ms] ${
-                status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                importedInputsDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
               }`}
-              onClick={status === "running" ? undefined : triggerAdFileSelect}
+              onClick={importedInputsDisabled ? undefined : triggerAdFileSelect}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
@@ -534,11 +681,11 @@ function InspectContent() {
                 borderStyle: isDragging ? "solid" : undefined,
                 backgroundColor: isDragging ? "var(--surface)" : undefined,
               }}
-              tabIndex={status === "running" ? -1 : 0}
+              tabIndex={importedInputsDisabled ? -1 : 0}
               role="button"
-              aria-label="광고 이미지/파일 첨부 영역"
+              aria-label="광고 이미지 첨부 영역"
               onKeyDown={(e) => {
-                if (status === "running") return;
+                if (importedInputsDisabled) return;
                 handleKeyDown(e, triggerAdFileSelect);
               }}
             >
@@ -547,16 +694,21 @@ function InspectContent() {
               </div>
               <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">상세페이지 · 광고 이미지 던져넣기</h3>
               <span className="inline-block font-mono text-[11.5px] text-[var(--brand-ink)] bg-[var(--surface)] border border-[var(--line)] p-[7px_11px]">
-                drop or click · jpg png pdf xlsx <span className="text-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]">▊</span>
+                drop or click · jpg png webp <span className="text-[var(--brand)] animate-[blink_1.1s_steps(1)_infinite]">▊</span>
               </span>
             </div>
             <input
               type="file"
               ref={adFileInputRef}
               style={{ display: "none" }}
-              multiple
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
               onChange={(e) => handleFileAdd(e, false)}
             />
+            {adFileError && (
+              <p className="mt-2 mb-0 border border-[var(--crit-bd)] bg-[var(--crit-bg)] p-2 text-[11px] leading-[1.5] text-[var(--crit)]">
+                {adFileError}
+              </p>
+            )}
             <div className="mt-3 flex flex-col gap-[5px]" id="files">
               {adFiles.map((file) => (
                 <div className="flex items-center gap-2.5 bg-[var(--surface-sub)] border border-[var(--line)] p-[8px_10px] font-mono text-[11.5px]" key={file.id}>
@@ -569,14 +721,14 @@ function InspectContent() {
                   <span
                     className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--crit)]"
                     onClick={() => {
-                      if (status === "running") return;
+                      if (importedInputsDisabled) return;
                       removeAdFile(file.id);
                     }}
-                    tabIndex={status === "running" ? -1 : 0}
+                    tabIndex={importedInputsDisabled ? -1 : 0}
                     role="button"
                     aria-label={`${file.name}${file.ext} 파일 삭제`}
                     onKeyDown={(e) => {
-                      if (status === "running") return;
+                      if (importedInputsDisabled) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         removeAdFile(file.id);
@@ -589,24 +741,24 @@ function InspectContent() {
               ))}
               <div
                 className={`flex items-center gap-2.5 border border-line p-[8px_10px] font-mono text-[11.5px] border-dashed justify-center text-[var(--ink-3)] transition-colors duration-[120ms] ${
-                  status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+                  importedInputsDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
-                onClick={status === "running" ? undefined : triggerAdFileSelect}
+                onClick={importedInputsDisabled ? undefined : triggerAdFileSelect}
                 // 드래그오버 시각 효과는 위 큰 드롭존에만 준다 - 여기까지 같이 반응하면
                 // 두 영역이 동시에 반짝여 헷갈린다(팀장 지시, 2026-08-23). 드롭 자체는
                 // 계속 받는다(핸들러는 유지).
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                tabIndex={status === "running" ? -1 : 0}
+                tabIndex={importedInputsDisabled ? -1 : 0}
                 role="button"
                 aria-label="광고 이미지 파일 추가"
                 onKeyDown={(e) => {
-                  if (status === "running") return;
+                  if (importedInputsDisabled) return;
                   handleKeyDown(e, triggerAdFileSelect);
                 }}
               >
-                + 파일 더 추가
+                {adFiles.length > 0 ? "+ 이미지 바꾸기" : "+ 이미지 추가"}
               </div>
             </div>
           </div>
@@ -621,117 +773,105 @@ function InspectContent() {
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
               <span className="text-[var(--ink-3)] font-mono text-[10.5px]">전성분 · 선택</span>
             </div>
-            {regionParam === "US" && (
-              <div className="mb-4 border border-[var(--line-2)] bg-[var(--surface-sub)] p-[13px_14px]">
-                <div className="flex items-center gap-2 mb-2.5"><span className="font-mono text-[10.5px] text-[var(--brand-ink)] border border-[var(--line-2)] bg-[var(--surface)] p-[3px_7px]">01–04</span><span className="text-[12px] font-semibold text-[var(--ink)]">선택한 제품에 맞는 준비 항목을 정리하고 있습니다</span></div>
-                <div className="grid grid-cols-2 gap-2.5 max-[650px]:grid-cols-1">
-                  <label className="text-[11.5px] text-[var(--ink-2)]">국내 판매 카테고리
-                    <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={domesticCategory} onChange={(event) => setDomesticCategory(event.target.value as DomesticProductCategory)} disabled={status === "running"}>{CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-                  </label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">세부 제품 유형 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={domesticSubcategory} onChange={(event) => setDomesticSubcategory(event.target.value)} disabled={status === "running"} placeholder="예: 에센스, 크림, 로션" /></label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">제품명 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={productName} onChange={(event) => setProductName(event.target.value)} disabled={status === "running"} placeholder="제품명" /></label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">미국 판매 목적 <input className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={intendedUse} onChange={(event) => setIntendedUse(event.target.value)} disabled={status === "running"} placeholder="예: 보습, 세정, 자외선 차단" /></label>
+            {regionParam === "US" && domesticReportsAvailable && (
+              <div className="mb-4 border border-[var(--brand)] bg-[var(--surface-sub)] p-[13px_14px]">
+                <div className="flex items-start justify-between gap-3 mb-2.5">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-[10.5px] text-[var(--on-brand)] bg-[var(--brand-deep)] px-1.5 py-0.5">SOURCE</span>
+                      <span className="text-[12px] font-semibold text-[var(--ink)]">국내 검사 결과 불러오기</span>
+                    </div>
+                    <p className="m-0 text-[11px] leading-[1.5] text-[var(--ink-3)]">이미 국내 검사를 완료했다면 원본 입력을 다시 올리지 않고 미국 수출 분석으로 이어갈 수 있습니다.</p>
+                  </div>
+                  {selectedDomesticReportId && (
+                    <button type="button" className="shrink-0 text-[11px] text-[var(--ink-2)] underline" onClick={clearDomesticReport} disabled={status === "running"}>
+                      직접 입력으로 돌아가기
+                    </button>
+                  )}
                 </div>
-                <label className="block mt-2.5 text-[11.5px] text-[var(--ink-2)]">미국 판매용 라벨 초안·필수 표기 자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]" value={labelEvidenceState} onChange={(event) => setLabelEvidenceState(event.target.value as ReadinessInputState)} disabled={status === "running"}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                <details className="mt-2 text-[11px] text-[var(--ink-3)]"><summary className="cursor-pointer">왜 필요한가 / 어떤 자료인가 / 모르면 어디에 확인하나</summary><p className="m-[6px_0_0] leading-[1.55]">미국 판매용 라벨의 기본 표기와 연락처를 확인하기 위한 자료입니다. 포장 시안 또는 라벨 PDF를 준비하고, 없으면 디자인·품질 담당자에게 확인하세요.</p></details>
-                {domesticCategory === "sun_care" && <div className="mt-3 border-t border-dashed border-[var(--line-2)] pt-3"><p className="m-[0_0_2px] text-[12px] font-semibold text-[var(--ink)]">자외선 차단 제품 추가 확인</p><p className="m-[0_0_2px] text-[11px] text-[var(--ink-3)]">표기와 시험·라벨 자료의 준비 상태만 확인합니다.</p><div className="grid grid-cols-2 gap-2.5 mt-2 max-[650px]:grid-cols-1"><label className="text-[11.5px] text-[var(--ink-2)]">자외선 차단 관련 시험자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)]" value={sunTestState} onChange={(event) => setSunTestState(event.target.value as ReadinessInputState)}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-[11.5px] text-[var(--ink-2)]">미국 판매용 라벨 자료 <select className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)]" value={sunLabelState} onChange={(event) => setSunLabelState(event.target.value as ReadinessInputState)}>{EVIDENCE_STATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div></div>}
-                <div className="mt-3 border-t border-dashed border-[var(--line-2)] pt-2.5 text-[11px] text-[var(--ink-3)]">{Object.values(exportProfile).some((value) => value !== null && value !== "") ? <>저장된 수출 프로필을 이번 분석에 사용합니다. <Link href="/mypage" className="text-[var(--brand-ink)] underline">수정하기</Link></> : <>저장된 프로필이 없습니다. 프로필 없이 계속할 수 있으며, 제조시설·수입자 관련 준비 항목은 결과에서 안내합니다. <Link href="/mypage" className="text-[var(--brand-ink)] underline">지금 저장하기</Link></>}</div>
+
+                {domesticReportsLoading && <p className="m-0 text-[11.5px] text-[var(--ink-3)]">국내 검사 결과를 불러오는 중입니다...</p>}
+                {!domesticReportsLoading && domesticReports.length === 0 && (
+                  <div className="border border-dashed border-[var(--line-2)] bg-[var(--surface)] p-2.5 text-[11.5px] leading-[1.5] text-[var(--ink-3)]">
+                    불러올 국내 검사 결과가 없습니다. 국내 검사 후 저장된 결과가 여기에 표시됩니다. 지금은 아래에서 직접 입력할 수 있습니다.
+                  </div>
+                )}
+
+                {!domesticReportsLoading && domesticReports.length > 0 && (
+                  <div className="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+                    {domesticReports.map((report) => {
+                      const selected = selectedDomesticReportId === report.result_id;
+                      return (
+                        <button
+                          type="button"
+                          key={report.result_id}
+                          onClick={() => void handleDomesticReportSelect(report)}
+                          disabled={status === "running"}
+                          className={`text-left border p-2.5 transition-colors ${selected ? "border-[var(--brand)] bg-[var(--surface)]" : "border-[var(--line)] bg-[var(--surface)] hover:border-[var(--brand)]"}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[12px] font-semibold text-[var(--ink)]">{report.product_name || "제품명 미입력"}</span>
+                            <span className={`shrink-0 font-mono text-[10px] ${report.snapshot_available ? "text-[var(--brand-ink)]" : "text-[var(--ink-3)]"}`}>
+                              {report.snapshot_available ? "원본 있음" : "과거 결과"}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[10.5px] text-[var(--ink-3)]">
+                            <span>{formatReportDate(report.created_at)}</span>
+                            <span>{report.input_materials.length ? report.input_materials.join(" · ") : "자료 상태 확인 필요"}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedDomesticReportLoading && <p className="mt-2.5 mb-0 text-[11.5px] text-[var(--ink-3)]">선택한 국내 원본을 확인하는 중입니다...</p>}
+                {selectedDomesticReportError && (
+                  <div className="mt-2.5 border border-[var(--crit)] bg-[var(--surface)] p-2.5 text-[11.5px] leading-[1.5] text-[var(--crit)]">
+                    {selectedDomesticReportError}<br />이 항목은 직접 입력 방식으로 진행할 수 있습니다.
+                  </div>
+                )}
+                {selectedDomesticReportId && !selectedDomesticReportLoading && !selectedDomesticReportError && !selectedSnapshot && (
+                  <div className="mt-2.5 border border-[var(--line-2)] bg-[var(--surface)] p-2.5 text-[11.5px] leading-[1.5] text-[var(--ink-3)]">
+                    이 과거 리포트에는 국내 검사 당시의 원본 입력이 저장되어 있지 않습니다. 결과만 다시 볼 수 있고 미국 분석으로 자동 재사용할 수는 없습니다.
+                  </div>
+                )}
+                {selectedSnapshot && (
+                  <div className="mt-2.5 border border-[var(--line)] bg-[var(--surface)] p-2.5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[11.5px] font-semibold text-[var(--ink)]">이번 미국 분석에 사용할 국내 원본</span>
+                      <span className="font-mono text-[10px] text-[var(--brand-ink)]">{selectedSnapshot.extraction.ocr_status === "COMPLETE" ? "OCR 완료" : `OCR ${selectedSnapshot.extraction.ocr_status}`}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 max-[650px]:grid-cols-1 text-[11px]">
+                      <div><span className="text-[var(--ink-3)]">제품명</span><p className="m-0 mt-0.5 text-[var(--ink)]">{selectedSnapshot.product_name || "미입력"}</p></div>
+                      <div><span className="text-[var(--ink-3)]">국내 분류</span><p className="m-0 mt-0.5 text-[var(--ink)]">{categoryLabel(selectedSnapshot.domestic_category)}{selectedSnapshot.domestic_subcategory ? ` · ${selectedSnapshot.domestic_subcategory}` : ""}</p></div>
+                      <div className="min-w-0"><span className="text-[var(--ink-3)]">광고 문구 / OCR</span><p className="m-0 mt-0.5 truncate text-[var(--ink)]">{selectedSnapshot.ad_text_raw || selectedSnapshot.ocr_sentences[0]?.text || "없음"}</p></div>
+                      <div className="min-w-0"><span className="text-[var(--ink-3)]">성분</span><p className="m-0 mt-0.5 truncate text-[var(--ink)]">{selectedSnapshot.normalized_ingredients.length ? `${selectedSnapshot.normalized_ingredients.length}개 확인됨` : selectedSnapshot.ingredients_input_kind === "FILENAME_ONLY" ? "파일명만 저장됨" : "없음"}</p></div>
+                    </div>
+                    <div className="mt-2 border-t border-dashed border-[var(--line-2)] pt-2 text-[10.5px] text-[var(--ink-3)]">
+                      자료: {selectedSnapshot.assets.length ? selectedSnapshot.assets.map((asset) => asset.original_filename || asset.role).join(" · ") : "원본 파일 없음"}
+                      {selectedSnapshot.warnings.length > 0 && <span className="text-[var(--crit)]"> · 확인 필요: {selectedSnapshot.warnings.join(" · ")}</span>}
+                    </div>
+                    <p className={`mt-2 mb-0 text-[10.5px] leading-[1.55] ${importedClaims ? "text-[var(--ink-3)]" : "text-[var(--crit)]"}`}>
+                      {importedClaims
+                        ? "국내 검사 당시 광고 원문과 저장된 OCR 문장을 사용합니다. 원본 이미지는 다시 분석하지 않습니다."
+                        : "재사용할 광고 문구나 OCR 문장이 없어 이 결과로는 미국 검사를 실행할 수 없습니다."}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
-            {false && regionParam === "US" && (
-              <div className="mb-4 border border-[var(--line-2)] bg-[var(--surface-sub)] p-[13px_14px]">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className="font-mono text-[10.5px] text-[var(--brand-ink)] border border-[var(--line-2)] bg-[var(--surface)] p-[3px_7px]">US READINESS</span>
-                  <span className="text-[12px] font-semibold text-[var(--ink)]">제품별 수출 준비 정보</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5 max-[650px]:grid-cols-1">
-                  <label className="text-[11.5px] text-[var(--ink-2)]">
-                    제품명
-                    <input
-                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                      value={productName}
-                      onChange={(e) => setProductName(e.target.value)}
-                      disabled={status === "running"}
-                      placeholder="미국 수출 제품명"
-                    />
-                  </label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">
-                    의도 용도
-                    <select
-                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                      value={intendedUse}
-                      onChange={(e) => setIntendedUse(e.target.value)}
-                      disabled={status === "running"}
-                    >
-                      <option value="">선택하지 않음</option>
-                      <option value="sunscreen">자외선차단 제품</option>
-                      <option value="other">기타 제품</option>
-                    </select>
-                  </label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">
-                    표시 SPF
-                    <input
-                      type="number"
-                      min="0"
-                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                      value={spfValue}
-                      onChange={(e) => setSpfValue(e.target.value)}
-                      disabled={status === "running"}
-                      placeholder="예: 50"
-                    />
-                  </label>
-                  <label className="text-[11.5px] text-[var(--ink-2)]">
-                    SPF 표시 여부
-                    <select
-                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                      value={nullableBooleanValue(spfDisplayed)}
-                      onChange={(e) => setSpfDisplayed(parseNullableBoolean(e.target.value))}
-                      disabled={status === "running"}
-                    >
-                      <option value="">미입력</option><option value="true">예</option><option value="false">아니오</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5 mt-2.5 max-[650px]:grid-cols-1">
-                  {[
-                    ["Broad Spectrum 표시", broadSpectrum, setBroadSpectrum],
-                    ["Water Resistant 표시", waterResistant, setWaterResistant],
-                    ["SPF 시험자료", spfTestReport, setSpfTestReport],
-                    ["Broad Spectrum 시험자료", broadSpectrumTestReport, setBroadSpectrumTestReport],
-                    ["Water Resistance 시험자료", waterResistanceTestReport, setWaterResistanceTestReport],
-                    ["Drug Facts / 미국 라벨", drugFactsReady, setDrugFactsReady],
-                    ["미국용 claim 검토", claimsReviewed, setClaimsReviewed],
-                    ["Drug Listing 준비", drugListingReady, setDrugListingReady],
-                  ].map(([label, value, setter]) => (
-                    <label key={label as string} className="text-[11.5px] text-[var(--ink-2)]">
-                      {label as string}
-                      <select
-                        className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                        value={nullableBooleanValue(value as NullableBoolean)}
-                        onChange={(e) => (setter as React.Dispatch<React.SetStateAction<NullableBoolean>>)(parseNullableBoolean(e.target.value))}
-                        disabled={status === "running"}
-                      >
-                        <option value="">미입력</option><option value="true">예</option><option value="false">아니오</option>
-                      </select>
-                    </label>
-                  ))}
-                  <label className="text-[11.5px] text-[var(--ink-2)]">
-                    Water Resistant 지속 시간
-                    <select
-                      className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
-                      value={waterResistanceMinutes}
-                      onChange={(e) => setWaterResistanceMinutes(e.target.value)}
-                      disabled={status === "running"}
-                    >
-                      <option value="">미입력</option><option value="40">40분</option><option value="80">80분</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="mt-2.5 border-t border-dashed border-[var(--line-2)] pt-2.5 text-[11px] text-[var(--ink-3)]">
-                  저장된 미국 수출 프로필: <span className="text-[var(--ink-2)]">{String(exportProfile.manufacturer_name || exportProfile.legal_manufacturer || "미입력")}</span>{" "}
-                  <Link href="/mypage" className="ml-1 text-[var(--brand-ink)] underline">프로필 편집</Link>
-                </div>
-              </div>
+            {regionParam === "US" && !hasImportedSource && (
+              <label className="mb-4 block text-[11.5px] text-[var(--ink-2)]">
+                제품명 <span className="text-[var(--ink-3)]">· 선택</span>
+                <input
+                  className="mt-1 w-full border border-[var(--line-2)] bg-[var(--surface-sub)] p-[8px_9px] text-[12.5px] text-[var(--ink)] outline-none focus:border-[var(--brand)]"
+                  value={productName}
+                  onChange={(event) => setProductName(event.target.value)}
+                  disabled={status === "running"}
+                  placeholder="미국 수출 제품명"
+                />
+              </label>
             )}
             <div>
               <span className="block text-[12px] text-[var(--ink-2)] font-semibold mb-1.5">전성분 붙여넣기 (함량 % 선택 기재)</span>
@@ -741,7 +881,7 @@ function InspectContent() {
                 placeholder="예) 정제수, 나이아신아마이드 5%, 글리세린, 판테놀..."
                 value={ingText}
                 onChange={handleIngTextChange}
-                disabled={status === "running"}
+                disabled={importedInputsDisabled}
               />
             </div>
             <div className="flex items-center gap-2.5 text-[var(--ink-3)] font-mono text-[10.5px] m-[13px_0_11px] before:content-[''] before:flex-1 before:border-t before:border-[var(--line)] after:content-[''] after:flex-1 after:border-t after:border-[var(--line)]">
@@ -749,9 +889,9 @@ function InspectContent() {
             </div>
             <div
               className={`border border-dashed border-[var(--line-2)] bg-[var(--surface-sub)] text-center p-[15px_16px] transition-all duration-[120ms] ${
-                status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                importedInputsDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
               }`}
-              onClick={status === "running" ? undefined : triggerPFileSelect}
+              onClick={importedInputsDisabled ? undefined : triggerPFileSelect}
               onDragOver={handleDragOverP}
               onDragLeave={handleDragLeaveP}
               onDrop={handleDropP}
@@ -760,20 +900,20 @@ function InspectContent() {
                 borderStyle: isDraggingP ? "solid" : undefined,
                 backgroundColor: isDraggingP ? "var(--surface)" : undefined,
               }}
-              tabIndex={status === "running" ? -1 : 0}
+              tabIndex={importedInputsDisabled ? -1 : 0}
               role="button"
               aria-label="제품 정보/참고자료 첨부 영역"
               onKeyDown={(e) => {
-                if (status === "running") return;
+                if (importedInputsDisabled) return;
                 handleKeyDown(e, triggerPFileSelect);
               }}
             >
               <div className="text-[var(--brand-ink)] mb-2.25 flex justify-center">
                 <UploadSimple size={24} weight="regular" />
               </div>
-              <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">전성분표 · 참고자료 던져넣기</h3>
+              <h3 className="m-[0_0_8px] text-[var(--ink)] text-[14px] font-bold">전성분표 파일 던져넣기</h3>
               <span className="inline-block font-mono text-[11.5px] text-[var(--brand-ink)] bg-[var(--surface)] border border-[var(--line)] p-[7px_11px]">
-                drop or click · xlsx txt pdf
+                drop or click · xlsx csv txt
               </span>
             </div>
             <input
@@ -781,53 +921,79 @@ function InspectContent() {
               ref={pFileInputRef}
               style={{ display: "none" }}
               multiple
+              accept=".xlsx,.csv,.txt"
               onChange={(e) => handleFileAdd(e, true)}
             />
+            <p className="mt-2 mb-0 text-[10.5px] leading-[1.5] text-[var(--ink-3)]">
+              파일 내용은 업로드 즉시 해석됩니다. 붙여넣은 전성분이 있으면 파일에서 읽은 성분을 뒤에 합쳐 검사합니다. PDF는 지원하지 않습니다.
+            </p>
+            {ingredientFileError && (
+              <p className="mt-2 mb-0 border border-[var(--crit-bd)] bg-[var(--crit-bg)] p-2 text-[11px] leading-[1.5] text-[var(--crit)]">
+                {ingredientFileError}
+              </p>
+            )}
             <div className="mt-3 flex flex-col gap-[5px]" id="pfiles">
               {pFiles.map((file) => (
-                <div className="flex items-center gap-2.5 bg-[var(--surface-sub)] border border-[var(--line)] p-[8px_10px] font-mono text-[11.5px]" key={file.id}>
-                  <Check size={14} weight="bold" className="text-[var(--brand-ink)] font-bold" />
-                  <span className="text-[var(--ink)] flex-1">
-                    {file.name}
-                    <span className="text-[var(--ink-3)]">{file.ext}</span>
-                  </span>
-                  <span className="text-[var(--brand-ink)] text-[10.5px]">첨부됨</span>
-                  <span
-                    className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--crit)]"
-                    onClick={() => {
-                      if (status === "running") return;
-                      removePFile(file.id);
-                    }}
-                    tabIndex={status === "running" ? -1 : 0}
-                    role="button"
-                    aria-label={`${file.name}${file.ext} 파일 삭제`}
-                    onKeyDown={(e) => {
-                      if (status === "running") return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        removePFile(file.id);
-                      }
-                    }}
-                  >
-                    <X size={14} weight="bold" />
-                  </span>
+                <div className="bg-[var(--surface-sub)] border border-[var(--line)] p-[8px_10px] font-mono text-[11.5px]" key={file.id}>
+                  <div className="flex items-center gap-2.5">
+                    {file.ingredientParseStatus === "uploading" ? (
+                      <CircleNotch size={14} weight="bold" className="text-[var(--brand-ink)] animate-spin" />
+                    ) : file.ingredientParseStatus === "error" ? (
+                      <Warning size={14} weight="bold" className="text-[var(--crit)]" />
+                    ) : (
+                      <Check size={14} weight="bold" className="text-[var(--brand-ink)]" />
+                    )}
+                    <span className="text-[var(--ink)] flex-1">
+                      {file.name}<span className="text-[var(--ink-3)]">{file.ext}</span>
+                    </span>
+                    <span className={`text-[10.5px] ${file.ingredientParseStatus === "error" ? "text-[var(--crit)]" : "text-[var(--brand-ink)]"}`}>
+                      {file.ingredientParseStatus === "uploading"
+                        ? "해석 중"
+                        : file.ingredientParseStatus === "error"
+                          ? "해석 실패"
+                          : `${file.ingredientRows?.length || 0}개 성분`}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[var(--ink-3)] cursor-pointer hover:text-[var(--crit)] disabled:cursor-not-allowed"
+                      onClick={() => removePFile(file.id)}
+                      disabled={importedInputsDisabled}
+                      aria-label={`${file.name}${file.ext} 파일 삭제`}
+                    >
+                      <X size={14} weight="bold" />
+                    </button>
+                  </div>
+                  {file.ingredientError && (
+                    <p className="mt-1.5 mb-0 text-[10.5px] leading-[1.5] text-[var(--crit)]">{file.ingredientError}</p>
+                  )}
+                  {file.ingredientWarnings && file.ingredientWarnings.length > 0 && (
+                    <ul className="mt-1.5 mb-0 pl-4 text-[10.5px] leading-[1.5] text-[var(--ink-3)]">
+                      {file.ingredientWarnings.map((warning, index) => <li key={`${file.id}-warning-${index}`}>{warning}</li>)}
+                    </ul>
+                  )}
+                  {file.ingredientParseStatus === "done" && file.ingredientRows && file.ingredientRows.length > 0 && (
+                    <p className="mt-1.5 mb-0 truncate text-[10.5px] leading-[1.5] text-[var(--ink-3)]" title={file.ingredientRows.map((row) => row.amount ? `${row.name} (${row.amount})` : row.name).join(", ")}>
+                      미리보기: {file.ingredientRows.slice(0, 3).map((row) => row.amount ? `${row.name} (${row.amount})` : row.name).join(", ")}
+                      {file.ingredientRows.length > 3 ? ` 외 ${file.ingredientRows.length - 3}개` : ""}
+                    </p>
+                  )}
                 </div>
               ))}
               <div
                 className={`flex items-center gap-2.5 border border-line p-[8px_10px] font-mono text-[11.5px] border-dashed justify-center text-[var(--ink-3)] transition-colors duration-[120ms] ${
-                  status === "running" ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
+                  importedInputsDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer bg-transparent hover:text-[var(--ink)] hover:border-[var(--ink-3)]"
                 }`}
-                onClick={status === "running" ? undefined : triggerPFileSelect}
+                onClick={importedInputsDisabled ? undefined : triggerPFileSelect}
                 // 드래그오버 시각 효과는 위 큰 드롭존에만 준다(팀장 지시, 2026-08-23 -
                 // 왼쪽과 같은 이유). 드롭 자체는 계속 받는다.
                 onDragOver={handleDragOverP}
                 onDragLeave={handleDragLeaveP}
                 onDrop={handleDropP}
-                tabIndex={status === "running" ? -1 : 0}
+                tabIndex={importedInputsDisabled ? -1 : 0}
                 role="button"
                 aria-label="제품 정보 파일 추가"
                 onKeyDown={(e) => {
-                  if (status === "running") return;
+                  if (importedInputsDisabled) return;
                   handleKeyDown(e, triggerPFileSelect);
                 }}
               >

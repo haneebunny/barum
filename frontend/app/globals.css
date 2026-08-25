@@ -9,7 +9,7 @@
    ========================================================================= */
 :root {
   --sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
-  --mono: var(--font-jetbrains-mono), var(--font-d2coding), "Cascadia Mono", Consolas, monospace;
+  --mono: var(--font-d2coding), "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
 
   --canvas: #e7ecec;
   --surface: #ffffff;
@@ -167,4 +167,3 @@ html[data-nav="collapsed"] .app-side-expanded-only {
   overflow: hidden;
   min-height: 0;
 }
-

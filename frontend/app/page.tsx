@@ -318,11 +318,14 @@ export default function LandingPage() {
   const { booting, enterConsole } = useConsoleEntry();
   const [returning, setReturning] = useState(false);
   useEffect(() => {
-    try {
-      setReturning(localStorage.getItem("barum-entered") === "1");
-    } catch {
-      // 저장소 접근 실패 시 첫 방문으로 취급
-    }
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        setReturning(localStorage.getItem("barum-entered") === "1");
+      } catch {
+        // 저장소 접근 실패 시 첫 방문으로 취급
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   // ── prefers-reduced-motion 체크 ──
@@ -330,10 +333,13 @@ export default function LandingPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setPrefersReducedMotion(mediaQuery.matches);
+    const frame = window.requestAnimationFrame(() => setPrefersReducedMotion(mediaQuery.matches));
     const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
     mediaQuery.addEventListener("change", listener);
-    return () => mediaQuery.removeEventListener("change", listener);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      mediaQuery.removeEventListener("change", listener);
+    };
   }, []);
 
   // ── 스크롤 상태 ──
@@ -421,8 +427,8 @@ export default function LandingPage() {
     if (scoreTargetRef.current === endVal) return; // 목표 변동 없으면 재생 안 함
     scoreTargetRef.current = endVal;
     if (prefersReducedMotion) {
-      setReportScore(endVal);
-      return;
+      const frame = window.requestAnimationFrame(() => setReportScore(endVal));
+      return () => window.cancelAnimationFrame(frame);
     }
     const startVal = isTargetUp ? 62 : 98;
 
@@ -483,9 +489,11 @@ export default function LandingPage() {
   useEffect(() => {
     if (!statsTriggered) return;
     if (prefersReducedMotion) {
-      setStat1(2680);
-      setStat3(15);
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        setStat1(2680);
+        setStat3(15);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 

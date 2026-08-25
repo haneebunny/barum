@@ -9,6 +9,7 @@ import {
   ExportReadinessReportSchema,
   GenerateResponseSchema,
   IngredientUploadResponseSchema,
+  ReportListItemSchema,
 } from "./schema";
 import type {
   Region,
@@ -29,14 +30,17 @@ import type {
   GenericProductEvidence,
   ReadinessInputState,
   IngredientUploadResponse,
+  ReportListItem,
 } from "./schema";
 
 export interface CheckAdInput {
   region: Region;
   adText?: string;
   image?: File;
-  ingredients?: string;
-  productName?: string;
+  ingredients?: string | null;
+  productName?: string | null;
+  domesticCategory?: DomesticProductCategory | null;
+  domesticSubcategory?: string | null;
 }
 
 function getApiUrl(): string {
@@ -73,8 +77,14 @@ export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
   if (input.ingredients) {
     formData.append("ingredients", input.ingredients);
   }
-  if (input.productName) {
+  if (input.productName !== null && input.productName !== undefined) {
     formData.append("product_name", input.productName);
+  }
+  if (input.domesticCategory !== null && input.domesticCategory !== undefined) {
+    formData.append("domestic_category", input.domesticCategory);
+  }
+  if (input.domesticSubcategory !== null && input.domesticSubcategory !== undefined) {
+    formData.append("domestic_subcategory", input.domesticSubcategory);
   }
 
   const response = await fetch(url, {
@@ -450,6 +460,49 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
   }
 
   return validateResponse(ReportEnvelopeSchema, await response.json(), `GET /reports/${resultId}`);
+}
+
+export async function getReports(region: Region = "KR", limit = 50): Promise<ReportListItem[]> {
+  const params = new URLSearchParams({ region, limit: String(limit) });
+  const response = await fetch(`${getApiUrl()}/reports?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch reports (${region}): ${response.status} - ${await response.text()}`);
+  }
+  return validateResponse(z.array(ReportListItemSchema), await response.json(), `GET /reports?region=${region}`);
+}
+
+export interface ExportReadinessFromReportInput {
+  domestic_category?: DomesticProductCategory | null;
+  domestic_subcategory?: string | null;
+  profile_state?: ReadinessInputState;
+  profile?: ExportProfile;
+}
+
+export async function createExportReadinessFromReport(
+  resultId: string,
+  input: ExportReadinessFromReportInput,
+): Promise<ExportReadinessReport> {
+  const response = await fetch(`${getApiUrl()}/reports/${resultId}/export-readiness`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body) as { detail?: { code?: string; message?: string } | string };
+      if (typeof parsed.detail === "object" && parsed.detail !== null) {
+        detail = `${parsed.detail.code ? `${parsed.detail.code}: ` : ""}${parsed.detail.message || body}`;
+      } else if (typeof parsed.detail === "string") {
+        detail = parsed.detail;
+      }
+    } catch {
+      // 서버가 JSON이 아닌 오류 본문을 반환해도 원문을 안내한다.
+    }
+    throw new Error(`Saved domestic report reuse failed: ${response.status} - ${detail}`);
+  }
+  return validateResponse(ExportReadinessReportSchema, await response.json(), `POST /reports/${resultId}/export-readiness`);
 }
 
 export function getReportImageUrl(resultId: string): string {

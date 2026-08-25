@@ -7,6 +7,7 @@
 """
 
 import hashlib
+import json
 import secrets
 
 _TABLE = "checks"
@@ -66,6 +67,23 @@ def get_check(client, result_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def list_checks(client, region: str | None = None, limit: int = 50) -> list[dict]:
+    """저장된 검사 이력을 최신순으로 반환한다.
+
+    snapshot은 report JSON 내부에 optional로 저장되므로 별도 스키마를 요구하지 않는다.
+    """
+    query = (
+        client.table(_TABLE)
+        .select("id,created_at,region,report,image_path,product_name")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if region is not None:
+        query = query.eq("region", region)
+    response = query.execute()
+    return response.data or []
+
+
 # ── 증거 이미지 (Storage) ──────────────────────────────────────────────────
 
 
@@ -111,7 +129,7 @@ def clear_image_cache() -> None:
 # 올리면 캐시 키가 통째로 바뀌어 옛 캐시(메모리·Supabase 둘 다)가 자동 무효화된다.
 # 안 올리면 코드를 고쳐도 옛 결과가 계속 나온다(2026-08-24 실제 사고: 미국 프리플라이트
 # 전성분 OCR을 고쳤는데 고치기 전 캐시가 계속 "전성분 미입력"을 돌려줬다).
-_CACHE_LOGIC_VERSION = "2"
+_CACHE_LOGIC_VERSION = "4"
 
 
 def build_cache_key(
@@ -121,9 +139,28 @@ def build_cache_key(
     ingredients: str | None = None,
     ingredient_amounts: str | None = None,
     product_name: str | None = None,
+    domestic_category: str | None = None,
+    domestic_subcategory: str | None = None,
+    ingredients_raw: str | None = None,
+    ingredients_input_kind: str | None = None,
 ) -> str:
     """이미지 검사 입력값 조합 + 로직 버전으로 고유 캐시 키를 만든다."""
-    raw = f"{_CACHE_LOGIC_VERSION}:{image_sha256}:{region_or_country}:{ad_text or ''}:{ingredients or ''}:{ingredient_amounts or ''}:{product_name or ''}"
+    if ingredients_input_kind is None:
+        ingredients_input_kind = "TEXT" if ingredients and ingredients.strip() else "MISSING"
+    ingredient_original = ingredients if ingredients_raw is None else ingredients_raw
+    payload = {
+        "image_sha256": image_sha256,
+        "region_or_country": region_or_country,
+        "ad_text": ad_text or "",
+        "ingredients_for_judge": ingredients or "",
+        "ingredients_raw": ingredient_original or "",
+        "ingredients_input_kind": ingredients_input_kind,
+        "ingredient_amounts": ingredient_amounts or "",
+        "product_name": product_name or "",
+        "domestic_category": domestic_category or "",
+        "domestic_subcategory": domestic_subcategory or "",
+    }
+    raw = f"{_CACHE_LOGIC_VERSION}:{json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
     return sha256_hex(raw.encode("utf-8"))
 
 

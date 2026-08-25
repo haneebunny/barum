@@ -118,6 +118,91 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
     assert len(run_check_calls) == 2  # run_check 재호출됨!
 
 
+def test_check_cache_separates_domestic_category(monkeypatch):
+    """같은 이미지라도 국내 카테고리가 다르면 국내 캐시 결과를 공유하지 않는다."""
+    from barum.api import app as app_module
+
+    run_check_calls = []
+
+    def mock_run_check(*args, **kwargs):
+        run_check_calls.append(kwargs)
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        )
+
+    monkeypatch.setattr(app_module, "run_check", mock_run_check)
+    image = _make_dummy_png_bytes("white")
+    for category in ("skincare", "sun_care"):
+        response = client.post(
+            "/check",
+            data={"region": "KR", "ad_text": "광고문구", "domestic_category": category},
+            files={"image": ("same.png", io.BytesIO(image), "image/png")},
+        )
+        assert response.status_code == 200
+
+    assert len(run_check_calls) == 2
+
+
+def test_check_cache_separates_filename_only_from_missing_ingredients(monkeypatch):
+    """judge 입력이 같아도 파일명-only와 missing은 캐시를 공유하지 않는다."""
+    from barum.api import app as app_module
+
+    run_check_calls = []
+
+    def mock_run_check(*args, **kwargs):
+        run_check_calls.append(kwargs)
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        )
+
+    monkeypatch.setattr(app_module, "run_check", mock_run_check)
+    image = _make_dummy_png_bytes("white")
+    for data in (
+        {"region": "KR", "ad_text": "광고문구"},
+        {"region": "KR", "ad_text": "광고문구", "ingredients": "ingredients.xlsx"},
+    ):
+        response = client.post(
+            "/check",
+            data=data,
+            files={"image": ("same.png", io.BytesIO(image), "image/png")},
+        )
+        assert response.status_code == 200
+
+    assert len(run_check_calls) == 2
+
+
+def test_check_does_not_cache_when_supabase_persistence_fails(monkeypatch):
+    """실제 저장 실패(None) 결과는 메모리 캐시에 남기지 않는다."""
+    from barum.api import app as app_module
+
+    monkeypatch.setenv("CHECKS_PERSIST", "1")
+    monkeypatch.setattr(app_module, "_maybe_checks_client", lambda: None)
+    monkeypatch.setattr(app_module, "_persist_check", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        app_module,
+        "run_check",
+        lambda *args, **kwargs: CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        ),
+    )
+    saved = []
+    monkeypatch.setattr(app_module, "save_cached_check", lambda key, report: saved.append((key, report)))
+
+    response = client.post(
+        "/check",
+        data={"region": "KR", "ad_text": "광고문구"},
+        files={"image": ("same.png", io.BytesIO(_make_dummy_png_bytes()), "image/png")},
+    )
+    assert response.status_code == 200
+    assert saved == []
+
+
 def _fake_client_with_row(fake_row):
     class FakeQuery:
         def select(self, *a, **k): return self
