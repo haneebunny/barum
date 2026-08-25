@@ -1797,7 +1797,7 @@ function ContentGeneratorContent() {
                           className="flex items-center gap-1.5 font-mono text-[11px] border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink-2)] p-[4px_9px]"
                         >
                           <span className="text-[var(--ink-3)]">{i + 1}.</span>
-                          {m.kind}
+                          {m.purpose || m.kind}
                           {m.has_claim_risk && (
                             <span className="text-[var(--brand-ink)]" title="실증자료 기반 근거로 통과된 모듈">
                               ✓근거

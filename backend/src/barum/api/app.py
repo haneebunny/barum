@@ -859,6 +859,14 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         return cached
 
     image_gen = _image_generator()
+    # create 모드는 "모듈별 배경 이미지도 생성하기" 체크박스(image_generation.requested)를
+    # 켰을 때만 실제로 생성(과금)한다. 예전엔 서버 env(IMAGE_GENERATION_ENABLED=1)만 켜져
+    # 있으면 체크박스를 꺼도 요청마다 나노바나나가 나갔다(2026-08-25 냐냐 발견, 비용 사고).
+    # image_gen을 None으로 내리면 build_image_plan이 생성 경로를 아예 안 탄다. improve
+    # 모드는 체크박스가 없고 대체표현 배경 생성이 기본 동작이라 그대로 둔다.
+    if image_gen and req.mode == "create" and not (req.image_generation and req.image_generation.requested):
+        print("    [info] create 이미지 생성 체크박스 꺼짐 - 배경 생성 건너뜀")
+        image_gen = None
     client = _checks_client() if image_gen else None
 
     # 제품사진이 올라왔으면 지배색을 뽑아 배경 톤에 반영한다(PIL 픽셀 분석, 과금 0).

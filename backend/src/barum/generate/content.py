@@ -659,7 +659,8 @@ def _drop_unfilled_risky_modules(
         if module.has_claim_risk and module.kind not in filled:
             skipped.append(
                 SkippedClaim(
-                    category=module.kind,
+                    # 사용자 노출 라벨이라 영어 kind 대신 한글 purpose를 쓴다(2026-08-25).
+                    category=module.purpose or module.kind,
                     reason="이 모듈을 채울 인정문구·실증자료가 부족해 계획에서 뺐습니다",
                 )
             )

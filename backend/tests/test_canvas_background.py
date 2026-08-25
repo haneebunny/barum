@@ -191,7 +191,8 @@ def test_인정문구보다_위반소지_모듈이_많으면_남는_모듈을_�
     pruned, skipped = _drop_unfilled_risky_modules(plan, sections)
 
     assert [m.kind for m in pruned.modules] == ["hero_intro", "value_prop", "how_to_use"]
-    assert [s.category for s in skipped] == ["persistence_claim"]
+    # category는 사용자 노출 라벨이라 영어 kind가 아니라 한글 purpose를 쓴다(2026-08-25).
+    assert [s.category for s in skipped] == ["지속"]
     assert "부족해" in skipped[0].reason
 
 
