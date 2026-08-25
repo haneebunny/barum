@@ -343,7 +343,12 @@ export const ContentCardSchema = z.object({
   text: z.string(),
   text_source: z.string(),
   image_url: z.string().nullable().default(null),
-  image_status: z.string().default("skipped"),
+  image_status: z.string().default("skipped"), // generated | skipped | placed
+  // 판매자가 올린 제품사진 원본을 그대로 쓴 카드(나노바나나 재합성이 아님).
+  // true면 "AI 생성" 캡션을 안 붙이고 원본으로 표시한다 - 원본은 AI가 만든 게
+  // 아니라 법적 고지 대상도 아니다(PR #379, 팀장 지시 2026-08-24: 재합성이
+  // 라벨을 뭉갰다 - YOURBERRY→YOUARFRAY).
+  is_original: z.boolean().default(false),
   // 실증자료 필요 고지. 있으면 화면에 반드시 같이 노출한다(빠뜨리면 사용자가
   // 위반에서 벗어난 줄 안다, 2026-08-20 팀장 지시와 같은 이유).
   note: z.string().nullable().default(null),
