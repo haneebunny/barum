@@ -540,7 +540,7 @@ export default function LandingPage() {
   const [picked, setPicked] = useState<"o" | "x" | null>(null);
   const [score, setScore] = useState(0);
   const [fin, setFin] = useState(false);
-  // ── EXPORT 애드온 토글 상태 ──
+  // ── 해외 프리플라이트(베타) 상세 토글 상태 ──
   const [exportOpen, setExportOpen] = useState(false);
 
   const rd = rounds[qi];
@@ -750,7 +750,7 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="text-[var(--ink-3)] font-mono text-[11px] leading-[1.8]">
-            가입 없이 하루 3건 무료 · 신용카드 불필요<br />결과는 참고 정보이며 법적 자문이 아닙니다
+            가입 없이 하루 {FREE_DAILY_LIMIT}건 무료 · 신용카드 불필요<br />결과는 참고 정보이며 법적 자문이 아닙니다
           </div>
         </div>
 
@@ -1364,7 +1364,7 @@ export default function LandingPage() {
               지금 광고 문구를 붙여넣으세요.<br />3분 뒤 조항까지 나옵니다.
             </div>
             <div className="font-mono text-[12px] text-[var(--on-brand)] opacity-80">
-              가입 없이 하루 3건 무료 · 신용카드 불필요 ▊
+              가입 없이 하루 {FREE_DAILY_LIMIT}건 무료 · 신용카드 불필요 ▊
             </div>
           </div>
           <Link
