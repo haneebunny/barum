@@ -205,7 +205,7 @@ function ZoomableImage({
     : null;
 
   return (
-    <div className="h-full border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
+    <div className="flex-1 min-h-0 border border-[var(--line-2)] p-3 bg-[var(--surface-sub)] flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] text-[var(--ink-3)]">
           원본 광고 검증 이미지 ({srcW}x{srcH} px) · {zoomPct}%
@@ -233,7 +233,7 @@ function ZoomableImage({
       <div
         ref={viewerRef}
         onScroll={handleScroll}
-        className="relative w-full h-[78vh] min-h-[580px] max-h-[920px] overflow-auto"
+        className="relative w-full flex-1 min-h-0 overflow-auto"
         style={{ backgroundColor: "var(--surface)" }}
       >
         <div
