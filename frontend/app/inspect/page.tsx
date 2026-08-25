@@ -11,6 +11,8 @@ import { Modal } from "@/components/Modal/Modal";
 import { RouteLoading } from "@/components/RouteLoading/RouteLoading";
 import { useError } from "@/lib/error/ErrorContext";
 import { takeDraft } from "@/lib/draftHandoff";
+import { DEMO_RESULT_ID, DEMO_PRODUCT_NAME } from "@/lib/demo/demo";
+import { grantDemoAccess } from "@/lib/tickets";
 
 function getAnalysisStats(report: CheckReport | USPreflightReport) {
   return {
@@ -92,6 +94,8 @@ function InspectContent() {
   const idParam = searchParams.get("id") || "";
 
   const isSunscreenDraft = idParam === "demo-id-3";
+  // 심사위원 데모(유어베리): 폼을 프리필하고, 검사는 커밋된 픽스처 리포트로 단축한다.
+  const isYourberryDemo = idParam === DEMO_RESULT_ID;
 
   const [adText, setAdText] = useState(
     isSunscreenDraft
@@ -103,11 +107,17 @@ function InspectContent() {
       ? "정제수, 티타늄디옥사이드, 아연옥사이드, 부틸렌글라이콜, 글리세린"
       : ""
   );
-  const [adFiles, setAdFiles] = useState<FileItem[]>([]);
+  const [adFiles, setAdFiles] = useState<FileItem[]>(
+    isYourberryDemo
+      ? [{ id: "ad-file-demo", name: "유어베리_글로우_세럼_상세페이지", ext: ".png" }]
+      : []
+  );
   const [adFileError, setAdFileError] = useState<string | null>(null);
   const [pFiles, setPFiles] = useState<FileItem[]>([]);
   const [ingredientFileError, setIngredientFileError] = useState<string | null>(null);
-  const [productName, setProductName] = useState(isSunscreenDraft ? "미국 수출 선스크린 데모" : "");
+  const [productName, setProductName] = useState(
+    isSunscreenDraft ? "미국 수출 선스크린 데모" : isYourberryDemo ? DEMO_PRODUCT_NAME : ""
+  );
   const [domesticReports, setDomesticReports] = useState<ReportListItem[]>([]);
   const [domesticReportsLoading, setDomesticReportsLoading] = useState(false);
   const [domesticReportsAvailable, setDomesticReportsAvailable] = useState(true);
@@ -126,7 +136,7 @@ function InspectContent() {
   const directRasterImage = adFiles.find((item) => item.file && isSupportedAdImage(item.file))?.file;
   const hasAnalysisSource = hasImportedSource
     ? importedClaims.trim().length > 0
-    : adText.trim().length > 0 || Boolean(directRasterImage);
+    : adText.trim().length > 0 || Boolean(directRasterImage) || isYourberryDemo;
   const status = inspectStatus || (hasAnalysisSource ? "ready" : "idle");
   const importedInputsDisabled = status === "running" || hasImportedSource;
 
@@ -406,6 +416,16 @@ function InspectContent() {
 
   const handleRun = async () => {
     if (status === "running" || !hasAnalysisSource) return;
+
+    // 심사위원 데모: 실제 검사(백엔드/과금) 대신 커밋된 픽스처 리포트로 단축한다.
+    // 이용권을 미리 채워(페이월 우회) 리포트가 바로 전부 열리게 한다.
+    if (isYourberryDemo) {
+      grantDemoAccess();
+      setInspectStatus("running");
+      setIsLogModalOpen(true);
+      setTimeout(() => router.push(`/report/${DEMO_RESULT_ID}`), 1400);
+      return;
+    }
 
     const uploadingIngredientFiles = pFiles.filter((file) => file.ingredientParseStatus === "uploading");
     if (uploadingIngredientFiles.length > 0) {

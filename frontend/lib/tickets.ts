@@ -226,6 +226,30 @@ export function isExpired(lot: TicketLot): boolean {
   return new Date(lot.expiresAt).getTime() <= Date.now();
 }
 
+/** 데모(심사위원) 진입 시 이용권을 미리 채운다 — "이미 요금제 있는 것처럼" 페이월 우회.
+ * 실제 결제가 아니며, 데모 lot이 이미 있으면 중복 시드하지 않는다. */
+export function grantDemoAccess(): void {
+  try {
+    const lots = ticketStore.read();
+    if (lots.some((l) => l.id === "demo-combo")) return;
+    const now = new Date();
+    ticketStore.write([
+      ...lots,
+      {
+        id: "demo-combo",
+        kind: "combo",
+        size: 9,
+        remaining: 9,
+        price: 0,
+        purchasedAt: now.toISOString(),
+        expiresAt: addDays(now, TICKET_VALIDITY_DAYS).toISOString(),
+      },
+    ]);
+  } catch {
+    /* localStorage 접근 실패(프라이빗 모드 등)면 조용히 넘어간다 */
+  }
+}
+
 /** 아직 쓸 수 있는 lot(만료 전 + 잔량 있음)을 만료 임박 순으로 */
 function usableLots(lots: TicketLot[]): TicketLot[] {
   return lots

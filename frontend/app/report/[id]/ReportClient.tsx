@@ -437,8 +437,12 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 이용권 체계. 무료로 돌린 리포트는 요약만 보이고, 이용권 1장을 쓰면 전체가
   // 열린다(무료 요약을 나중에 업그레이드하는 경로도 이 흐름을 그대로 쓴다).
   const reportId = envelope.result_id;
-  const { access, isUnlocked, contentRemaining, canGenerateContent, pickPreview, unlock, grantContent } =
+  const isDemo = reportId === DEMO_RESULT_ID;
+  const { access, isUnlocked: rawIsUnlocked, contentRemaining, canGenerateContent: rawCanGenerateContent, pickPreview, unlock, grantContent } =
     useReportAccess(reportId);
+  // 데모는 페이월을 우회한다(심사위원이 결제에 막히지 않게). 이미 이용권이 있는 것처럼 전부 열림.
+  const isUnlocked = isDemo || rawIsUnlocked;
+  const canGenerateContent = isDemo || rawCanGenerateContent;
   const { has, consume } = useTickets();
   // 결제 모달을 두 목적으로 쓴다. 리포트를 여는 것과 상세페이지 생성 권한을 붙이는 건
   // 파는 이용권도 결제 후 처리도 다르다.
@@ -695,7 +699,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
     activeEnvelope.result_id === "demo-id-5";
   const canShowRealImage = hasCoords && !isMockId && !imageErrors.global;
   // 데모(유어베리): 원본 이미지는 정적 자산이고, demo_corrections로 제자리 교정을 보여준다.
-  const isDemo = activeEnvelope.result_id === DEMO_RESULT_ID;
   const demoCorrections =
     (activeEnvelope as unknown as { demo_corrections?: DemoCorrection[] }).demo_corrections || [];
   const reportImageUrl = isDemo
@@ -817,7 +820,9 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
         {isUnlocked && (
           <p className="m-0 mt-2.5 font-mono text-[11.5px] text-[var(--ink-3)]">
-            {getProduct(access.unlockedWith!).name} 이용권으로 열람 중 · 보관 기한 없음
+            {access.unlockedWith
+              ? `${getProduct(access.unlockedWith).name} 이용권으로 열람 중 · 보관 기한 없음`
+              : "데모 · 전체 열람 중"}
             {contentRemaining > 0 && ` · 상세페이지 생성 ${contentRemaining}건 가능`}
           </p>
         )}
