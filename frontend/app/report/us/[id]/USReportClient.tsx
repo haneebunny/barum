@@ -123,10 +123,18 @@ function FindingCard({ finding, idx, num, open, onToggle, onHover }: FindingCard
 
 interface USReportClientProps {
   resultId: string;
+  initialReport?: USPreflightReport;
+  demoImageUrl?: string;
+  demoUnlocked?: boolean;
 }
 
-export function USReportClient({ resultId }: USReportClientProps) {
-  const [report, setReport] = useState<USPreflightReport | null>(null);
+export function USReportClient({
+  resultId,
+  initialReport,
+  demoImageUrl,
+  demoUnlocked = false,
+}: USReportClientProps) {
+  const [report, setReport] = useState<USPreflightReport | null>(initialReport ?? null);
   const [error, setError] = useState<string | null>(null);
   const [openIdx, setOpenIdx] = useState<number | null>(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -139,6 +147,8 @@ export function USReportClient({ resultId }: USReportClientProps) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   useEffect(() => {
+    if (initialReport) return;
+
     try {
       const raw = window.sessionStorage.getItem(`us-preflight-${resultId}`);
       if (raw) {
@@ -179,7 +189,7 @@ export function USReportClient({ resultId }: USReportClientProps) {
         console.error(err);
         setError("리포트 데이터를 찾을 수 없습니다. 검사 화면에서 다시 시도해 주세요.");
       });
-  }, [resultId]);
+  }, [initialReport, resultId]);
 
   if (error) {
     return (
@@ -206,7 +216,7 @@ export function USReportClient({ resultId }: USReportClientProps) {
   }
 
   // 이용권을 쓰기 전엔 리포트 본문을 통째로 막는다(국내와 달리 무료 요약이 없다).
-  if (!isUnlocked) {
+  if (!demoUnlocked && !isUnlocked) {
     const openWithTicket = () => {
       if (!consume("overseas")) {
         setCheckoutOpen(true);
@@ -421,7 +431,7 @@ export function USReportClient({ resultId }: USReportClientProps) {
                 {isImageMode ? (
                   <ReportImageViewer
                     findByOrder={highlightItems}
-                    imageUrl={canShowRealImage ? getReportImageUrl(resultId) : null}
+                    imageUrl={canShowRealImage ? demoImageUrl ?? getReportImageUrl(resultId) : null}
                     imageErrorGlobal={imageErrorGlobal}
                     onImageError={() => setImageErrorGlobal(true)}
                     hoveredIndex={hoveredIndex}

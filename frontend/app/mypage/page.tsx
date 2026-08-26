@@ -6,7 +6,8 @@ import { PageContent } from "@/components/PageContent/PageContent";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
-import { recentHistory, rowProps } from "@/lib/mockHistory";
+import { historyHref, historyRowProps } from "@/lib/reportHistory";
+import { useReportHistory } from "@/lib/useReportHistory";
 import type { ExportProfile } from "@/lib/api/schema";
 import { DEFAULT_EXPORT_PROFILE, readExportProfile, writeExportProfile } from "@/lib/exportProfile";
 import {
@@ -25,8 +26,6 @@ import {
   type TicketLot,
 } from "@/lib/tickets";
 
-const RECENT_HISTORY = recentHistory(5);
-
 /** 구매 lot 하나의 상태 라벨. 색이 아니라 글자로 구분한다(F 규칙: 비긴급 상태에 색 금지). */
 function lotStatus(lot: TicketLot): string {
   if (lot.remaining === 0) return "모두 사용함";
@@ -39,6 +38,7 @@ export default function MyPage() {
   // 구매 자체는 결제 모달이 처리한다. 여기선 잔액과 이력만 읽는다.
   const { lots, balance, expiringSoon } = useTickets();
   const daily = useDailyChecks();
+  const { rows: recentHistory, loading: historyLoading, error: historyError } = useReportHistory(5);
   const [checkoutKind, setCheckoutKind] = useState<TicketKind | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
@@ -279,11 +279,17 @@ export default function MyPage() {
             <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]"></span>
             <span className="text-[var(--ink-3)] font-mono text-[10.5px]">최근 5건</span>
           </div>
-          <HistoryRowList>
-            {RECENT_HISTORY.map((row) => (
-              <HistoryRow key={row.result_id} href={`/report/${row.result_id}`} {...rowProps(row)} />
-            ))}
-          </HistoryRowList>
+          {recentHistory.length > 0 ? (
+            <HistoryRowList>
+              {recentHistory.map((row) => (
+                <HistoryRow key={row.result_id} href={historyHref(row)} {...historyRowProps(row)} />
+              ))}
+            </HistoryRowList>
+          ) : (
+            <div className="border-y border-dashed border-[var(--line-2)] p-[18px_10px] font-mono text-[11px] text-[var(--ink-3)]">
+              [ {historyLoading ? "이 기기의 검사 이력을 불러오는 중" : historyError || "이 기기에 저장된 검사 이력이 없습니다"} ]
+            </div>
+          )}
         </div>
       </PageContent>
 

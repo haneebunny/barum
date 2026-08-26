@@ -82,6 +82,7 @@ interface HistoryRowProps {
   count_crit?: boolean;
   score_label?: string;
   date_label: string;
+  action?: ReactNode;
 }
 
 /**
@@ -100,45 +101,49 @@ export function HistoryRow({
   count_crit,
   score_label,
   date_label,
+  action,
 }: HistoryRowProps) {
   const has_meta_line = count_label !== undefined || score_label !== undefined;
   return (
-    <Link
-      href={href}
-      className="group flex flex-col gap-1.5 sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-5 p-[12px_10px] cursor-pointer no-underline transition-colors duration-150 hover:bg-[var(--nav-active-bg)]"
-    >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-[var(--ink)] font-semibold text-[14.5px] tracking-[-0.2px] truncate min-w-0">{product_name}</span>
-          {/* 메타가 지역뿐이거나 아예 없으면 둘째 줄을 만들지 않고 여기 붙인다 */}
-          {!has_meta_line && region_label && <span className="shrink-0 font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">{region_label}</span>}
+    <div className="group flex items-stretch transition-colors duration-150 hover:bg-[var(--nav-active-bg)]">
+      <Link
+        href={href}
+        className="min-w-0 flex-1 flex flex-col gap-1.5 sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-5 p-[12px_10px] cursor-pointer no-underline"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-[var(--ink)] font-semibold text-[14.5px] tracking-[-0.2px] truncate min-w-0">{product_name}</span>
+            {/* 메타가 지역뿐이거나 아예 없으면 둘째 줄을 만들지 않고 여기 붙인다 */}
+            {!has_meta_line && region_label && <span className="shrink-0 font-mono text-[11px] text-[var(--ink-3)] whitespace-nowrap">{region_label}</span>}
+          </div>
+          {has_meta_line && (
+            <MetaLine
+              items={[
+                region_label,
+                count_label && <span className={count_crit ? "text-[var(--crit)] font-bold" : undefined}>{count_label}</span>,
+                score_label,
+              ]}
+            />
+          )}
         </div>
-        {has_meta_line && (
-          <MetaLine
-            items={[
-              region_label,
-              count_label && <span className={count_crit ? "text-[var(--crit)] font-bold" : undefined}>{count_label}</span>,
-              score_label,
-            ]}
-          />
-        )}
-      </div>
-      <div className="flex items-center gap-3.5 shrink-0">
-        <StatusChip status_icon={status_icon} status_label={status_label} status_crit={status_crit} />
-        <span className="text-[var(--ink-3)] opacity-[0.92] font-mono text-[11px] whitespace-nowrap text-right [font-variant-numeric:tabular-nums]">{date_label}</span>
-        <svg
-          className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)] opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="square"
-          aria-hidden="true"
-        >
-          <path d="M9 5l7 7-7 7" />
-        </svg>
-      </div>
-    </Link>
+        <div className="flex items-center gap-3.5 shrink-0">
+          <StatusChip status_icon={status_icon} status_label={status_label} status_crit={status_crit} />
+          <span className="text-[var(--ink-3)] opacity-[0.92] font-mono text-[11px] whitespace-nowrap text-right [font-variant-numeric:tabular-nums]">{date_label}</span>
+          <svg
+            className="w-3.5 h-3.5 shrink-0 text-[var(--ink-3)] opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="square"
+            aria-hidden="true"
+          >
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </Link>
+      {action && <div className="shrink-0 flex items-center pr-[10px]">{action}</div>}
+    </div>
   );
 }
 
@@ -148,25 +153,29 @@ interface HistoryRowLockedProps {
   status_label: string;
   date_label: string;
   lock_message: ReactNode;
+  action?: ReactNode;
 }
 
 /** 잠긴(블러 처리된) 검사 이력 행. 클릭 불가, HistoryRowList 안에서만 쓴다. */
-export function HistoryRowLocked({ product_name, region_label, status_label, date_label, lock_message }: HistoryRowLockedProps) {
+export function HistoryRowLocked({ product_name, region_label, status_label, date_label, lock_message, action }: HistoryRowLockedProps) {
   return (
-    <div className="relative">
-      <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-5 p-[12px_10px] blur-[3px] select-none" aria-hidden="true">
-        <div className="min-w-0">
-          <span className="text-[var(--ink)] font-semibold text-[14.5px] truncate min-w-0 block">{product_name}</span>
-          <MetaLine items={[region_label, "위반 -- · 검토 --"]} />
+    <div className="flex items-stretch">
+      <div className="relative min-w-0 flex-1">
+        <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-5 p-[12px_10px] blur-[3px] select-none" aria-hidden="true">
+          <div className="min-w-0">
+            <span className="text-[var(--ink)] font-semibold text-[14.5px] truncate min-w-0 block">{product_name}</span>
+            <MetaLine items={[region_label, "위반 -- · 검토 --"]} />
+          </div>
+          <div className="flex items-center gap-3.5 shrink-0">
+            <span className="font-mono text-[11px] text-[var(--ink-2)] whitespace-nowrap">[ {status_label} ]</span>
+            <span className="text-[var(--ink-3)] opacity-[0.92] font-mono text-[11px] whitespace-nowrap">{date_label}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3.5 shrink-0">
-          <span className="font-mono text-[11px] text-[var(--ink-2)] whitespace-nowrap">[ {status_label} ]</span>
-          <span className="text-[var(--ink-3)] opacity-[0.92] font-mono text-[11px] whitespace-nowrap">{date_label}</span>
+        <div className="absolute inset-0 flex items-center justify-center gap-2 text-[var(--ink-2)] text-[12px] font-semibold px-6 text-center">
+          {lock_message}
         </div>
       </div>
-      <div className="absolute inset-0 flex items-center justify-center gap-2 text-[var(--ink-2)] text-[12px] font-semibold px-6 text-center">
-        {lock_message}
-      </div>
+      {action && <div className="shrink-0 flex items-center pr-[10px]">{action}</div>}
     </div>
   );
 }
