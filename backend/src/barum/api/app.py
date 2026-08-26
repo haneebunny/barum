@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -1022,9 +1023,19 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     if not data:
         raise HTTPException(status_code=422, detail="빈 파일입니다.")
     photo_id = f"{uuid4().hex}{ext}"
-    client = _checks_client()
-    ensure_bucket(client)
-    upload_image(client, f"uploads/{photo_id}", data, photo.content_type)
+    content_type = photo.content_type
+
+    # Supabase 저장은 동기(블로킹)라 이벤트 루프를 막지 않게 스레드풀에서 돌린다.
+    # 제품사진은 유일하게 사진 여러 장을 한꺼번에 올리는 경로다. async 엔드포인트가
+    # 블로킹 호출로 루프를 막으면 그 요청들이 직렬화돼, 6장이 1분 넘게 걸려
+    # 클라이언트가 끊고(499) photo_id를 못 받는다(2026-08-26 실측: 한 장 14초,
+    # 동시 6장 1분 7초). 스레드풀로 감싸면 동시 업로드가 병렬로 처리된다.
+    def _store() -> None:
+        client = _checks_client()
+        ensure_bucket(client)
+        upload_image(client, f"uploads/{photo_id}", data, content_type)
+
+    await run_in_threadpool(_store)
     return {"photo_id": photo_id}
 
 
