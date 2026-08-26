@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Warning, MagnifyingGlass, Check, CaretDown, CircleNotch, Lock } from "@phosphor-icons/react";
 import type { ReportEnvelope, Finding, Replacement } from "@/lib/api/schema";
@@ -11,7 +10,6 @@ import { useError } from "@/lib/error/ErrorContext";
 import { ReportImageViewer } from "@/components/ReportImageViewer/ReportImageViewer";
 import { DemoFixedPage, type DemoCorrection } from "@/components/DemoFixedPage/DemoFixedPage";
 import { DEMO_RESULT_ID, DEMO_DETAIL_IMAGE } from "@/lib/demo/demo";
-import { Modal } from "@/components/Modal/Modal";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { getProduct, grantsReport, useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 
@@ -423,7 +421,6 @@ function markSentence(
 }
 
 export function ReportClient({ envelope }: ReportClientProps) {
-  const router = useRouter();
   const [activeEnvelope] = useState<Omit<ReportEnvelope, "report"> & { report: CheckReport }>(envelope);
   const [actions, setActions] = useState<Record<number, "accept" | "exclude" | null>>({});
   // "모두 수용" 실행취소용 스냅샷. 개별 조작이나 리포트 전환이 끼어들면 되돌릴
@@ -438,16 +435,14 @@ export function ReportClient({ envelope }: ReportClientProps) {
   // 열린다(무료 요약을 나중에 업그레이드하는 경로도 이 흐름을 그대로 쓴다).
   const reportId = envelope.result_id;
   const isDemo = reportId === DEMO_RESULT_ID;
-  const { access, isUnlocked: rawIsUnlocked, contentRemaining, canGenerateContent: rawCanGenerateContent, pickPreview, unlock, grantContent } =
+  const { access, isUnlocked: rawIsUnlocked, contentRemaining, pickPreview, unlock, grantContent } =
     useReportAccess(reportId);
   // 샘플 체험은 이용권 없이 전부 열람된다(결제 없이 바로 볼 수 있게).
   const isUnlocked = isDemo || rawIsUnlocked;
-  const canGenerateContent = isDemo || rawCanGenerateContent;
   const { has, consume } = useTickets();
   // 결제 모달을 두 목적으로 쓴다. 리포트를 여는 것과 상세페이지 생성 권한을 붙이는 건
   // 파는 이용권도 결제 후 처리도 다르다.
   const [checkoutIntent, setCheckoutIntent] = useState<null | "unlock" | "content">(null);
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [openOrderIndex, setOpenOrderIndex] = useState<number | null>(0);
   const [flagFilter, setFlagFilter] = useState<"위반" | "검토필요" | null>(null);
 
@@ -469,16 +464,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
   const attachContent = (kind: TicketKind) => {
     if (!isUnlocked && grantsReport(kind)) unlock(kind);
     else grantContent();
-  };
-
-  /** 보유 이용권으로 상세페이지 생성 권한 확보. 콘텐츠 단독을 먼저 쓰고 없으면 결합형. */
-  const useOwnedContentTicket = () => {
-    const kind: TicketKind | null = has("content") ? "content" : has("combo") ? "combo" : null;
-    if (!kind || !consume(kind)) {
-      setCheckoutIntent("content");
-      return;
-    }
-    attachContent(kind);
   };
 
   // 판정 로직 중복 제거(화면 워크어라운드, 근본 원인은 발표 후 과제 - PM 8대
@@ -707,16 +692,41 @@ export function ReportClient({ envelope }: ReportClientProps) {
       ? getReportImageUrl(activeEnvelope.result_id)
       : null;
 
-  const hasInteracted = Object.keys(actions).length > 0;
-  const acceptedIndices = hasInteracted
-    ? Object.entries(actions)
-      .filter(([, act]) => act === "accept")
-      .map(([i]) => i)
-      .join(",")
-    : d.findings
-      .map((f, i) => (visibleFindingIdx.has(i) && f.flag === "위반" ? i : -1))
-      .filter((idx) => idx !== -1)
-      .join(",");
+  // 실제 리포트의 "수정된 상세페이지": 새 페이지를 생성하지 않고, 검사 때 이미
+  // 만들어진 대체문구(d.replacements)를 원본 이미지 위 위반 위치에 그대로 얹는다.
+  // 좌표는 findings.location(ReportImageViewer와 같은 srcW/srcH 기준 % 변환), 배경은
+  // 브랜드 반투명 박스(팀장 결정, 2026-08-26). 가로 좌표가 없으면 그 줄 전체 폭으로
+  // 얹는다(세로 위치는 타일에서 정확). 데모는 미리 구운 demo_corrections를 쓴다.
+  const realCorrections: DemoCorrection[] =
+    !isDemo && canShowRealImage && typeof srcW === "number" && typeof srcH === "number"
+      ? d.findings.flatMap((f, i) => {
+          if (!visibleFindingIdx.has(i)) return [];
+          const r = replacementByFindingIndex.get(i);
+          if (!r || !r.replaced.trim()) return [];
+          const loc = f.location;
+          const hasY =
+            typeof loc.y_start === "number" && typeof loc.y_end === "number" && loc.y_end > loc.y_start;
+          if (!hasY) return [];
+          const hasX =
+            typeof loc.x_start === "number" && typeof loc.x_end === "number" && loc.x_end > loc.x_start;
+          return [
+            {
+              x_pct: hasX ? (loc.x_start! / srcW) * 100 : 0,
+              y_pct: (loc.y_start! / srcH) * 100,
+              w_pct: hasX ? ((loc.x_end! - loc.x_start!) / srcW) * 100 : 100,
+              h_pct: ((loc.y_end! - loc.y_start!) / srcH) * 100,
+              text: r.replaced,
+              bg: "color-mix(in srgb, var(--brand) 92%, transparent)",
+              fg: "var(--on-brand)",
+              fs_cqw: 2.6,
+            },
+          ];
+        })
+      : [];
+
+  // 데모·실제를 하나로: 얹을 교정문구와 이미지가 다 있으면 "수정된 상세페이지"를 켤 수 있다.
+  const fixedCorrections = isDemo ? demoCorrections : realCorrections;
+  const canShowFixed = !!reportImageUrl && fixedCorrections.length > 0;
 
   return (
     <>
@@ -960,10 +970,11 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <div className="absolute inset-0 p-[18px_20px_22px] flex flex-col">
             <div className="flex items-center gap-[11px] m-[0_0_13px]">
               <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
-              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">{isDemo && showFixed ? "수정된 상세페이지" : "원문 하이라이트"}</h2>
+              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">{canShowFixed && showFixed ? "수정된 상세페이지" : "원문 하이라이트"}</h2>
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
-              {isDemo ? (
-                // 데모: 작은 토글 대신 눈에 띄는 브랜드 버튼 하나로 원본↔수정본을 전환한다.
+              {canShowFixed ? (
+                // 눈에 띄는 브랜드 버튼 하나로 원본↔수정본을 전환한다. 검사 때 나온
+                // 대체문구를 원본 위에 얹는 방식이라 데모·실제가 같은 토글을 쓴다.
                 <button
                   type="button"
                   onClick={() => setShowFixed((v) => !v)}
@@ -982,8 +993,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
               )}
             </div>
             <div id="origPanel" className="flex-1 min-h-0 flex flex-col overflow-auto">
-              {isDemo && showFixed ? (
-                <DemoFixedPage imageUrl={DEMO_DETAIL_IMAGE} corrections={demoCorrections} />
+              {showFixed && canShowFixed && reportImageUrl ? (
+                <DemoFixedPage imageUrl={reportImageUrl} corrections={fixedCorrections} />
               ) : isImageMode ? (
                 <ReportImageViewer
                   findByOrder={findByOrder}
@@ -1081,48 +1092,21 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
-        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">{isDemo ? "왼쪽에서 지적된 표현을 오른쪽 상세페이지 위에서 그 자리 그대로 합법 문구로 바꿔 보여줍니다. 위 '수정된 상세페이지 보기' 버튼으로 원본과 비교해 보세요." : "지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요."}</p>
-        {isDemo ? null : canGenerateContent ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => {
-                if (!hasInteracted) {
-                  setConfirmModalOpen(true);
-                } else {
-                  router.push(`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`);
-                }
-              }}
-              className="font-sans text-[14px] font-bold p-[11px_16px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms]"
-            >
-              이 수정안대로 상세페이지 만들기 <span className="font-mono">→</span>
-            </button>
-            <Link
-              href="/content?mode=create"
-              className="font-sans text-[14px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
-            >
-              처음부터 새로 만들기 <span className="font-mono">→</span>
-            </Link>
-          </div>
-        ) : (
-          // 잠김 안내는 위반 신호가 아니라 상태 표시라 경보색(--crit)을 쓰지 않는다(§F).
-          <div className="flex items-center gap-2.5 max-[600px]:flex-col max-[600px]:items-end">
-            <span className="text-[11.5px] text-[var(--ink-3)]">
-              상세페이지 제작에는 콘텐츠 생성 이용권이 필요합니다.
-            </span>
-            <button
-              type="button"
-              onClick={useOwnedContentTicket}
-              className="font-sans text-[13px] font-bold p-[10px_14px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.5"
-            >
-              {has("content")
-                ? "보유 콘텐츠 이용권 쓰기"
-                : has("combo")
-                  ? "보유 결합형 쓰기"
-                  : "콘텐츠 생성 이용권 구매"}{" "}
-              <span className="font-mono">→</span>
-            </button>
-          </div>
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">{isDemo
+          ? "왼쪽에서 지적된 표현을 오른쪽 상세페이지 위에서 그 자리 그대로 합법 문구로 바꿔 보여줍니다. 위 '수정된 상세페이지 보기' 버튼으로 원본과 비교해 보세요."
+          : canShowFixed
+            ? "지적된 표현의 합법 수정안은 검사 결과에 이미 담겨 있어요. 위 '수정된 상세페이지 보기'로 원본 위에서 그 자리 그대로 바꿔 확인하세요."
+            : "지적된 표현과 함께 제시된 합법 수정안을 검토해 보세요."}</p>
+        {/* improve는 새 페이지를 생성하지 않고 위 토글로 원본에 교정을 얹는다(팀장 결정,
+            2026-08-26). 그래서 '상세페이지 만들기'·이용권 안내는 뺐다. 처음부터 새로
+            만드는 create 진입만 남긴다. */}
+        {isDemo ? null : (
+          <Link
+            href="/content?mode=create"
+            className="font-sans text-[14px] font-semibold p-[11px_16px] border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] cursor-pointer hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] inline-flex items-center justify-center gap-1.75 transition-all duration-[120ms] no-underline"
+          >
+            처음부터 새로 만들기 <span className="font-mono">→</span>
+          </Link>
         )}
       </div>
 
@@ -1147,47 +1131,6 @@ export function ReportClient({ envelope }: ReportClientProps) {
         }}
       />
 
-      <Modal
-        isOpen={confirmModalOpen}
-        title="상세페이지 생성 안내"
-        onClose={() => setConfirmModalOpen(false)}
-        size="md"
-        footer={
-          <div className="flex justify-end gap-2 w-full">
-            <button
-              type="button"
-              onClick={() => setConfirmModalOpen(false)}
-              className="font-sans text-[13px] font-semibold px-3.5 py-2 border border-[var(--line-2)] bg-transparent text-[var(--ink-2)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)] cursor-pointer transition-all duration-[120ms]"
-            >
-              직접 선택
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmModalOpen(false);
-                router.push(`/content?id=${activeEnvelope.result_id}&accepted=${acceptedIndices}`);
-              }}
-              className="font-sans text-[13px] font-bold px-4 py-2 border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] hover:bg-[var(--brand-deep)] cursor-pointer transition-all duration-[120ms]"
-            >
-              일괄 수용하고 생성 →
-            </button>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-3 py-1 text-[13px] text-[var(--ink-2)] leading-[1.6]">
-          <div className="p-3.5 border border-[var(--line-2)] bg-[var(--surface-sub)] text-[var(--ink)]">
-            <p className="m-0 font-bold text-[13.5px] leading-snug">
-              수정 권고안에 대해 &apos;수용&apos; 또는 &apos;제외&apos;를 선택하지 않으셨습니다.
-            </p>
-            <p className="m-[6px_0_0] text-[12.5px] text-[var(--ink-3)]">
-              모든 위반 우려 표현을 수용한 상태로 상세페이지 초안을 생성하시겠습니까?
-            </p>
-          </div>
-          <p className="m-0 text-[12px] text-[var(--ink-3)]">
-            &apos;직접 선택&apos;을 누르시면 리포트 화면에서 각 수정 권고안을 개별 검토하실 수 있습니다.
-          </p>
-        </div>
-      </Modal>
     </>
   );
 }
