@@ -51,6 +51,43 @@ function nextProductPhotoId() {
   return `pp-${productPhotoSeq}`;
 }
 
+// 업로드 전에 브라우저에서 사진을 줄인다. 폰·카메라 원본은 10~20MB라 업로드가
+// 느리다(2026-08-26 실측: 한 장 1분 58초). 상세페이지엔 그만한 해상도가 필요없어
+// 긴 변을 maxDim로 맞추고 webp로 재인코딩한다. 실패하거나 이미 작으면 원본 그대로.
+async function resizeImageForUpload(file: File, maxDim = 1600, quality = 0.85): Promise<File> {
+  if (!file.type.startsWith("image/") || typeof document === "undefined") return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = document.createElement("img");
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("이미지 디코딩 실패"));
+      img.src = url;
+    });
+    const longest = Math.max(img.naturalWidth, img.naturalHeight);
+    const scale = Math.min(1, maxDim / longest);
+    // 이미 작으면(축소 불필요 + 1.5MB 미만) 손대지 않는다.
+    if (scale >= 1 && file.size < 1_500_000) return file;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/webp", quality)
+    );
+    // 재인코딩이 오히려 커지면(작은 png 등) 원본을 쓴다.
+    if (!blob || blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${base}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /**
  * 콘텐츠 생성 잠금 카드. 보유 이용권이 있으면 바로 쓰게 하고, 없으면 결제 모달로 보낸다.
  */
@@ -195,7 +232,9 @@ function ContentGeneratorContent() {
         ...prev,
         { id, file, previewUrl, photoId: null, uploading: true, error: null },
       ]);
-      uploadProductPhoto(file)
+      // 원본은 크기만 줄여 올린다(preview는 원본 그대로 유지).
+      resizeImageForUpload(file)
+        .then((resized) => uploadProductPhoto(resized))
         .then((res) => {
           setCreateProductPhotos((prev) =>
             prev.map((p) => (p.id === id ? { ...p, photoId: res.photo_id, uploading: false } : p))
