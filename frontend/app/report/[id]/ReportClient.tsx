@@ -960,23 +960,21 @@ export function ReportClient({ envelope }: ReportClientProps) {
           <div className="absolute inset-0 p-[18px_20px_22px] flex flex-col">
             <div className="flex items-center gap-[11px] m-[0_0_13px]">
               <span className="text-[var(--on-brand)] bg-[var(--brand-deep)] font-mono font-bold text-[11.5px] p-[2px_7px] inline-flex items-center">02</span>
-              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">원문 하이라이트</h2>
+              <h2 className="m-0 text-[14px] font-bold text-[var(--ink)] tracking-[-0.2px]">{isDemo && showFixed ? "수정된 상세페이지" : "원문 하이라이트"}</h2>
               <span className="flex-1 h-0 border-t border-dashed border-[var(--line-2)]" />
               {isDemo ? (
-                <div className="flex items-center gap-[3px] font-mono text-[11px]">
-                  <button
-                    onClick={() => setShowFixed(false)}
-                    className={`p-[2px_8px] rounded-[3px] ${!showFixed ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)]"}`}
-                  >
-                    원본·위반
-                  </button>
-                  <button
-                    onClick={() => setShowFixed(true)}
-                    className={`p-[2px_8px] rounded-[3px] ${showFixed ? "bg-[var(--brand-deep)] text-[var(--on-brand)] font-bold" : "text-[var(--ink-3)]"}`}
-                  >
-                    고친 페이지
-                  </button>
-                </div>
+                // 데모: 작은 토글 대신 눈에 띄는 브랜드 버튼 하나로 원본↔수정본을 전환한다.
+                <button
+                  type="button"
+                  onClick={() => setShowFixed((v) => !v)}
+                  className="font-sans text-[13px] font-bold p-[8px_15px] border bg-[var(--brand)] text-[var(--on-brand)] border-[var(--brand)] cursor-pointer hover:bg-[var(--brand-deep)] inline-flex items-center gap-1.5 transition-all duration-[120ms] whitespace-nowrap"
+                >
+                  {showFixed ? (
+                    <><span className="font-mono">←</span> 원본·위반 보기</>
+                  ) : (
+                    <>수정된 상세페이지 보기 <span className="font-mono">→</span></>
+                  )}
+                </button>
               ) : isImageMode ? (
                 <span className="text-[var(--ink-3)] font-mono text-[11px]">원본 이미지</span>
               ) : (
@@ -1083,8 +1081,8 @@ export function ReportClient({ envelope }: ReportClientProps) {
 
       {/* 하단 브릿지 */}
       <div className="p-[18px_20px] border-t border-[var(--line)] flex items-center justify-between gap-3.5 flex-wrap">
-        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요.</p>
-        {canGenerateContent ? (
+        <p className="m-0 text-[12.5px] text-[var(--ink-3)] max-w-[56ch]">{isDemo ? "왼쪽에서 지적된 표현을 오른쪽 상세페이지 위에서 그 자리 그대로 합법 문구로 바꿔 보여줍니다. 위 '수정된 상세페이지 보기' 버튼으로 원본과 비교해 보세요." : "지적된 표현을 검토했다면, 위험을 낮춘 수정 권고안을 반영해 상세페이지 초안을 만들 수 있어요."}</p>
+        {isDemo ? null : canGenerateContent ? (
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
