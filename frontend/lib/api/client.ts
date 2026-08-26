@@ -519,6 +519,12 @@ export function resolveImageUrl(url: string): string {
   if (/^https?:\/\//.test(url)) {
     return url;
   }
+  // /demo/* 는 백엔드가 아니라 프론트 public에 있는 정적 자산(샘플 데이터 체험용)
+  // 이다. 백엔드 주소를 붙이면 404가 나서 결과 이미지가 엑박이 된다. 프론트
+  // 오리진 기준 상대경로로 그대로 둔다.
+  if (url.startsWith("/demo/")) {
+    return url;
+  }
   return `${getApiUrl()}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
