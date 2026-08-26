@@ -11,7 +11,11 @@ import re
 
 from pydantic import BaseModel
 
-from barum.generate.images import generate_canvas_background, generate_module_images
+from barum.generate.images import (
+    _NO_IMAGE_LAYOUT_TYPES,
+    generate_canvas_background,
+    generate_module_images,
+)
 from barum.reference.presets import apply_preset, audience_hint
 from barum.generate.layout import (
     FULL_INGREDIENT_KIND,
@@ -1092,6 +1096,18 @@ def build_cards(
         key = sec.module_kind or sec.kind
         by_kind.setdefault(key, sec)  # 같은 모듈에 여러 섹션이면 첫 번째만
     images = {img.module_kind: img for img in image_plan.module_images}
+    # 업로드한 제품 원본은 이미지 슬롯 카드에 앞에서부터 **순서대로 모두** 배치한다
+    # (팀장 지시 2026-08-26: "준 원본은 다 써먹어라"). 원본을 받은 카드는 생성 이미지가
+    # 있어도 원본을 우선한다 - 원본은 라벨이 완벽하고 과금이 0이라 나노바나나 재합성보다
+    # 낫다(재합성 때 라벨이 뭉개지던 문제는 '참조 생성'일 때 얘기고, 여기선 원본을 그대로
+    # 놓는 거라 해당 없음). 표 유형(_NO_IMAGE_LAYOUT_TYPES)은 이미지 자리가 없어 안 받고,
+    # 원본이 부족한 나머지 카드만 생성 배경을 쓴다.
+    product_photos = [p.image_url for p in image_plan.placed if p.slot == "product_photo"]
+    photo_idx = 0
+    # 제품사진이 없을 때의 히어로 폴백(improve 모드 등): placed의 non-product 이미지.
+    hero_fallback = next(
+        (p.image_url for p in image_plan.placed if p.slot != "product_photo"), None
+    )
 
     cards: list[ContentCard] = []
     for module in plan.modules:
@@ -1106,23 +1122,17 @@ def build_cards(
         image_url = img.image_url if img else None
         image_status = img.status if img else "skipped"
         is_original = False
-        # 제품 원본이 올라왔으면 히어로(첫 카드)는 **생성 이미지가 있어도** 원본을
-        # 우선한다(팀장 지시 2026-08-24: "기존 입력 이미지는 그대로 사용"). 나노바나나
-        # 재합성은 라벨을 뭉개고(YOURBERRY→YOUARFRAY) 비용도 드는데, 원본은 라벨이
-        # 완벽하고 과금이 0이다. 그래서 히어로 모듈은 애초에 이미지 생성도 스킵한다
-        # (_generate_create_content). placed의 product_photo 슬롯을 그대로 쓴다.
-        if len(cards) == 0 and image_plan.placed:
-            product_photo = next(
-                (p for p in image_plan.placed if p.slot == "product_photo"), None
-            )
-            if product_photo is not None:
-                image_url = product_photo.image_url
-                image_status = "placed"
-                is_original = True
-            elif not image_url:
-                # 제품사진은 없지만 다른 배치 이미지가 있으면 그걸 히어로에 쓴다(기존 동작).
-                image_url = image_plan.placed[0].image_url
-                image_status = "placed"
+
+        wants_image = module.layout_type not in _NO_IMAGE_LAYOUT_TYPES
+        if wants_image and photo_idx < len(product_photos):
+            image_url = product_photos[photo_idx]
+            image_status = "placed"
+            is_original = True
+            photo_idx += 1
+        elif len(cards) == 0 and hero_fallback and not image_url:
+            # 제품사진은 없지만 다른 배치 이미지가 있으면 히어로에 쓴다(기존 동작).
+            image_url = hero_fallback
+            image_status = "placed"
 
         # 인정문구는 법으로 정해진 문구라 길어도 헤드라인 자리를 지킨다.
         head, body = split_headline(
@@ -1254,13 +1264,25 @@ def _generate_create_content(
     # 4. PII 제거
     cleaned, pii_kinds = _strip_pii(sections)
     # 5. 이미지 배치·가드레일 + 모듈별 배경 이미지 생성.
-    # **제품 원본이 올라왔으면 히어로(첫 모듈) 배경은 만들지 않는다**(팀장 지시
-    # 2026-08-24). 히어로 카드는 build_cards가 placed의 제품 원본을 그대로 쓰므로
-    # (is_original), 여기서 배경을 만들어봐야 안 쓰이고 나노바나나 비용만 나간다.
-    # placed 목록은 req 기반이라(build_image_plan 내부) 모듈을 빼도 원본은 남는다.
+    # **제품 원본을 받을 카드의 배경은 만들지 않는다**(팀장 지시 2026-08-26: "준 원본은
+    # 다 써먹어라"). build_cards가 이미지 슬롯 카드에 원본을 앞에서부터 순서대로 배치하니
+    # (is_original), 그 카드들의 배경을 여기서 만들어봐야 안 쓰이고 나노바나나 비용·시간만
+    # 든다. 원본 개수만큼, 카드가 되는 이미지 슬롯 모듈을 앞에서부터 건너뛴다. 표 유형은
+    # 원래 이미지가 없어 대상이 아니고, placed 목록은 req 기반이라 모듈을 빼도 원본은 남는다.
     image_plan_source = plan
-    if req.product_photo_ids and plan.modules:
-        image_plan_source = plan.model_copy(update={"modules": plan.modules[1:]})
+    n_photos = len(req.product_photo_ids or [])
+    if n_photos and plan.modules:
+        kinds_with_section = {(s.module_kind or s.kind) for s in cleaned}
+        skipped_for_original = 0
+        gen_modules = []
+        for m in plan.modules:
+            wants_image = m.layout_type not in _NO_IMAGE_LAYOUT_TYPES
+            becomes_card = m.kind in kinds_with_section
+            if wants_image and becomes_card and skipped_for_original < n_photos:
+                skipped_for_original += 1
+                continue
+            gen_modules.append(m)
+        image_plan_source = plan.model_copy(update={"modules": gen_modules})
     image_plan = build_image_plan(
         req, image_plan_source, image_generator, image_sink, photo_resolver, sections=cleaned
     )
