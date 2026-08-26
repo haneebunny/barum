@@ -1037,7 +1037,13 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     data = await photo.read()
     if not data:
         raise HTTPException(status_code=422, detail="빈 파일입니다.")
-    photo_id = f"{uuid4().hex}{ext}"
+    # photo_id를 **파일 내용 해시**로 낸다(랜덤 uuid 아님). 같은 사진이면 같은 id가
+    # 나와야, 같은 입력으로 다시 생성할 때 /generate 캐시가 적중한다(상품명·타겟군
+    # 같은 다른 입력은 요청 JSON에 그대로 있어 바뀌면 캐시가 알아서 미스=재생성).
+    # uuid면 같은 사진을 다시 올려도 id가 달라져 캐시가 영원히 빗나갔다(2026-08-26).
+    # sha256 앞 32자리라 기존 photo_id 포맷(_PHOTO_ID_RE, 32 hex)을 그대로 지킨다.
+    # 덤으로 같은 사진 재업로드가 같은 경로에 덮여 저장 중복도 없앤다.
+    photo_id = f"{sha256_hex(data)[:32]}{ext}"
     content_type = photo.content_type
 
     # Supabase 저장은 동기(블로킹)라 이벤트 루프를 막지 않게 스레드풀에서 돌린다.
