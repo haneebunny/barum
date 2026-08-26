@@ -36,6 +36,7 @@ import type {
   ClinicalUploadResponse,
   SurveyUploadResponse,
 } from "./schema";
+import { historyTokenHeaders } from "@/lib/historyToken";
 
 export interface CheckAdInput {
   region: Region;
@@ -93,6 +94,7 @@ export async function checkAd(input: CheckAdInput): Promise<CheckReport> {
 
   const response = await fetch(url, {
     method: "POST",
+    headers: historyTokenHeaders(),
     body: formData,
   });
 
@@ -466,13 +468,26 @@ export async function getReport(resultId: string): Promise<ReportEnvelope> {
   return validateResponse(ReportEnvelopeSchema, await response.json(), `GET /reports/${resultId}`);
 }
 
-export async function getReports(region: Region = "KR", limit = 50): Promise<ReportListItem[]> {
-  const params = new URLSearchParams({ region, limit: String(limit) });
-  const response = await fetch(`${getApiUrl()}/reports?${params.toString()}`);
+export async function getReports(region?: Region, limit = 50): Promise<ReportListItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (region) params.set("region", region);
+  const response = await fetch(`${getApiUrl()}/reports?${params.toString()}`, {
+    headers: historyTokenHeaders(),
+  });
   if (!response.ok) {
-    throw new Error(`Failed to fetch reports (${region}): ${response.status} - ${await response.text()}`);
+    throw new Error(`Failed to fetch reports (${region || "all"}): ${response.status} - ${await response.text()}`);
   }
-  return validateResponse(z.array(ReportListItemSchema), await response.json(), `GET /reports?region=${region}`);
+  return validateResponse(z.array(ReportListItemSchema), await response.json(), `GET /reports?region=${region || "all"}`);
+}
+
+export async function deleteReport(resultId: string): Promise<void> {
+  const response = await fetch(`${getApiUrl()}/reports/${resultId}`, {
+    method: "DELETE",
+    headers: historyTokenHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete report (id=${resultId}): ${response.status} - ${await response.text()}`);
+  }
 }
 
 export interface ExportReadinessFromReportInput {
@@ -595,6 +610,7 @@ export async function checkUSPreflight(input: CheckUSPreflightInput): Promise<US
 
   const response = await fetch(url, {
     method: "POST",
+    headers: historyTokenHeaders(),
     body: formData,
   });
 

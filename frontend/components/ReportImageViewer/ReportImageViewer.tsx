@@ -397,20 +397,22 @@ function ZoomableImage({
           className="sticky float-right bottom-2 mr-2 border border-[var(--line-2)] bg-[var(--surface-sub)] shadow-[0_1px_4px_rgba(0,0,0,0.25)]"
           style={{ width: MINIMAP_W, height: minimapH, pointerEvents: "none" }}
         >
-          <Image
-            src={imageUrl}
-            alt=""
-            fill
-            sizes={`${MINIMAP_W}px`}
-            unoptimized
-            style={{ display: "block", opacity: 0.9 }}
-          />
-          {rectStyle && (
-            <div
-              className="absolute border-2 border-[var(--brand)]"
-              style={{ ...rectStyle, backgroundColor: "rgba(255,255,255,0.12)" }}
+          <div className="relative h-full w-full">
+            <Image
+              src={imageUrl}
+              alt=""
+              fill
+              sizes={`${MINIMAP_W}px`}
+              unoptimized
+              style={{ display: "block", opacity: 0.9 }}
             />
-          )}
+            {rectStyle && (
+              <div
+                className="absolute border-2 border-[var(--brand)]"
+                style={{ ...rectStyle, backgroundColor: "rgba(255,255,255,0.12)" }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -5,17 +5,12 @@ import { useRouter } from "next/navigation";
 import { PageFooter } from "@/components/PageFooter/PageFooter";
 import { PageContent } from "@/components/PageContent/PageContent";
 import { HistoryRow, HistoryRowList } from "@/components/HistoryRow/HistoryRow";
-import { recentHistory, rowProps, type HistoryStatus } from "@/lib/mockHistory";
+import { historyHref, historyRowProps } from "@/lib/reportHistory";
+import { useReportHistory } from "@/lib/useReportHistory";
 import { DEMO_RESULT_ID } from "@/lib/demo/demo";
 import { grantDemoAccess } from "@/lib/tickets";
 
 type RegionChoice = "kr" | "ex" | null;
-
-const CONTINUE_ITEMS = recentHistory(3);
-
-function continueHref(result_id: string, status: HistoryStatus) {
-  return status === "draft" ? `/inspect?id=${result_id}` : `/report/${result_id}`;
-}
 
 const WORKFLOW_STEPS = [
   { icon: "map-pin", label: "판매 지역 선택" },
@@ -69,6 +64,7 @@ function WorkflowIcon({ name }: { name: string }) {
 
 export default function HomePage() {
   const router = useRouter();
+  const { rows: continueItems, loading: historyLoading, error: historyError } = useReportHistory(3);
   const [region, setRegion] = useState<RegionChoice>(null);
   const [selectedCountry, setSelectedCountry] = useState("미국 FDA·FTC");
 
@@ -230,15 +226,21 @@ export default function HomePage() {
             <span className="text-[var(--ink-3)] font-mono text-[12px]">최근 3</span>
           </div>
 
-          <HistoryRowList>
-            {CONTINUE_ITEMS.map(item => (
-              <HistoryRow
-                key={item.result_id}
-                href={continueHref(item.result_id, item.status)}
-                {...rowProps(item)}
-              />
-            ))}
-          </HistoryRowList>
+          {continueItems.length > 0 ? (
+            <HistoryRowList>
+              {continueItems.map((item) => (
+                <HistoryRow
+                  key={item.result_id}
+                  href={historyHref(item)}
+                  {...historyRowProps(item)}
+                />
+              ))}
+            </HistoryRowList>
+          ) : (
+            <div className="border-y border-dashed border-[var(--line-2)] p-[18px_10px] font-mono text-[11px] text-[var(--ink-3)]">
+              [ {historyLoading ? "이 기기의 검사 이력을 불러오는 중" : historyError || "이 기기에 저장된 검사 이력이 없습니다"} ]
+            </div>
+          )}
         </div>
 
         {/* 구분선 */}

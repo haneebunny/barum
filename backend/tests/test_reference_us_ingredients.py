@@ -16,6 +16,13 @@ def test_canonical_name_maps_inci_to_cfr():
     assert canonical_name("Octisalate") == "Octyl salicylate"
 
 
+def test_canonical_name_maps_korean_label_names_to_cfr():
+    assert canonical_name("징크옥사이드") == "Zinc oxide"
+    assert canonical_name("티타늄디옥사이드") == "Titanium dioxide"
+    assert canonical_name("호모살레이트") == "Homosalate"
+    assert canonical_name("에칠헥실살리실레이트") == "Octyl salicylate"
+
+
 def test_canonical_name_passthrough_when_unknown():
     assert canonical_name("정제수") == "정제수"
 
@@ -51,6 +58,20 @@ def test_is_known_uv_filter_false_for_unrelated_ingredient():
 def test_check_sunscreen_ingredients_splits_approved_and_unapproved():
     result = check_sunscreen_ingredients(["정제수", "Zinc oxide", "드로메트리졸", "글리세린"])
     assert result == {"approved": ["Zinc oxide"], "unapproved": ["드로메트리졸"]}
+
+
+def test_check_sunscreen_ingredients_accepts_korean_names_from_ocr():
+    ingredients = [
+        "징크옥사이드",
+        "호모살레이트",
+        "에칠헥실살리실레이트",
+        "티타늄디옥사이드",
+    ]
+
+    assert check_sunscreen_ingredients(ingredients) == {
+        "approved": ingredients,
+        "unapproved": [],
+    }
 
 
 def test_check_sunscreen_ingredients_empty_when_no_uv_filters():

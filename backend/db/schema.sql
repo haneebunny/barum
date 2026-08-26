@@ -22,8 +22,12 @@ create table if not exists checks (
   report       jsonb not null,         -- CheckReport 통째
   image_sha256 text,                   -- 이미지 입력 시 원본 sha256(증거 보존, FR-1)
   image_path   text,                   -- Storage 버킷 내 경로(있으면)
-  product_name text                    -- 상품명/광고 제목(선택, 판정 대상에 포함)
+  product_name text,                   -- 상품명/광고 제목(선택, 판정 대상에 포함)
+  owner_token_hash text                -- 익명 브라우저 이력 토큰의 SHA-256(원문 저장 금지)
 );
+
+create index if not exists checks_owner_created_idx
+  on checks (owner_token_hash, created_at desc);
 
 -- ─────────────────────────────────────────────────────────────
 -- reference_cases: 실제 적발사례 임베딩 (Task1b, Phase3).

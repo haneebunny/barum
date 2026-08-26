@@ -4,43 +4,67 @@
   "confidence_note": "verified=2026-08-18에 1차 출처(Wikipedia 화합물 문서)로 재대조 완료. unverified=일반 상식 수준, 코드에 반영 전 INCI 공식 사전(PCPC INCI Dictionary)이나 CosIng(EU)으로 재확인 권장.",
   "synonyms": {
     "Octyl methoxycinnamate": {
-      "variants": ["Octinoxate", "Ethylhexyl methoxycinnamate"],
+      "variants": ["Octinoxate", "Ethylhexyl methoxycinnamate", "에칠헥실메톡시신나메이트", "에틸헥실메톡시신나메이트"],
       "confidence": "unverified"
     },
     "Octyl salicylate": {
-      "variants": ["Octisalate", "Ethylhexyl salicylate"],
+      "variants": ["Octisalate", "Ethylhexyl salicylate", "에칠헥실살리실레이트", "에틸헥실살리실레이트"],
       "confidence": "unverified"
     },
     "Phenylbenzimidazole sulfonic acid": {
-      "variants": ["Ensulizole"],
+      "variants": ["Ensulizole", "페닐벤즈이미다졸설포닉애씨드"],
       "confidence": "unverified"
     },
     "Menthyl anthranilate": {
-      "variants": ["Meradimate"],
+      "variants": ["Meradimate", "멘틸안트라닐레이트"],
       "confidence": "unverified"
     },
     "Padimate O": {
-      "variants": ["Octyldimethyl PABA", "OD-PABA", "2-Ethylhexyl 4-dimethylaminobenzoate", "Escalol 507"],
+      "variants": ["Octyldimethyl PABA", "OD-PABA", "2-Ethylhexyl 4-dimethylaminobenzoate", "Escalol 507", "에칠헥실디메칠파바", "에틸헥실디메틸파바"],
       "confidence": "verified"
     },
     "Sulisobenzone": {
-      "variants": ["Benzophenone-4"],
+      "variants": ["Benzophenone-4", "벤조페논-4"],
       "confidence": "verified"
     },
     "Dioxybenzone": {
-      "variants": ["Benzophenone-8"],
+      "variants": ["Benzophenone-8", "벤조페논-8"],
       "confidence": "unverified"
     },
     "Oxybenzone": {
-      "variants": ["Benzophenone-3"],
+      "variants": ["Benzophenone-3", "벤조페논-3"],
       "confidence": "unverified"
     },
     "Avobenzone": {
-      "variants": ["Butyl Methoxydibenzoylmethane"],
+      "variants": ["Butyl Methoxydibenzoylmethane", "부틸메톡시디벤조일메탄"],
       "confidence": "unverified"
     },
     "Aminobenzoic acid": {
       "variants": ["PABA", "Para-aminobenzoic acid"],
+      "confidence": "verified"
+    },
+    "Cinoxate": {
+      "variants": ["시녹세이트"],
+      "confidence": "verified"
+    },
+    "Homosalate": {
+      "variants": ["호모살레이트"],
+      "confidence": "verified"
+    },
+    "Octocrylene": {
+      "variants": ["옥토크릴렌"],
+      "confidence": "verified"
+    },
+    "Titanium dioxide": {
+      "variants": ["티타늄디옥사이드"],
+      "confidence": "verified"
+    },
+    "Zinc oxide": {
+      "variants": ["징크옥사이드"],
+      "confidence": "verified"
+    },
+    "Bemotrizinol": {
+      "variants": ["비스-에칠헥실옥시페놀메톡시페닐트리아진", "비스-에틸헥실옥시페놀메톡시페닐트리아진"],
       "confidence": "verified"
     }
   }

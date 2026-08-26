@@ -15,6 +15,12 @@ export const DEMO_PRODUCT_NAME = "유어베리 글로우 리제너레이션 세�
 // 검사 입력으로 자동 첨부하는 상세페이지 이미지(public/demo에 bake가 복사).
 export const DEMO_DETAIL_IMAGE = "/demo/yourberry_serum_detail.png";
 
+// 미국 선크림 샘플은 실제 상세페이지 OCR과 현재 프리플라이트 판정 규칙으로
+// 만든 고정 리포트다. 이력 화면에서 실제 사용자 이력과 분리해 항상 열 수 있다.
+export const DEMO_US_SUNSCREEN_RESULT_ID = "demo-yourberry-sunscreen-us";
+export const DEMO_US_SUNSCREEN_PRODUCT_NAME = "유어베리 톤업 UV 프로텍터 SPF50+ PA++++";
+export const DEMO_US_SUNSCREEN_DETAIL_IMAGE = "/demo/yourberry_sunscreen_detail.png";
+
 /** report/content 라우트에서 데모 픽스처를 써야 하는 id인지. */
 export function isDemoReportId(id: string): boolean {
   return id === DEMO_RESULT_ID;
@@ -22,4 +28,8 @@ export function isDemoReportId(id: string): boolean {
 
 export function isDemoCreateId(id: string): boolean {
   return id === DEMO_CREATE_ID;
+}
+
+export function isDemoUSReportId(id: string): boolean {
+  return id === DEMO_US_SUNSCREEN_RESULT_ID;
 }
