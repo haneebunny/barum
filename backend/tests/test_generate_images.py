@@ -524,7 +524,7 @@ def _prompt(layout_type: str, variation_index: int = 0) -> str:
 def test_section_statement는_질감_클로즈업을_안_시킨다():
     """어휘집상 '이미지 없이(또는 최소), 배경색 블록'인데 제형 클로즈업을 받고 있었다."""
     prompt = _prompt("section_statement")
-    assert "질감 클로즈업을 그리지 마라" in prompt
+    assert "질감 클로즈업은 그리지 마라" in prompt
     assert "배경면" in prompt
 
 

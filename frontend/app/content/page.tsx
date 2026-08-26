@@ -15,6 +15,8 @@ import { Dropzone } from "@/components/Dropzone";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 import { useError } from "@/lib/error/ErrorContext";
+import { DEMO_PRODUCT_NAME } from "@/lib/demo/demo";
+import createDemoFixture from "@/lib/demo/fixtures/create.json";
 
 interface ProductPhotoItem {
   id: string;
@@ -96,11 +98,15 @@ function ContentLockCard({
   desc,
   actionLabel,
   onAction,
+  onDemo,
 }: {
   title: string;
   desc: string;
   actionLabel: string;
   onAction: () => void;
+  // 있으면 결제 버튼 아래에 "샘플 데이터로 체험" 버튼을 같이 낸다. create 모드에서만
+  // 넘겨서, 이용권 없이도 준비된 샘플 상세페이지를 바로 볼 수 있게 한다.
+  onDemo?: () => void;
 }) {
   return (
     <div className="p-[18px_20px]">
@@ -118,6 +124,15 @@ function ContentLockCard({
         >
           {actionLabel} <span className="font-mono">→</span>
         </button>
+        {onDemo ? (
+          <button
+            type="button"
+            onClick={onDemo}
+            className="font-sans text-[12.5px] font-bold p-[9px_14px] border border-[var(--line-2)] bg-[var(--surface)] text-[var(--ink-2)] cursor-pointer hover:border-[var(--brand)] hover:text-[var(--brand)] inline-flex items-center justify-center gap-1.5 transition-all duration-[120ms]"
+          >
+            샘플 데이터로 체험 (유어베리 세럼) <span className="font-mono">→</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -152,6 +167,16 @@ function ContentGeneratorContent() {
       return;
     }
     grantContent();
+  };
+
+  // 샘플 데이터 체험(create): 이용권·백엔드 호출 없이 커밋된 샘플 생성 결과를 그대로
+  // 화면에 올린다. 실시간 생성은 한 번에 ~125초라 시연에 무겁고 결과 편차도 있어,
+  // 준비된 결과를 보여준다(report 데모와 같은 방식). genResult에 넣고 isGenerated를
+  // 켜면 아래 게이팅(!canGenerateContent && !isGenerated)이 풀려 결과 카드가 렌더된다.
+  const loadCreateDemo = () => {
+    setCreateProductName(DEMO_PRODUCT_NAME);
+    setGenResult(createDemoFixture as unknown as GenerateResponse);
+    setIsGenerated(true);
   };
 
   const [report, setReport] = useState<CheckReport | null>(null);
@@ -1310,6 +1335,7 @@ function ContentGeneratorContent() {
                 : "콘텐츠 생성 이용권 구매"
           }
           onAction={useContentTicket}
+          onDemo={mode === "create" ? loadCreateDemo : undefined}
         />
       ) : (
         <>
