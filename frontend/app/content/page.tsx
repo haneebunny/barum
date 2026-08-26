@@ -15,8 +15,50 @@ import { Dropzone } from "@/components/Dropzone";
 import { TicketCheckoutModal } from "@/components/TicketCheckout/TicketCheckoutModal";
 import { useReportAccess, useTickets, type TicketKind } from "@/lib/tickets";
 import { useError } from "@/lib/error/ErrorContext";
-import { DEMO_PRODUCT_NAME } from "@/lib/demo/demo";
 import createDemoFixture from "@/lib/demo/fixtures/create.json";
+
+// 샘플 데이터 체험(create)에서 폼에 미리 채워 넣을 입력값. 데모에 들어가면 이
+// 값으로 폼을 채우고 제품사진을 첨부한 상태로 보여준다(생성 버튼을 누르면
+// 백엔드 없이 create.json 픽스처를 결과로 띄운다). 이미지는 굽기 때 저장한
+// /demo/generated 정적 파일을 미리보기로 쓴다. create.input.md와 값이 같다.
+const DEMO_CREATE_INPUT = {
+  productName: "유어베리 핑크 글로우 세럼",
+  notes: "20,30대 피부가 건조한 여성들을 타겟으로 한다. \n그리고 텍스쳐가 핑크라는 것을 소구점으로 삼는다. ",
+  formulationType: "액상",
+  volume: "30ml",
+  ingredientAmounts: [
+    { name: "정제수", amount: "76.5%" },
+    { name: "글리세린", amount: "6%" },
+    { name: "부틸렌글라이콜", amount: "5%" },
+    { name: "나이아신아마이드", amount: "3%" },
+    { name: "프로판다이올", amount: "3%" },
+    { name: "판테놀", amount: "2%" },
+    { name: "베타인", amount: "1.5%" },
+    { name: "히알루론산", amount: "1%" },
+    { name: "1,2-헥산다이올", amount: "0.8%" },
+    { name: "하이드록시아세토페논", amount: "0.4%" },
+    { name: "카보머", amount: "0.25%" },
+    { name: "알지닌", amount: "0.2%" },
+    { name: "알란토인", amount: "0.2%" },
+    { name: "에틸헥실글리세린", amount: "0.1%" },
+    { name: "다이소듐이디티에이", amount: "0.05%" },
+  ] as IngredientAmount[],
+  clinicalEvidence: [
+    { claim: "다크스팟 개선", value: "87%", institution: "유어랩 피부과학연구소", period: "8주", note: "20명 대상" },
+    { claim: "피부결 개선", value: "2.1배", institution: "유어랩 피부과학연구소", period: "4주", note: "20명 대상" },
+  ] as ClinicalEvidence[],
+  surveyEvidence: [
+    { claim: "발림성 만족", value: "94%", sample_size: "150명", institution: "유어리서치", period: "2026년 3월", method: "온라인 자기기입식 설문" },
+  ] as SurveyEvidence[],
+  photoUrls: [
+    "/demo/generated/create_494518ef6258ae702e9dbb94ac7485ca.webp",
+    "/demo/generated/create_517d475760f64bbd5526340ef308491b.webp",
+    "/demo/generated/create_22653c320cb397a08bb333191cb977c0.webp",
+    "/demo/generated/create_d77dd2e365a62c480b98432de3ba39d7.png",
+    "/demo/generated/create_a259b2ac24de3c813799028bebeeb450.png",
+    "/demo/generated/create_2653ff8a6f50f900ae857c97a420245d.png",
+  ],
+};
 
 interface ProductPhotoItem {
   id: string;
@@ -169,14 +211,38 @@ function ContentGeneratorContent() {
     grantContent();
   };
 
-  // 샘플 데이터 체험(create): 이용권·백엔드 호출 없이 커밋된 샘플 생성 결과를 그대로
-  // 화면에 올린다. 실시간 생성은 한 번에 ~125초라 시연에 무겁고 결과 편차도 있어,
-  // 준비된 결과를 보여준다(report 데모와 같은 방식). genResult에 넣고 isGenerated를
-  // 켜면 아래 게이팅(!canGenerateContent && !isGenerated)이 풀려 결과 카드가 렌더된다.
-  const loadCreateDemo = () => {
-    setCreateProductName(DEMO_PRODUCT_NAME);
-    setGenResult(createDemoFixture as unknown as GenerateResponse);
-    setIsGenerated(true);
+  // 샘플 데이터 체험(create): 폼을 준비된 예시 입력으로 채우고 제품사진을 첨부한
+  // 상태로 보여준다. 이용권·백엔드 호출은 없다(demoMode가 게이팅을 지난다).
+  // 생성 버튼을 누르면 handleGenerate가 백엔드 대신 create.json 픽스처를 띄운다.
+  // 실시간 생성은 한 번에 ~125초라 시연에 무겁고 결과 편차도 있어 준비된 결과를 쓴다.
+  const enterCreateDemo = () => {
+    setCreateProductName(DEMO_CREATE_INPUT.productName);
+    setCreateNotes(DEMO_CREATE_INPUT.notes);
+    setCreateFormulationType(DEMO_CREATE_INPUT.formulationType);
+    setCreateVolume(DEMO_CREATE_INPUT.volume);
+    setCreateGenerateImages(true);
+    setCreateIngredientAmounts(
+      DEMO_CREATE_INPUT.ingredientAmounts.map((r) => ({ ...r, id: nextIngredientAmountId() }))
+    );
+    setCreateClinicalEvidence(
+      DEMO_CREATE_INPUT.clinicalEvidence.map((r) => ({ ...r, id: nextClinicalEvidenceId() }))
+    );
+    setCreateSurveyEvidence(
+      DEMO_CREATE_INPUT.surveyEvidence.map((r) => ({ ...r, id: nextSurveyEvidenceId() }))
+    );
+    // 데모 사진은 굽기 때 저장한 정적 파일을 미리보기로 쓴다. file은 업로드용인데
+    // 데모는 업로드하지 않으므로 빈 File 자리표시자를 둔다(렌더는 previewUrl만 쓴다).
+    setCreateProductPhotos(
+      DEMO_CREATE_INPUT.photoUrls.map((url) => ({
+        id: nextProductPhotoId(),
+        file: new File([], url.split("/").pop() || "demo"),
+        previewUrl: url,
+        photoId: null,
+        uploading: false,
+        error: null,
+      }))
+    );
+    setDemoMode(true);
   };
 
   const [report, setReport] = useState<CheckReport | null>(null);
@@ -189,6 +255,9 @@ function ContentGeneratorContent() {
   // (팀장 지시로 로딩 UI 분리, 2026-08-23).
   const [generating, setGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
+  // 샘플 데이터 체험 모드. 켜지면 이용권 게이팅을 지나 프리필된 폼을 보여주고,
+  // 생성 버튼은 백엔드 대신 준비된 샘플 결과(create.json)를 띄운다.
+  const [demoMode, setDemoMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -589,6 +658,15 @@ function ContentGeneratorContent() {
   // risk_confirmations로 모달을 채운 뒤 사용자가 확인해야 결과를 확정
   // 표시한다("생성 전"이 아니라 "결과 확정 전" 확인).
   const handleGenerate = async () => {
+    // 샘플 데이터 체험: 백엔드·이용권 없이 준비된 샘플 결과로 확인 모달을 채운다.
+    // 이후 흐름(모달에서 확인 항목 체크 -> handleConfirmResult -> isGenerated)은
+    // 실제 생성과 똑같이 탄다. 위반 검토 항목도 그대로 보여주기 위함이다.
+    if (demoMode) {
+      setGenResult(createDemoFixture as unknown as GenerateResponse);
+      setConfirmedRisks({});
+      setIsModalOpen(true);
+      return;
+    }
     setGenerating(true);
     try {
       let res: GenerateResponse;
@@ -1323,7 +1401,7 @@ function ContentGeneratorContent() {
           리포트당 이용권 1장이라 매번 재현). 게이팅은 "생성 시작 전"에만
           적용한다 - !isGenerated를 같이 걸어서 이미 생성된 뒤엔 이 락이
           아예 안 뜨게 한다. */}
-      {!canGenerateContent && !isGenerated ? (
+      {!canGenerateContent && !isGenerated && !demoMode ? (
         <ContentLockCard
           title="상세페이지 초안을 만들려면 이용권이 필요합니다"
           desc="제품 정보나 수정 권고안을 바탕으로 화장품법을 지키는 상세페이지 초안 1건을 만들어 드립니다. 콘텐츠 생성 이용권 1장이 상세페이지 1건이고, 결합형을 쓰면 리포트 열람까지 함께 처리됩니다."
@@ -1335,7 +1413,7 @@ function ContentGeneratorContent() {
                 : "콘텐츠 생성 이용권 구매"
           }
           onAction={useContentTicket}
-          onDemo={mode === "create" ? loadCreateDemo : undefined}
+          onDemo={mode === "create" ? enterCreateDemo : undefined}
         />
       ) : (
         <>
