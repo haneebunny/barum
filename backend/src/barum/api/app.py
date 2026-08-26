@@ -117,6 +117,21 @@ _STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 app = FastAPI(title="barum 판정 백엔드", version="0.1.0")
 
+
+@app.on_event("startup")
+def _ensure_storage_bucket() -> None:
+    """저장 버킷을 시작 시 한 번만 확인한다.
+
+    버킷은 영구적이라 매 업로드마다 확인할 필요가 없다. 제품사진 업로드는
+    이 확인(list_buckets 네트워크콜)을 요청마다 돌아 병목이 됐다(2026-08-26).
+    시작 시 1회로 옮겨, 업로드 경로는 곧바로 저장만 한다.
+    자격증명이 없는 환경(로컬·테스트)에선 조용히 넘어간다.
+    """
+    try:
+        ensure_bucket(_checks_client())
+    except Exception as e:
+        print(f"    [info] 시작 시 버킷 확인 스킵: {type(e).__name__}: {e}")
+
 # 개발 편의: 프론트 dev 서버(다른 포트)에서 호출할 수 있게 CORS를 연다.
 # 서비스화 단계에서 허용 오리진을 좁힌다.
 app.add_middleware(
@@ -1030,10 +1045,10 @@ async def upload_product_photo(photo: UploadFile = File(...)) -> dict:
     # 블로킹 호출로 루프를 막으면 그 요청들이 직렬화돼, 6장이 1분 넘게 걸려
     # 클라이언트가 끊고(499) photo_id를 못 받는다(2026-08-26 실측: 한 장 14초,
     # 동시 6장 1분 7초). 스레드풀로 감싸면 동시 업로드가 병렬로 처리된다.
+    # 버킷 확인은 시작 시 1회(_ensure_storage_bucket)로 끝냈다. 여기선 곧바로 저장만
+    # 해서 요청당 list_buckets 왕복을 없앤다(2026-08-26 병목 제거).
     def _store() -> None:
-        client = _checks_client()
-        ensure_bucket(client)
-        upload_image(client, f"uploads/{photo_id}", data, content_type)
+        upload_image(_checks_client(), f"uploads/{photo_id}", data, content_type)
 
     await run_in_threadpool(_store)
     return {"photo_id": photo_id}
