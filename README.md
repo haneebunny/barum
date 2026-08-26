@@ -257,7 +257,7 @@ pip install -r requirements.txt
 # 3. 환경 변수 설정 (.env)
 cp .env.example .env
 # .env 파일 내 API Key 설정:
-# OPENAI_API_KEY, GOOGLE_API_KEY, SUPABASE_URL, SUPABASE_KEY
+# GEMINI_API_KEY, OPENAI_API_KEY, SUPABASE_URL, SUPABASE_KEY
 
 # 4. 백엔드 API 서버 실행
 uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
