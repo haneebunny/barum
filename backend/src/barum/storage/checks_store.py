@@ -32,6 +32,7 @@ def build_check_row(
     image_path: str | None = None,
     product_name: str | None = None,
     cache_key: str | None = None,
+    owner_token_hash: str | None = None,
 ) -> dict:
     """checks 테이블 insert 로우를 만든다. report는 CheckReport를 dict로 덤프한 것.
 
@@ -52,6 +53,8 @@ def build_check_row(
     }
     if product_name:
         row["product_name"] = product_name
+    if owner_token_hash:
+        row["owner_token_hash"] = owner_token_hash
     return row
 
 
@@ -67,21 +70,40 @@ def get_check(client, result_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_checks(client, region: str | None = None, limit: int = 50) -> list[dict]:
+def list_checks(
+    client,
+    region: str | None = None,
+    limit: int = 50,
+    owner_token_hash: str | None = None,
+) -> list[dict]:
     """저장된 검사 이력을 최신순으로 반환한다.
 
     snapshot은 report JSON 내부에 optional로 저장되므로 별도 스키마를 요구하지 않는다.
     """
     query = (
         client.table(_TABLE)
-        .select("id,created_at,region,report,image_path,product_name")
+        .select("id,created_at,region,report,image_path,product_name,owner_token_hash")
         .order("created_at", desc=True)
         .limit(limit)
     )
     if region is not None:
         query = query.eq("region", region)
+    if owner_token_hash is not None:
+        query = query.eq("owner_token_hash", owner_token_hash)
     response = query.execute()
     return response.data or []
+
+
+def delete_check(client, result_id: str, owner_token_hash: str) -> bool:
+    """소유 토큰 해시가 일치하는 검사 한 건만 삭제한다."""
+    (
+        client.table(_TABLE)
+        .delete()
+        .eq("id", result_id)
+        .eq("owner_token_hash", owner_token_hash)
+        .execute()
+    )
+    return True
 
 
 # ── 증거 이미지 (Storage) ──────────────────────────────────────────────────
@@ -115,6 +137,11 @@ def download_image(client, path: str) -> bytes:
     return client.storage.from_(_BUCKET).download(path)
 
 
+def delete_image(client, path: str) -> None:
+    """사용자가 삭제한 검사에 연결된 private 증거 파일을 제거한다."""
+    client.storage.from_(_BUCKET).remove([path])
+
+
 # ── 이미지 결과 캐시 (메모리 + Supabase 2차 조회) ───────────────────────────
 
 _IMAGE_CACHE: dict[str, object] = {}
@@ -129,7 +156,7 @@ def clear_image_cache() -> None:
 # 올리면 캐시 키가 통째로 바뀌어 옛 캐시(메모리·Supabase 둘 다)가 자동 무효화된다.
 # 안 올리면 코드를 고쳐도 옛 결과가 계속 나온다(2026-08-24 실제 사고: 미국 프리플라이트
 # 전성분 OCR을 고쳤는데 고치기 전 캐시가 계속 "전성분 미입력"을 돌려줬다).
-_CACHE_LOGIC_VERSION = "4"
+_CACHE_LOGIC_VERSION = "5"
 
 
 def build_cache_key(
@@ -143,6 +170,7 @@ def build_cache_key(
     domestic_subcategory: str | None = None,
     ingredients_raw: str | None = None,
     ingredients_input_kind: str | None = None,
+    owner_token_hash: str | None = None,
 ) -> str:
     """이미지 검사 입력값 조합 + 로직 버전으로 고유 캐시 키를 만든다."""
     if ingredients_input_kind is None:
@@ -159,22 +187,23 @@ def build_cache_key(
         "product_name": product_name or "",
         "domestic_category": domestic_category or "",
         "domestic_subcategory": domestic_subcategory or "",
+        "owner_token_hash": owner_token_hash or "",
     }
     raw = f"{_CACHE_LOGIC_VERSION}:{json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
     return sha256_hex(raw.encode("utf-8"))
 
 
-def get_check_by_sha256(client, image_sha256: str) -> dict | None:
+def get_check_by_sha256(
+    client,
+    image_sha256: str,
+    owner_token_hash: str | None = None,
+) -> dict | None:
     """image_sha256으로 저장된 최근 검사 한 건을 조회. 없으면 None."""
     try:
-        resp = (
-            client.table(_TABLE)
-            .select("*")
-            .eq("image_sha256", image_sha256)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
+        query = client.table(_TABLE).select("*").eq("image_sha256", image_sha256)
+        if owner_token_hash is not None:
+            query = query.eq("owner_token_hash", owner_token_hash)
+        resp = query.order("created_at", desc=True).limit(1).execute()
         rows = resp.data or []
         return rows[0] if rows else None
     except Exception as e:
@@ -199,7 +228,12 @@ def _ocr_failed_count(report_or_dict: object) -> int:
     return value or 0
 
 
-def get_cached_check(client, cache_key: str, image_sha256: str | None = None) -> object | None:
+def get_cached_check(
+    client,
+    cache_key: str,
+    image_sha256: str | None = None,
+    owner_token_hash: str | None = None,
+) -> object | None:
     """캐시된 검사 리포트를 가져온다. 1차 메모리 캐시, 2차 Supabase 조회.
 
     **OCR이 깨진 리포트는 캐시에 있어도 안 쓴다.** 쓰기 쪽에서 이미 막지만
@@ -227,7 +261,7 @@ def get_cached_check(client, cache_key: str, image_sha256: str | None = None) ->
 
     # 2차: Supabase DB에 동일 image_sha256으로 저장된 레코드가 있는지 확인
     if client is not None and image_sha256:
-        row = get_check_by_sha256(client, image_sha256)
+        row = get_check_by_sha256(client, image_sha256, owner_token_hash)
         if row and "report" in row:
             try:
                 from barum.models import CheckReport, ExportReadinessReport, USExportReadinessReport, USPreflightReport

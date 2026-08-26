@@ -82,6 +82,12 @@ def test_build_check_row_defaults_image_fields_none():
     assert row["image_path"] is None
 
 
+def test_build_check_row_stores_only_owner_token_hash():
+    row = build_check_row("rid", "KR", {}, owner_token_hash="hashed-owner")
+    assert row["owner_token_hash"] == "hashed-owner"
+    assert "history_token" not in row
+
+
 def test_save_check_inserts_into_checks_table():
     client = FakeClient()
     save_check(client, {"id": "rid", "region": "KR", "report": {}})

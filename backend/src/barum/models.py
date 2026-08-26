@@ -691,13 +691,33 @@ class StoredCheck(BaseModel):
     ]
 
 
+class ReportKind(str, Enum):
+    """사용자 검사 이력에서 상세 화면을 고르는 안정적인 구분자."""
+
+    DOMESTIC_CHECK = "domestic_check"
+    US_PREFLIGHT = "us_preflight"
+
+
+class ReportHistoryStatus(str, Enum):
+    """완료된 검사 이력의 표시 상태. draft는 서버에 저장하지 않는다."""
+
+    REVIEW = "review"
+    DONE = "done"
+
+
 class ReportListItem(BaseModel):
-    """해외 수출 화면에서 원본 국내 검사를 선택할 때 필요한 최소 이력 정보."""
+    """같은 익명 브라우저가 만든 실제 검사 이력의 목록 항목."""
 
     result_id: str
     created_at: str
     region: Region
+    report_kind: ReportKind
+    status: ReportHistoryStatus
     product_name: str | None = None
+    n_findings: int = 0
+    n_violation: int = 0
+    n_needs_review: int = 0
+    n_unjudged: int = 0
     image_available: bool = False
     snapshot_available: bool = False
     input_materials: list[str] = Field(default_factory=list)

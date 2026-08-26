@@ -23,6 +23,8 @@ from barum.storage.checks_store import (
 )
 
 client = TestClient(app)
+OWNER_A_HEADERS = {"X-History-Token": "a" * 64}
+OWNER_B_HEADERS = {"X-History-Token": "b" * 64}
 
 
 def _make_dummy_png_bytes(color: str = "white") -> bytes:
@@ -33,7 +35,10 @@ def _make_dummy_png_bytes(color: str = "white") -> bytes:
 
 
 @pytest.fixture(autouse=True)
-def _reset_cache():
+def _reset_cache(monkeypatch):
+    from barum.api import app as app_module
+
+    monkeypatch.setattr(app_module, "get_vlm", lambda *args, **kwargs: object())
     clear_image_cache()
     yield
     clear_image_cache()
@@ -45,6 +50,12 @@ def test_cache_key_generation():
     key3 = build_cache_key("sha123", "US", ad_text="test")
     assert key1 == key2
     assert key1 != key3
+
+
+def test_cache_key_separates_anonymous_owners():
+    key_a = build_cache_key("sha123", "KR", owner_token_hash="owner-a")
+    key_b = build_cache_key("sha123", "KR", owner_token_hash="owner-b")
+    assert key_a != key_b
 
 
 def test_memory_cache_get_save_clear():
@@ -93,6 +104,7 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
         "/check",
         data={"region": "KR", "ad_text": "광고문구"},
         files={"image": ("test.png", io.BytesIO(img_bytes), "image/png")},
+        headers=OWNER_A_HEADERS,
     )
     assert r1.status_code == 200
     assert len(run_check_calls) == 1
@@ -102,6 +114,7 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
         "/check",
         data={"region": "KR", "ad_text": "광고문구"},
         files={"image": ("test.png", io.BytesIO(img_bytes), "image/png")},
+        headers=OWNER_A_HEADERS,
     )
     assert r2.status_code == 200
     assert len(run_check_calls) == 1  # run_check 재호출되지 않음!
@@ -113,6 +126,7 @@ def test_check_endpoint_caches_duplicate_image(monkeypatch):
         "/check",
         data={"region": "KR", "ad_text": "광고문구"},
         files={"image": ("test2.png", io.BytesIO(img_bytes2), "image/png")},
+        headers=OWNER_A_HEADERS,
     )
     assert r3.status_code == 200
     assert len(run_check_calls) == 2  # run_check 재호출됨!
@@ -139,6 +153,7 @@ def test_check_cache_separates_domestic_category(monkeypatch):
             "/check",
             data={"region": "KR", "ad_text": "광고문구", "domestic_category": category},
             files={"image": ("same.png", io.BytesIO(image), "image/png")},
+            headers=OWNER_A_HEADERS,
         )
         assert response.status_code == 200
 
@@ -169,6 +184,7 @@ def test_check_cache_separates_filename_only_from_missing_ingredients(monkeypatc
             "/check",
             data=data,
             files={"image": ("same.png", io.BytesIO(image), "image/png")},
+            headers=OWNER_A_HEADERS,
         )
         assert response.status_code == 200
 
@@ -198,9 +214,38 @@ def test_check_does_not_cache_when_supabase_persistence_fails(monkeypatch):
         "/check",
         data={"region": "KR", "ad_text": "광고문구"},
         files={"image": ("same.png", io.BytesIO(_make_dummy_png_bytes()), "image/png")},
+        headers=OWNER_A_HEADERS,
     )
     assert response.status_code == 200
     assert saved == []
+
+
+def test_check_cache_is_scoped_by_anonymous_owner(monkeypatch):
+    """같은 이미지·입력이어도 익명 소유자가 다르면 판정 캐시를 공유하지 않는다."""
+    from barum.api import app as app_module
+
+    calls = []
+
+    def mock_run_check(*args, **kwargs):
+        calls.append(kwargs)
+        return CheckReport(
+            findings=[],
+            unjudged=[],
+            summary=Summary(region=Region.KR, n_sentences=1, n_findings=0),
+        )
+
+    monkeypatch.setattr(app_module, "run_check", mock_run_check)
+    image = _make_dummy_png_bytes("white")
+    for headers in (OWNER_A_HEADERS, OWNER_B_HEADERS):
+        response = client.post(
+            "/check",
+            data={"region": "KR", "ad_text": "같은 광고문구"},
+            files={"image": ("same.png", io.BytesIO(image), "image/png")},
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+    assert len(calls) == 2
 
 
 def _fake_client_with_row(fake_row):

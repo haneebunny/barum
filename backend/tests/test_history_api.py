@@ -17,14 +17,17 @@ from fastapi.testclient import TestClient  # noqa: E402
 from barum.api import app as app_module  # noqa: E402
 
 client = TestClient(app_module.app)
+HISTORY_TOKEN = "a" * 64
+HISTORY_HEADERS = {"X-History-Token": HISTORY_TOKEN}
+OTHER_HISTORY_HEADERS = {"X-History-Token": "b" * 64}
 
 
 class _FakeTable:
     def __init__(self, store):
         self._store = store
         self._insert = None
-        self._eq_id = None
-        self._eq_column = None
+        self._filters = []
+        self._delete = False
 
     def insert(self, row):
         self._insert = row
@@ -33,9 +36,12 @@ class _FakeTable:
     def select(self, *a):
         return self
 
+    def delete(self):
+        self._delete = True
+        return self
+
     def eq(self, col, val):
-        self._eq_column = col
-        self._eq_id = val
+        self._filters.append((col, val))
         return self
 
     def limit(self, n):
@@ -48,12 +54,14 @@ class _FakeTable:
         if self._insert is not None:
             self._store.rows[self._insert["id"]] = self._insert
             return SimpleNamespace(data=[self._insert])
-        if self._eq_id is not None:
-            if self._eq_column == "region":
-                return SimpleNamespace(data=[row for row in self._store.rows.values() if row.get("region") == self._eq_id])
-            row = self._store.rows.get(self._eq_id)
-            return SimpleNamespace(data=[row] if row else [])
-        return SimpleNamespace(data=list(self._store.rows.values()))
+        rows = list(self._store.rows.values())
+        for column, value in self._filters:
+            rows = [row for row in rows if row.get(column) == value]
+        if self._delete:
+            for row in rows:
+                self._store.rows.pop(row["id"], None)
+            return SimpleNamespace(data=rows)
+        return SimpleNamespace(data=rows)
 
 
 class _FakeBucket:
@@ -65,6 +73,10 @@ class _FakeBucket:
 
     def download(self, path):
         return self._store.images[path]
+
+    def remove(self, paths):
+        for path in paths:
+            self._store.images.pop(path, None)
 
 
 class _FakeStorage:
@@ -101,13 +113,14 @@ def fake(monkeypatch):
 
 def test_check_text_returns_result_id_and_saves(fake):
     """텍스트 검사도 저장되고 result_id가 응답에 실린다(이미지 필드는 null)."""
-    r = client.post("/check", data={"region": "KR", "ad_text": "미백에 도움. 순한 보습."})
+    r = client.post("/check", data={"region": "KR", "ad_text": "미백에 도움. 순한 보습."}, headers=HISTORY_HEADERS)
     assert r.status_code == 200
     rid = r.json()["result_id"]
     assert rid and len(rid) >= 32
     assert rid in fake.rows
     saved = fake.rows[rid]
     assert saved["region"] == "KR"
+    assert saved["owner_token_hash"] == app_module.sha256_hex(HISTORY_TOKEN.encode())
     assert saved["image_sha256"] is None  # 텍스트 입력이라 이미지 없음
     assert saved["report"]["summary"]["n_findings"] >= 1
 
@@ -122,6 +135,7 @@ def test_check_persists_input_snapshot_without_changing_check_response(fake):
             "product_name": "Demo Cream",
             "domestic_category": "skincare",
         },
+        headers=HISTORY_HEADERS,
     )
     assert response.status_code == 200
     body = response.json()
@@ -143,6 +157,7 @@ def test_filename_only_ingredient_input_is_not_judged_as_an_ingredient(fake):
     response = client.post(
         "/check",
         data={"region": "KR", "ad_text": "Moisturizes dry skin", "ingredients": "ingredients.xlsx"},
+        headers=HISTORY_HEADERS,
     )
     assert response.status_code == 200
     snapshot = fake.rows[response.json()["result_id"]]["report"]["input_snapshot"]
@@ -160,11 +175,12 @@ def test_domestic_report_list_and_us_rerun_require_explicit_category(fake):
             "ingredients": "Water, Glycerin",
             "product_name": "Demo Sun Cream",
         },
+        headers=HISTORY_HEADERS,
     )
     assert source.status_code == 200
     source_id = source.json()["result_id"]
 
-    history = client.get("/reports", params={"region": "KR"})
+    history = client.get("/reports", params={"region": "KR"}, headers=HISTORY_HEADERS)
     assert history.status_code == 200
     item = next(item for item in history.json() if item["result_id"] == source_id)
     assert item["snapshot_available"] is True
@@ -186,6 +202,7 @@ def test_domestic_report_us_rerun_accepts_snapshot_category(fake):
             "product_name": "Demo Sun Cream",
             "domestic_category": "sun_care",
         },
+        headers=HISTORY_HEADERS,
     )
     assert source.status_code == 200
     source_id = source.json()["result_id"]
@@ -208,6 +225,7 @@ def test_domestic_report_us_rerun_accepts_category_override(fake):
             "ingredients": "Water, Glycerin",
             "product_name": "Demo Sun Cream",
         },
+        headers=HISTORY_HEADERS,
     )
     assert source.status_code == 200
     source_id = source.json()["result_id"]
@@ -287,3 +305,79 @@ def test_get_report_image_404_when_no_image(fake):
         "image_path": None,
     }
     assert client.get("/reports/rid-noimg/image").status_code == 404
+
+
+def test_report_list_is_scoped_and_excludes_legacy_and_readiness(fake):
+    owned = client.post(
+        "/check",
+        data={"region": "KR", "ad_text": "미백에 도움", "product_name": "내 제품"},
+        headers=HISTORY_HEADERS,
+    )
+    assert owned.status_code == 200
+    other_owner = client.post(
+        "/check",
+        data={"region": "KR", "ad_text": "Other browser input", "product_name": "Other product"},
+        headers=OTHER_HISTORY_HEADERS,
+    )
+    assert other_owner.status_code == 200
+    fake.rows["legacy"] = {
+        "id": "legacy",
+        "created_at": "2026-08-11T00:00:00Z",
+        "region": "KR",
+        "report": {"findings": [], "summary": {"region": "KR", "n_sentences": 0, "n_findings": 0}},
+        "image_path": None,
+        "owner_token_hash": None,
+    }
+    owner_hash = app_module.sha256_hex(HISTORY_TOKEN.encode())
+    fake.rows["readiness"] = {
+        "id": "readiness",
+        "created_at": "2026-08-11T00:00:00Z",
+        "region": "US",
+        "report": {"report_type": "export_readiness"},
+        "image_path": None,
+        "owner_token_hash": owner_hash,
+    }
+
+    assert client.get("/reports").json() == []
+    rows = client.get("/reports", headers=HISTORY_HEADERS).json()
+    assert [row["result_id"] for row in rows] == [owned.json()["result_id"]]
+    assert rows[0]["report_kind"] == "domestic_check"
+    assert rows[0]["status"] == "review"
+
+
+def test_us_preflight_appears_in_owned_history_with_report_kind(fake):
+    response = client.post(
+        "/check/us-sunscreen",
+        data={
+            "country": "US",
+            "ad_text": "SPF 50 sunscreen",
+            "product_name": "Demo Sun Cream",
+        },
+        headers=HISTORY_HEADERS,
+    )
+    assert response.status_code == 200
+
+    rows = client.get("/reports", params={"region": "US"}, headers=HISTORY_HEADERS).json()
+    item = next(row for row in rows if row["result_id"] == response.json()["result_id"])
+    assert item["report_kind"] == "us_preflight"
+    assert item["status"] == "review"
+    assert item["n_findings"] >= 1
+
+
+def test_delete_report_requires_matching_history_token_and_removes_image(fake):
+    owner_hash = app_module.sha256_hex(HISTORY_TOKEN.encode())
+    fake.rows["owned-image"] = {
+        "id": "owned-image",
+        "created_at": "2026-08-11T00:00:00Z",
+        "region": "KR",
+        "report": {"findings": [], "summary": {"region": "KR", "n_sentences": 0, "n_findings": 0}},
+        "image_path": "owned-image.png",
+        "owner_token_hash": owner_hash,
+    }
+    fake.images["owned-image.png"] = b"image"
+
+    assert client.delete("/reports/owned-image", headers={"X-History-Token": "b" * 64}).status_code == 404
+    response = client.delete("/reports/owned-image", headers=HISTORY_HEADERS)
+    assert response.status_code == 204
+    assert "owned-image" not in fake.rows
+    assert "owned-image.png" not in fake.images

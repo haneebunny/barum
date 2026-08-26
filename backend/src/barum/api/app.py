@@ -7,13 +7,14 @@
 import os
 import json
 import re
+import secrets
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -38,6 +39,8 @@ from barum.models import (
     RemediationRequest,
     RemediationResponse,
     ReportListItem,
+    ReportHistoryStatus,
+    ReportKind,
     StoredCheck,
     SurveyUploadResponse,
     USPreflightReport,
@@ -60,6 +63,8 @@ from barum.pipeline import run_check, run_us_sunscreen_check, run_us_export_read
 from barum.storage.checks_store import (
     build_cache_key,
     build_check_row,
+    delete_check,
+    delete_image,
     download_image,
     ensure_bucket,
     get_cached_check,
@@ -226,6 +231,7 @@ def _persist_check(
     content_type: str | None,
     product_name: str | None = None,
     cache_key: str | None = None,
+    owner_token_hash: str | None = None,
 ) -> str | None:
     """검사 결과·증거를 저장하고 result_id를 낸다. 저장 못 하면 None(응답은 계속).
 
@@ -255,12 +261,38 @@ def _persist_check(
         row = build_check_row(
             result_id, region, report.model_dump(mode="json"), image_sha256, image_path,
             product_name=product_name, cache_key=cache_key,
+            owner_token_hash=owner_token_hash,
         )
         save_check(client, row)
         return result_id
     except Exception as e:
         print(f"[warn] 검사 저장 실패(result_id 없이 응답): {type(e).__name__}: {e}")
         return None
+
+
+def _history_owner_hash(raw_token: str | None, *, required: bool = False) -> str | None:
+    """브라우저 익명 토큰을 검증하고 저장·조회용 SHA-256 해시로 바꾼다."""
+    if raw_token is None or not raw_token.strip():
+        if required:
+            raise HTTPException(status_code=400, detail="검사 이력 토큰이 필요합니다.")
+        return None
+    token = raw_token.strip()
+    if not 32 <= len(token) <= 256:
+        raise HTTPException(status_code=400, detail="검사 이력 토큰 형식이 올바르지 않습니다.")
+    return sha256_hex(token.encode("utf-8"))
+
+
+def _fresh_cached_report(report: BaseModel) -> BaseModel:
+    """캐시 판정값은 재사용하되 저장 ID·증거 경로는 새 요청과 공유하지 않는다."""
+    fresh = report.model_copy(deep=True)
+    if hasattr(fresh, "result_id"):
+        fresh.result_id = None
+    snapshot = getattr(fresh, "input_snapshot", None)
+    if snapshot is not None:
+        snapshot.source_report_id = None
+        for asset in snapshot.assets:
+            asset.storage_ref = None
+    return fresh
 
 
 def _parse_readiness_json(raw: str | None, field_name: str, model_type):
@@ -376,12 +408,24 @@ def get_report(result_id: str) -> StoredCheck:
 def list_reports(
     region: Region | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
+    history_token: str | None = Header(None, alias="X-History-Token"),
 ) -> list[ReportListItem]:
-    """해외 수출 화면에서 국내 검사 결과를 선택할 수 있도록 이력을 반환한다."""
-    rows = list_checks(_checks_client(), region.value if region else None, limit=limit)
+    """현재 브라우저가 만든 국내·미국 프리플라이트 검사만 반환한다."""
+    owner_token_hash = _history_owner_hash(history_token)
+    if owner_token_hash is None:
+        return []
+    rows = list_checks(
+        _checks_client(),
+        region.value if region else None,
+        limit=limit,
+        owner_token_hash=owner_token_hash,
+    )
     items: list[ReportListItem] = []
     for row in rows:
         report_data = row.get("report") or {}
+        report_type = report_data.get("report_type")
+        if report_type in {"us_export_readiness", "export_readiness"}:
+            continue
         raw_snapshot = report_data.get("input_snapshot")
         try:
             snapshot = DomesticInputSnapshot.model_validate(raw_snapshot) if raw_snapshot else None
@@ -389,18 +433,60 @@ def list_reports(
         except Exception:
             snapshot = None
             parsed_region = Region.KR
+        summary = report_data.get("summary") or {}
+        n_findings = int(summary.get("n_findings") or 0)
+        n_violation = int(summary.get("n_violation") or 0)
+        n_needs_review = int(summary.get("n_needs_review") or 0)
+        n_unjudged = int(summary.get("n_unjudged") or 0)
+        report_kind = (
+            ReportKind.US_PREFLIGHT
+            if parsed_region == Region.US
+            else ReportKind.DOMESTIC_CHECK
+        )
         items.append(
             ReportListItem(
                 result_id=row["id"],
                 created_at=str(row.get("created_at", "")),
                 region=parsed_region,
+                report_kind=report_kind,
+                status=(
+                    ReportHistoryStatus.REVIEW
+                    if n_findings > 0 or n_unjudged > 0
+                    else ReportHistoryStatus.DONE
+                ),
                 product_name=row.get("product_name") or (snapshot.product_name if snapshot else None),
+                n_findings=n_findings,
+                n_violation=n_violation,
+                n_needs_review=n_needs_review,
+                n_unjudged=n_unjudged,
                 image_available=bool(row.get("image_path")),
                 snapshot_available=snapshot is not None,
                 input_materials=_snapshot_materials(snapshot),
             )
         )
     return items
+
+
+@app.delete("/reports/{result_id}", status_code=204)
+def delete_report(
+    result_id: str,
+    history_token: str | None = Header(None, alias="X-History-Token"),
+) -> Response:
+    """현재 익명 브라우저가 소유한 검사와 연결 증거 파일만 삭제한다."""
+    owner_token_hash = _history_owner_hash(history_token, required=True)
+    client = _checks_client()
+    row = get_check(client, result_id)
+    stored_owner = row.get("owner_token_hash") if row else None
+    if row is None or stored_owner is None or not secrets.compare_digest(stored_owner, owner_token_hash):
+        raise HTTPException(status_code=404, detail="삭제할 검사 이력을 찾을 수 없습니다.")
+    if not delete_check(client, result_id, owner_token_hash):
+        raise HTTPException(status_code=404, detail="삭제할 검사 이력을 찾을 수 없습니다.")
+    if row.get("image_path"):
+        try:
+            delete_image(client, row["image_path"])
+        except Exception as exc:
+            print(f"[warn] 검사 이력은 삭제했지만 증거 파일 정리에 실패: {type(exc).__name__}: {exc}")
+    return Response(status_code=204)
 
 
 @app.get(
@@ -458,6 +544,7 @@ async def check(
     ),
     domestic_category: str | None = Form(None),
     domestic_subcategory: str | None = Form(None),
+    history_token: str | None = Header(None, alias="X-History-Token"),
 ) -> CheckReport:
     """광고(이미지/글 + 나라)를 받아 문구별 위반 findings를 반환한다.
 
@@ -479,8 +566,9 @@ async def check(
         if ingredients and ingredients.strip()
         else "MISSING"
     )
+    owner_token_hash = _history_owner_hash(history_token)
     cache_key = None
-    if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
+    if image_bytes and owner_token_hash and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
         image_sha256 = sha256_hex(image_bytes)
         cache_key = build_cache_key(
             image_sha256=image_sha256,
@@ -493,11 +581,20 @@ async def check(
             domestic_subcategory=domestic_subcategory,
             ingredients_raw=ingredients,
             ingredients_input_kind=ingredients_input_kind,
+            owner_token_hash=owner_token_hash,
         )
-        cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
+        cached_report = get_cached_check(
+            _maybe_checks_client(), cache_key, image_sha256, owner_token_hash
+        )
         if cached_report is not None and isinstance(cached_report, CheckReport):
             print(f"    [info] 이미지 동일, 캐시된 리포트 사용 (sha256={image_sha256[:8]})")
-            return cached_report
+            report = _fresh_cached_report(cached_report)
+            report.result_id = _persist_check(
+                report, region.value, image_bytes, image.content_type if image else None,
+                product_name=product_name, cache_key=cache_key,
+                owner_token_hash=owner_token_hash,
+            )
+            return report
 
     # OCR용 VLM은 이미지가 있을 때만 만든다. 판정용 VLM은 judge가 내부에 든다.
     ocr_vlm = (
@@ -546,6 +643,7 @@ async def check(
     report.result_id = _persist_check(
         report, region.value, image_bytes, image.content_type if image else None,
         product_name=product_name, cache_key=cache_key,
+        owner_token_hash=owner_token_hash,
     )
     if cache_key and (
         report.result_id is not None
@@ -568,6 +666,7 @@ async def check_us_sunscreen(
     product_name: str | None = Form(
         None, description="상품명 또는 광고 제목. 있으면 판정 대상에 포함된다."
     ),
+    history_token: str | None = Header(None, alias="X-History-Token"),
 ) -> USPreflightReport:
     """미국 프리플라이트(자외선차단 최소보장) 검사. 국내 `/check`와 별도 엔드포인트(팀 확정).
 
@@ -602,8 +701,9 @@ async def check_us_sunscreen(
         if ingredients and ingredients.strip()
         else "MISSING"
     )
+    owner_token_hash = _history_owner_hash(history_token)
     cache_key = None
-    if image_bytes and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
+    if image_bytes and owner_token_hash and os.environ.get("IMAGE_CACHE_ENABLED", "1") != "0":
         image_sha256 = sha256_hex(image_bytes)
         cache_key = build_cache_key(
             image_sha256=image_sha256,
@@ -613,11 +713,24 @@ async def check_us_sunscreen(
             product_name=product_name,
             ingredients_raw=ingredients,
             ingredients_input_kind=ingredients_input_kind,
+            owner_token_hash=owner_token_hash,
         )
-        cached_report = get_cached_check(_maybe_checks_client(), cache_key, image_sha256)
+        cached_report = get_cached_check(
+            _maybe_checks_client(), cache_key, image_sha256, owner_token_hash
+        )
         if cached_report is not None and isinstance(cached_report, USPreflightReport):
             print(f"    [info] 이미지 동일, 캐시된 US 리포트 사용 (sha256={image_sha256[:8]})")
-            return cached_report
+            report = _fresh_cached_report(cached_report)
+            report.result_id = _persist_check(
+                report,
+                region="US",
+                image_bytes=image_bytes,
+                content_type=image.content_type if image is not None else None,
+                product_name=product_name,
+                cache_key=cache_key,
+                owner_token_hash=owner_token_hash,
+            )
+            return report
 
     ocr_vlm = (
         get_vlm(os.environ.get("OCR_PROVIDER", "gemini"), model=role_model("ocr"))
@@ -648,6 +761,7 @@ async def check_us_sunscreen(
         content_type=image.content_type if image is not None else None,
         product_name=product_name,
         cache_key=cache_key,
+        owner_token_hash=owner_token_hash,
     )
     if cache_key and (
         report.result_id is not None
