@@ -7,6 +7,7 @@
 import re
 from pathlib import Path
 
+from barum.parallel import check_workers, run_in_order
 from barum.vlm import VLM
 
 BATCH_PROMPT = """첨부된 이미지 {n}장은 한 상품 상세페이지를 위에서 아래로 자른 조각들이다.
@@ -88,12 +89,14 @@ def extract_product_sentences(
     seen: set[str] = set()
     failed: list[str] = []
 
-    for start in range(0, len(tiles), batch_size):
-        chunk = tiles[start:start + batch_size]
-        try:
-            per_tile = _ocr_batch(chunk, vlm)
-        except Exception as e:
+    chunks = [tiles[start:start + batch_size] for start in range(0, len(tiles), batch_size)]
+    # 타일 배치끼리는 독립이라 동시에 보낸다. 결과는 배치 순서대로 돌아오므로 아래
+    # 문장 order·중복 제거는 예전과 같은 순서로 돈다(출력 동일, 대기만 겹친다).
+    outcomes = run_in_order(lambda chunk: _ocr_batch(chunk, vlm), chunks, workers=check_workers())
+    for chunk, per_tile in zip(chunks, outcomes):
+        if isinstance(per_tile, Exception):
             # 예상된 실패(429·타임아웃·빈 응답). 과금 호출이라 재시도하지 않는다.
+            e = per_tile
             print(f"    [skip] {chunk[0].name}~{chunk[-1].name}: "
                   f"{type(e).__name__}: {e}")
             failed += [t.name for t in chunk]
