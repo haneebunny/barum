@@ -12,6 +12,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from barum.parallel import check_workers, run_in_order
 from barum.models import (
     Finding,
     JudgmentFlag,
@@ -380,19 +381,27 @@ class PromptJudge:
         ingredient_amounts: list[tuple[str, str]] | None = None,
     ) -> JudgeResult:
         result = JudgeResult()
-        for start in range(0, len(sentences), self.batch_size):
+        starts = list(range(0, len(sentences), self.batch_size))
+
+        def _ask(start: int) -> list:
             batch = sentences[start : start + self.batch_size]
             # 배치 안 문장에 전역 번호(start+j)를 매겨 결과를 되짚는다.
             numbered = "\n".join(
                 f"{start + j}. {s['text']}" for j, s in enumerate(batch)
             )
-            try:
-                res = self.vlm.generate_json(self._build_prompt(numbered), [])
-                # res가 dict가 아니면(가끔 모델이 {"results":[...]} 대신 통짜 리스트를
-                # 뱉는다) .get()이 AttributeError를 던진다. 이것도 예상된 실패로 본다.
-                raw_results = res.get("results", [])
-            except Exception as e:
+            res = self.vlm.generate_json(self._build_prompt(numbered), [])
+            # res가 dict가 아니면(가끔 모델이 {"results":[...]} 대신 통짜 리스트를
+            # 뱉는다) .get()이 AttributeError를 던진다. 이것도 예상된 실패로 본다.
+            return res.get("results", [])
+
+        # 배치끼리 독립이라 동시에 묻는다. 결과 해석(성분 대조·인용 검증)은 아래서
+        # 배치 순서대로 돌아 findings·unjudged 순서가 예전과 같다.
+        outcomes = run_in_order(_ask, starts, workers=check_workers())
+        for start, raw_results in zip(starts, outcomes):
+            batch = sentences[start : start + self.batch_size]
+            if isinstance(raw_results, Exception):
                 # 예상된 실패(429·타임아웃·빈 응답·형식불일치). 재시도 없이 배치 전체 미판정.
+                e = raw_results
                 print(
                     f"    [skip] judge 배치 {start}~{start + len(batch) - 1}: "
                     f"{type(e).__name__}: {e}"
@@ -649,17 +658,23 @@ class RagJudge:
         """
         claims: list[dict] = []
         dropped: list[dict] = []
-        for start in range(0, len(sentences), self._batch_size):
+        starts = list(range(0, len(sentences), self._batch_size))
+        vlm = self._prescreen_vlm or self._vlm
+
+        def _ask(start: int) -> list:
             batch = sentences[start : start + self._batch_size]
             numbered = "\n".join(
                 f"{start + j}. {s['text']}" for j, s in enumerate(batch)
             )
-            try:
-                res = (self._prescreen_vlm or self._vlm).generate_json(
-                    PRESCREEN_PROMPT.format(items=numbered), []
-                )
-                raw = res.get("results", [])
-            except Exception as e:
+            res = vlm.generate_json(PRESCREEN_PROMPT.format(items=numbered), [])
+            return res.get("results", [])
+
+        # 배치끼리 독립이라 동시에 묻고, 결과는 배치 순서대로 되짚는다(출력 동일).
+        outcomes = run_in_order(_ask, starts, workers=check_workers())
+        for start, raw in zip(starts, outcomes):
+            batch = sentences[start : start + self._batch_size]
+            if isinstance(raw, Exception):
+                e = raw
                 print(
                     f"    [prescreen skip] 배치 {start}~{start + len(batch) - 1}: "
                     f"{type(e).__name__}: {e}"

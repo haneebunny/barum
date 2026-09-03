@@ -66,7 +66,7 @@ def _install_patches() -> None:
 
     `_ocr_image`·`_verify_functional_evidence`·`_build_replacements_for_report`는
     pipeline.py 안에서 같은 모듈 전역으로 호출되므로 모듈 속성 패치가 그대로 먹는다.
-    `match_rule`은 cosmetic.py가 `from ... import`로 자기 네임스페이스에 복사해 둔
+    `match_all_rules`는 cosmetic.py가 `from ... import`로 자기 네임스페이스에 복사해 둔
     이름이라, 원본 모듈이 아니라 cosmetic 모듈 쪽 이름을 패치해야 한다.
     """
     pipeline_mod._ocr_image = _timed("OCR")(pipeline_mod._ocr_image)
@@ -76,7 +76,7 @@ def _install_patches() -> None:
     pipeline_mod._build_replacements_for_report = _timed("대체표현배치")(
         pipeline_mod._build_replacements_for_report
     )
-    cosmetic_mod.match_rule = _timed("규칙")(cosmetic_mod.match_rule)
+    cosmetic_mod.match_all_rules = _timed("규칙")(cosmetic_mod.match_all_rules)
     cosmetic_mod.RagJudge._prescreen = _timed("1차필터")(cosmetic_mod.RagJudge._prescreen)
     cosmetic_mod.PromptJudge.judge = _timed("RAG판정")(cosmetic_mod.PromptJudge.judge)
 
@@ -111,7 +111,7 @@ def _fmt_range(values: list[float]) -> str:
     )
 
 
-def main(reps: int) -> None:
+def main(reps: int, out_path: Path, title: str) -> None:
     for label, path in IMAGES.items():
         if not path.exists():
             print(f"[경고] {label} 데모 이미지가 없다: {path}")
@@ -130,7 +130,7 @@ def main(reps: int) -> None:
             all_runs[label].append({"total": total, "stages": stages, "n_findings": n_findings})
 
     print("\n\n=== 요약 ===")
-    lines = ["# `/check` 단계별 지연 실측 (게이트 도입 전 베이스라인)", ""]
+    lines = [f"# {title}", ""]
     lines.append("PM 지시(2026-08-23): 베베가 판정 경로에 근거 검증 게이트를 넣기 전 값. "
                   "게이트 도입 후 재측정해 이 문서와 비교하는 게 목적.")
     lines.append("")
@@ -167,7 +167,6 @@ def main(reps: int) -> None:
     lines.append("")
     lines.append("관련: [[barum-check-latency-and-decision]], [[barum-vlm-run-variance]], [[barum-no-unverified-metrics-rule]]")
 
-    out_path = ROOT.parent / "docs" / "result" / "2026-08-23_check_지연_사전측정.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n결과 저장: {out_path}")
 
@@ -175,4 +174,16 @@ def main(reps: int) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--reps", type=int, default=3, help="이미지당 반복 횟수")
-    main(reps=ap.parse_args().reps)
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=ROOT.parent / "docs" / "result" / "2026-08-23_check_지연_사전측정.md",
+        help="결과 md 경로. 기본값은 8/23 사전측정 문서(덮어쓰니 주의)",
+    )
+    ap.add_argument(
+        "--title",
+        default="`/check` 단계별 지연 실측 (게이트 도입 전 베이스라인)",
+        help="결과 md 제목",
+    )
+    args = ap.parse_args()
+    main(reps=args.reps, out_path=args.out, title=args.title)
